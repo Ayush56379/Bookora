@@ -9,7 +9,7 @@ export const BookoraAI = {
   messages: [
     {
       role: 'assistant',
-      content: 'Hello! I am **Bookora AI**, your intelligent reading & marketplace assistant. How can I help you today?'
+      content: 'Hello! I am **Bookora AI**, your intelligent marketplace copilot. I have complete knowledge of all Bookora features, reading tools, publishing workflows, subscriptions, and account settings. How can I help you today?'
     }
   ],
 
@@ -36,7 +36,7 @@ export const BookoraAI = {
             </div>
             <div>
               <div style="font-weight: 800; font-size: 1rem; color: #0F172A; line-height: 1;">Bookora AI</div>
-              <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">Your intelligent marketplace copilot</div>
+              <div style="font-size: 0.7rem; color: #64748B; margin-top: 2px;">Your deep marketplace guide</div>
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -50,7 +50,7 @@ export const BookoraAI = {
 
         <div class="ai-input-bar">
           <form id="ai-chat-form" style="display: flex; gap: 0.5rem; width: 100%;">
-            <input type="text" id="ai-user-input" placeholder="Ask anything about Bookora, accounts, or publishing..." autocomplete="off" style="flex: 1; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.875rem;" />
+            <input type="text" id="ai-user-input" placeholder="Ask anything about Bookora, publishing, reading, or plans..." autocomplete="off" style="flex: 1; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.875rem;" />
             <button type="submit" id="ai-send-btn" class="btn btn-primary btn-sm" style="font-weight: 700; padding: 0 1rem; white-space: nowrap;">
               Send
             </button>
@@ -142,17 +142,17 @@ export const BookoraAI = {
     let chips = [];
 
     if (hash.startsWith('#/book/')) {
-      chips = ['What is this book about?', 'Who is the author?', 'Summarize key takeaways', 'Is it included in subscription?'];
+      chips = ['What is this book about?', 'How do I buy this eBook?', 'Is this included in Reader Pro?', 'How do sample previews work?'];
     } else if (hash.startsWith('#/pricing') || hash.startsWith('#/subscription')) {
-      chips = ['Which plan is right for me?', 'What is included in Reader Pro?', 'How do I cancel my subscription?'];
+      chips = ['Compare subscription tiers', 'What is included in Reader Pro?', 'How does Annual Club save money?', 'How do I cancel my subscription?'];
     } else if (hash.startsWith('#/publish') || hash.startsWith('#/seller')) {
-      chips = ['How do author royalties work?', 'How to write a high-converting description?', 'What formats are supported?'];
+      chips = ['How do 85% author royalties work?', 'How to list external sales pages?', 'What formats are supported?', 'How to get approved as an author?'];
     } else if (hash.startsWith('#/library') || hash.startsWith('#/orders')) {
-      chips = ['Where is my purchased eBook?', 'How do reader controls work?', 'How do DRM downloads work?'];
+      chips = ['Where are my purchased books?', 'How does in-browser reader work?', 'How do DRM downloads work?', 'Where can I find my invoice?'];
     } else if (hash.startsWith('#/admin')) {
       chips = ['Show todays marketplace summary', 'How many books are pending approval?', 'What is our database health?'];
     } else {
-      chips = ['How do I create an account?', 'How do I buy an eBook?', 'How does subscription work?', 'How can I publish an eBook?'];
+      chips = ['How do I create an account?', 'How does Bookora work?', 'How do 85% royalties work?', 'What are the subscription plans?'];
     }
 
     container.innerHTML = chips.map(chip => `
@@ -193,42 +193,60 @@ export const BookoraAI = {
       .replace(/\n/g, '<br/>');
   },
 
-  getInstantBookoraResponse(query) {
+  // Deep Knowledge Engine for all Bookora features
+  getDeepBookoraResponse(query) {
     const q = (query || '').toLowerCase();
 
-    if (q.includes('create account') || q.includes('signup') || q.includes('register') || q.includes('join') || q.includes('sign up')) {
-      return "To create an account on Bookora:\n\n1. Click **Sign In** in the top navigation.\n2. Select **[Sign Up](#/signup)**.\n3. Enter your **Full Name**, **Email Address**, and choose a password (minimum 8 characters).\n4. Or click **Continue with Google** / **Apple** for instant 1-click registration.\n5. Choose your initial account type: **Reader / Buyer** or apply as an **Author / Seller**.\n\nReady to get started? [Create Account](#/signup)";
+    // 1. Account Creation & Sign In
+    if (q.includes('create account') || q.includes('signup') || q.includes('register') || q.includes('sign up') || q.includes('join')) {
+      return "### How to Create a Bookora Account:\n\n1. Click **[Sign Up](#/signup)** in the top navigation.\n2. Choose your role: **Reader / Buyer** or **Author / Seller**.\n3. Enter your **Full Name**, **Email Address**, and choose a secure password (minimum 8 characters).\n4. Or click **Continue with Google** / **Apple** for instant 1-click registration.\n\nOnce registered, you can immediately buy eBooks, access your personal **[Library](#/library)**, and save favorites to your **[Wishlist](#/wishlist)**!\n\n[Create Your Account](#/signup)";
     }
 
     if (q.includes('login') || q.includes('sign in') || q.includes('log in')) {
-      return "To sign in to Bookora:\n\n1. Open the **[Sign In](#/login)** page.\n2. Enter your registered email and password.\n3. Or use **Continue with Google** / **Continue with Apple**.\n4. If you forgot your password, click **[Forgot Password?](#/forgot-password)** to receive reset instructions.";
+      return "### How to Sign In to Bookora:\n\n1. Go to the **[Sign In](#/login)** page.\n2. Enter your registered email and password, or use **Google Sign-In** / **Apple ID**.\n3. If you forgot your password, click **[Forgot Password?](#/forgot-password)** to get recovery instructions.\n\n[Sign In to Bookora](#/login)";
     }
 
-    if (q.includes('publish') || q.includes('author') || q.includes('sell') || q.includes('creator')) {
-      return "To publish your eBook on Bookora:\n\n1. Sign in and apply for creator privileges at **[Seller Apply](#/seller/apply)**.\n2. Once approved by administration, open the **[Publish eBook](#/publish)** wizard or use our **[Smart External Importer](#/publish/external)**.\n3. Upload your PDF manuscript, cover image, set your pricing, and submit for moderation.\n4. Earn an industry-leading **85% author royalty** deposited directly to your bank via Cashfree Payouts.";
+    // 2. Dual Publishing Models & 85% Royalties
+    if (q.includes('publish') || q.includes('author') || q.includes('sell') || q.includes('creator') || q.includes('royalty') || q.includes('royalties')) {
+      return "### Author & Creator Publishing on Bookora:\n\nBookora offers two flexible publishing models with an industry-leading **85% author royalty rate**:\n\n1. **Type A (Native Bookora eBooks)**:\n   - Upload your PDF manuscript + cover image.\n   - Set your own price, description, and reading access model (*One-Time Purchase*, *Subscription Included*, or *Both*).\n   - Readers get instant in-browser reading & DRM watermarked downloads.\n\n2. **Type B (Smart External Importer)**:\n   - Paste your existing sales link from **Leanpub**, **Gumroad**, or publisher pages.\n   - Our metadata engine automatically imports the cover, title, author, and description.\n\n**Payouts**: Direct to your verified bank account via automated Cashfree Payouts.\n\n[Apply for Seller Status](#/seller/apply) • [Publish an eBook](#/publish)";
     }
 
-    if (q.includes('buy') || q.includes('purchase') || q.includes('checkout') || q.includes('payment') || q.includes('how to buy')) {
-      return "To buy an eBook on Bookora:\n\n1. Browse titles in the **[Catalog](#/explore)** and open any book detail page.\n2. Click **Buy Now** to proceed to the secure checkout.\n3. Complete payment via **Cashfree Sandbox** (supports UPI, Debit/Credit Card, NetBanking, and Wallets).\n4. Once verified, the eBook is instantly unlocked in **[My Library](#/library)** for in-browser reading and DRM download.";
+    // 3. Buying & Cashfree Payments
+    if (q.includes('buy') || q.includes('purchase') || q.includes('checkout') || q.includes('payment') || q.includes('pay') || q.includes('cashfree')) {
+      return "### How eBook Purchases Work on Bookora:\n\n1. Find your desired book in the **[Explore Catalog](#/explore)**.\n2. Click **Buy Now** to open the secure **[Checkout](#/checkout)** page.\n3. Complete payment via **Cashfree Sandbox Gateway** (supports UPI apps like GPay/PhonePe, Debit/Credit Cards, NetBanking, and Wallets).\n4. Once payment is verified, the eBook is **instantly unlocked** in your **[My Library](#/library)** for lifetime reading and PDF download.\n\n[Explore Catalog](#/explore)";
     }
 
-    if (q.includes('subscription') || q.includes('plan') || q.includes('pricing') || q.includes('tier') || q.includes('price')) {
-      return "Bookora offers 3 flexible reading tiers:\n\n- **Free Reader (₹0)**: Browse catalog, read free 5-page sample previews, and save to wishlist.\n- **Reader Pro (₹299/mo)**: Unlimited in-browser reading on eligible titles + dark/sepia reading themes.\n- **Annual Book Club (₹2,499/yr)**: 12-month full unlimited access + 2 months free!\n\nExplore details at **[Pricing Plans](#/pricing)**.";
+    // 4. In-Browser Reader & DRM Downloads
+    if (q.includes('reader') || q.includes('read') || q.includes('library') || q.includes('download') || q.includes('drm') || q.includes('watermark')) {
+      return "### In-Browser Reading & Downloads:\n\n- **In-Browser eBook Reader**: Read any purchased or subscription-eligible eBook directly in your browser with **Day**, **Sepia (Warm Paper)**, and **Night (Dark)** themes, adjustable font sizing (14px–26px), and fullscreen reading.\n- **Progress Sync**: Bookora automatically saves your reading progress so you always resume on the exact page you left off.\n- **DRM Downloads**: You can download licensed PDF copies stamped with your personalized reader license watermark directly from **[My Library](#/library)**.\n\n[Go to My Library](#/library)";
     }
 
-    if (q.includes('where') && (q.includes('book') || q.includes('library') || q.includes('download') || q.includes('read'))) {
-      return "All your purchased and subscription-accessible eBooks are located in **[My Library](#/library)**.\n\nFrom your library, you can:\n- Open the in-browser reader with Day, Sepia, and Night themes.\n- Continue reading from your last saved page.\n- Download your personalized, watermarked licensed file.";
+    // 5. Subscription Plans & Tiers
+    if (q.includes('subscription') || q.includes('plan') || q.includes('pricing') || q.includes('pro') || q.includes('annual') || q.includes('club')) {
+      return "### Bookora Reading Subscription Tiers:\n\n1. **Free Reader (₹0)**:\n   - Browse the full marketplace catalog.\n   - Read free 5-page sample previews on any eBook.\n   - Save unlimited books to your Wishlist.\n\n2. **Bookora Reader Pro (₹299 / month)**:\n   - Unlimited in-browser reading on all subscription-eligible titles.\n   - Dark & Sepia reading themes + progress sync.\n   - Cancel anytime from your account settings.\n\n3. **Annual Book Club (₹2,499 / year — Save 30%)**:\n   - 12 months full unlimited reading access (includes 2 months free!).\n   - Early access to fresh releases and creator exclusives.\n\n[View Subscription Plans](#/pricing)";
     }
 
-    if (q.includes('what is bookora') || q.includes('about bookora')) {
-      return "Bookora is a modern, high-performance digital eBook marketplace where readers discover world-class publications with instant in-browser reading, and independent creators publish globally with verified Cashfree payouts.";
+    // 6. Orders, Invoices & Receipts
+    if (q.includes('order') || q.includes('invoice') || q.includes('refund') || q.includes('receipt')) {
+      return "### Orders, Receipts & Invoices:\n\n- Every completed transaction generates an instant digital invoice.\n- You can view transaction IDs, download dates, payment status, and order details in **[Order History](#/orders)**.\n- For refund requests, our 100% digital fulfillment policy covers verified purchase errors within 7 days.\n\n[View Order History](#/orders)";
     }
 
-    if (q === 'hi' || q === 'hello' || q === 'hey' || q === 'namaste') {
-      return "Hello! I am **Bookora AI**, your personal marketplace assistant. How can I assist you today? You can ask me how to create an account, publish an eBook, explore reading plans, or browse the [Explore Catalog](#/explore)!";
+    // 7. Categories & Topics
+    if (q.includes('category') || q.includes('categories') || q.includes('topic') || q.includes('genre')) {
+      return "### Explore by Category:\n\nBookora organizes publications across 20+ specialized topics including:\n- **Productivity & Time Management**\n- **Technology, Cloud & Web Architecture**\n- **Business, Startups & Leadership**\n- **Design, UI/UX & Creative Arts**\n- **Personal Finance & Investing**\n- **Science, Mathematics & Philosophy**\n\n[Browse All Categories](#/categories)";
     }
 
-    return "I am your Bookora marketplace assistant! I can help you with account creation, author publishing (85% royalties), reading subscriptions, or browsing our **[Explore Catalog](#/explore)**. What would you like to know?";
+    // 8. What is Bookora / Platform Overview
+    if (q.includes('what is bookora') || q.includes('about') || q.includes('overview') || q.includes('who are you')) {
+      return "### About Bookora — Discover. Read. Publish.\n\nBookora is a modern digital eBook marketplace designed for readers and independent creators:\n- **For Readers**: Discover world-class books, read free previews, enjoy seamless in-browser reading across Day/Sepia/Night themes, and manage your permanent digital library.\n- **For Authors & Publishers**: Upload PDF manuscripts, earn an **85% royalty rate** with direct bank payouts via Cashfree, or import external sales pages from Gumroad/Leanpub.\n\n[Explore Catalog](#/explore) • [Start Publishing](#/publish)";
+    }
+
+    // 9. Greetings & Overview
+    if (q === 'hi' || q === 'hello' || q === 'hey' || q === 'namaste' || q.includes('help')) {
+      return "Hello! I am **Bookora AI**, your marketplace assistant. I can help you with:\n\n- **[Create Account](#/signup)** / **[Sign In](#/login)**\n- **[Publish an eBook](#/publish)** (Earn 85% royalties)\n- **[Explore Catalog](#/explore)** (Browse books & free previews)\n- **[Subscription Plans](#/pricing)** (Reader Pro & Annual Club)\n- **[In-Browser Reader](#/library)** & DRM PDF downloads\n\nWhat would you like to explore?";
+    }
+
+    return "I am your complete Bookora marketplace assistant! I can guide you through reading in your **[Library](#/library)**, subscribing to **[Reader Pro](#/pricing)**, buying books via Cashfree, or publishing manuscripts with **85% royalties** in **[Creator Studio](#/publish)**. How can I help you today?";
   },
 
   async sendMessage(userText) {
@@ -286,11 +304,11 @@ export const BookoraAI = {
         replyText = data.message || data.reply;
       }
     } catch (err) {
-      // Automatic fallback to built-in intelligence
+      console.log('Bookora AI delivering instant deep knowledge:', err.message);
     }
 
     if (!replyText) {
-      replyText = this.getInstantBookoraResponse(userText);
+      replyText = this.getDeepBookoraResponse(userText);
     }
 
     loadingEl.remove();
