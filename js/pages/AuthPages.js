@@ -177,7 +177,8 @@ export function initAuthEvents(type) {
 
   // Google Sign-In Handler
   document.getElementById('google-auth-btn')?.addEventListener('click', async () => {
-    const res = await firebaseGoogleSignIn();
+    const roleChoice = document.querySelector('input[name="auth-role"]:checked')?.value || 'buyer';
+    const res = await firebaseGoogleSignIn(roleChoice);
     if (res && res.success) {
       window.location.hash = getPostLoginRedirect(res.is_admin, res.is_seller);
     }
@@ -185,7 +186,8 @@ export function initAuthEvents(type) {
 
   // Apple Sign-In Handler
   document.getElementById('apple-auth-btn')?.addEventListener('click', async () => {
-    const res = await firebaseAppleSignIn();
+    const roleChoice = document.querySelector('input[name="auth-role"]:checked')?.value || 'buyer';
+    const res = await firebaseAppleSignIn(roleChoice);
     if (res && res.success) {
       window.location.hash = getPostLoginRedirect(res.is_admin, res.is_seller);
     }
