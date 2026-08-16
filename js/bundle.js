@@ -10,7 +10,7 @@
 // When deploying frontend to GitHub Pages or static host, set API_BASE_URL to your backend hosting URL.
 const API_BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   ? (window.location.port === '3000' ? '' : 'http://localhost:3000')
-  : (window.BOOKORA_API_URL || 'https://api.your-bookora-domain.com');
+  : (window.BOOKORA_API_URL || 'https://bookora-backend-x081.onrender.com');
 
 // Helper wrapper for API requests
 async function apiFetch(endpoint, options = {}) {
