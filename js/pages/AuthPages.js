@@ -912,6 +912,13 @@ export function renderAuthPage(type = 'login') {
 // ---------------------------------------------------------
 export function initAuthEvents(type) {
 
+    const isSignup =
+    type === 'signup' ||
+    type === 'register';
+
+  const isForgot =
+    type === 'forgot';
+
   const form =
     document.getElementById('auth-form');
 
