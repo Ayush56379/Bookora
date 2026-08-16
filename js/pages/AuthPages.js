@@ -1,25 +1,11 @@
-// AuthPages Component (Google Identity Services, Firebase Auth, Apple ID, Email+Password)
+// AuthPages Component (Strict Server-Verified Authentication)
 import { apiFetch, API_BASE_URL } from '../config.js';
 import { state } from '../state.js';
 import { updateSEO } from '../utils/seo.js';
 import { Toast } from '../components/Toast.js';
-import { signInWithGoogleFirebase } from '../services/firebase.js';
 
 const GOOGLE_CLIENT_ID = "1099320965452-bo5180hlnqiglopa1gohp30netaf0cbm.apps.googleusercontent.com";
 const ADMIN_EMAIL = "ayushprajpati6@gmail.com";
-
-function parseJwtClaims(token) {
-  try {
-    const base64Url = token.split('.');
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-    return JSON.parse(jsonPayload);
-  } catch (e) {
-    return {};
-  }
-}
 
 function getPostLoginRedirect(isAdmin, isSeller) {
   const hash = window.location.hash || '';
@@ -68,56 +54,36 @@ async function handleGoogleAuthCallback(response) {
     return;
   }
 
-  // Parse claims immediately on client side for zero-delay login
-  const claims = parseJwtClaims(response.credential);
-  const email = (claims.email || 'user@gmail.com').toLowerCase();
-  const name = claims.name || email.split('@')[0];
-  const avatar = claims.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
-  const isAdmin = email === ADMIN_EMAIL;
+  Toast.show('Verifying Google credentials with Bookora server...', 'info');
 
-  // Immediate State & Session Update
-  const localUser = {
-    id: 'usr-' + (claims.sub ? claims.sub.slice(-8) : Date.now().toString().slice(-8)),
-    name: name,
-    email: email,
-    avatar: avatar,
-    role: isAdmin ? 'admin' : 'buyer',
-    seller_status: isAdmin ? 'approved' : 'none',
-    auth_provider: 'google'
-  };
-
-  state.currentUser = localUser;
-  state.isAuthenticated = true;
-  state.isAdmin = isAdmin;
-  state.isSeller = isAdmin;
-  state.setActiveMode(isAdmin ? 'admin' : 'buyer');
-  state.token = 'tok_' + Math.random().toString(36).substring(2) + Date.now();
-  localStorage.setItem('bookora_auth_token', state.token);
-
-  Toast.show(`Welcome to Bookora, ${name}!`, 'success');
-
-  // Background Backend Sync
   try {
-    apiFetch('/api/auth/google', {
+    const res = await apiFetch('/api/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        credential: response.credential,
-        email: email,
-        name: name,
-        avatar: avatar
+        credential: response.credential
       })
-    }).then(res => res.json()).then(data => {
-      if (data && data.token) {
-        state.token = data.token;
-        localStorage.setItem('bookora_auth_token', data.token);
-        if (data.user) state.currentUser = data.user;
-      }
-    }).catch(() => {});
-  } catch (e) {}
+    });
 
-  // Instant Redirect to requested returnTo page or dashboard
-  window.location.hash = getPostLoginRedirect(isAdmin, isAdmin);
+    const data = await res.json();
+
+    if (res.ok && data.success) {
+      state.token = data.token;
+      localStorage.setItem('bookora_auth_token', data.token);
+      state.currentUser = data.user;
+      state.isAuthenticated = true;
+      state.isAdmin = data.is_admin;
+      state.isSeller = data.is_seller;
+      state.setActiveMode(data.is_admin ? 'admin' : (data.is_seller ? 'seller' : 'buyer'));
+      await state.syncData();
+      Toast.show(`Welcome to Bookora, ${data.user.name}!`, 'success');
+      window.location.hash = getPostLoginRedirect(data.is_admin, data.is_seller);
+    } else {
+      Toast.show(data.error || 'Google authentication failed on server.', 'error');
+    }
+  } catch (err) {
+    Toast.show('Unable to connect to Bookora backend. Please ensure the server is active.', 'error');
+  }
 }
 
 export function renderAuthPage(type = 'login') {
@@ -222,7 +188,7 @@ export function renderAuthPage(type = 'login') {
                     <label style="font-size: 0.8rem; font-weight: 600;">Password *</label>
                     ${type === 'login' ? `<a href="#/forgot-password" style="font-size: 0.75rem; color: var(--accent); font-weight: 600;">Forgot?</a>` : ''}
                   </div>
-                  <input type="password" id="auth-password" placeholder="At least 6 characters" required minlength="6" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
+                  <input type="password" id="auth-password" placeholder="Enter your password" required minlength="6" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
                 </div>
               ` : ''}
 
@@ -264,35 +230,20 @@ export function initAuthEvents(type) {
 
   // Google OAuth button handler
   document.getElementById('google-auth-btn')?.addEventListener('click', async () => {
-    await signInWithGoogleFirebase();
+    setupGoogleIdentity();
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.prompt();
+    } else {
+      Toast.show('Connecting to Google Identity Services...', 'info');
+    }
   });
 
   // Apple ID button handler
   document.getElementById('apple-auth-btn')?.addEventListener('click', async () => {
-    Toast.show('Connecting to Sign in with Apple...', 'info');
-    const emailPrompt = prompt('Enter Apple ID email to authenticate:', 'user@icloud.com');
-    if (emailPrompt) {
-      const email = emailPrompt.toLowerCase();
-      const isAdmin = email === ADMIN_EMAIL;
-      state.currentUser = {
-        id: 'usr-apple-' + Date.now().toString().slice(-6),
-        name: email.split('@')[0],
-        email: email,
-        role: isAdmin ? 'admin' : 'buyer',
-        seller_status: isAdmin ? 'approved' : 'none'
-      };
-      state.isAuthenticated = true;
-      state.isAdmin = isAdmin;
-      state.isSeller = isAdmin;
-      state.setActiveMode(isAdmin ? 'admin' : 'buyer');
-      state.token = 'tok_apple_' + Date.now();
-      localStorage.setItem('bookora_auth_token', state.token);
-      Toast.show(`Welcome, ${state.currentUser.name}!`, 'success');
-      window.location.hash = getPostLoginRedirect(isAdmin, isAdmin);
-    }
+    Toast.show('Sign in with Apple is configured for verified Apple Developer IDs.', 'info');
   });
 
-  // Email / Password submit handler
+  // Email / Password submit handler with strict server validation
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('auth-email')?.value.trim().toLowerCase();
@@ -300,46 +251,95 @@ export function initAuthEvents(type) {
 
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Authenticating...';
+      submitBtn.textContent = 'Verifying credentials...';
     }
 
-    const isAdmin = email === ADMIN_EMAIL;
-    const isAuthor = email.includes('author') || email.includes('creator');
+    if (type === 'signup' || type === 'register') {
+      const name = document.getElementById('auth-name')?.value.trim();
+      const roleChoice = document.querySelector('input[name="auth-role"]:checked')?.value || 'buyer';
 
-    // Instant local session grant
-    state.currentUser = {
-      id: isAdmin ? 'usr-admin-ayush' : 'usr-' + Date.now().toString().slice(-6),
-      name: isAdmin ? 'Ayush Prajapati' : email.split('@')[0],
-      email: email,
-      role: isAdmin ? 'admin' : (isAuthor ? 'creator' : 'buyer'),
-      seller_status: isAdmin || isAuthor ? 'approved' : 'none',
-      avatar: isAdmin ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150' : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
-    };
-    state.isAuthenticated = true;
-    state.isAdmin = isAdmin;
-    state.isSeller = isAdmin || isAuthor;
-    state.setActiveMode(isAdmin ? 'admin' : (isAuthor ? 'seller' : 'buyer'));
-    state.token = 'tok_' + Math.random().toString(36).substring(2) + Date.now();
-    localStorage.setItem('bookora_auth_token', state.token);
+      try {
+        const res = await apiFetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password, role: roleChoice })
+        });
+        const data = await res.json();
 
-    Toast.show(`Welcome back, ${state.currentUser.name}!`, 'success');
-
-    // Background server login sync
-    try {
-      apiFetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      }).then(r => r.json()).then(data => {
-        if (data && data.token) {
+        if (res.ok && data.success) {
           state.token = data.token;
           localStorage.setItem('bookora_auth_token', data.token);
+          state.currentUser = data.user;
+          state.isAuthenticated = true;
+          state.isAdmin = data.is_admin;
+          state.isSeller = data.is_seller;
+          state.setActiveMode(data.is_admin ? 'admin' : (data.is_seller ? 'seller' : 'buyer'));
+          await state.syncData();
+          Toast.show(`Account created! Welcome to Bookora, ${data.user.name}.`, 'success');
+          window.location.hash = getPostLoginRedirect(data.is_admin, data.is_seller);
+        } else {
+          Toast.show(data.error || 'Registration failed.', 'error');
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create Account';
+          }
         }
-      }).catch(() => {});
-    } catch (e) {}
+      } catch (netErr) {
+        Toast.show('Unable to connect to Bookora server. Please ensure backend is running.', 'error');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Create Account';
+        }
+      }
 
-    // Instant direct redirect to returnTo or dashboard
-    const targetHash = getPostLoginRedirect(isAdmin, state.isSeller);
-    window.location.hash = targetHash;
+    } else if (type === 'forgot') {
+      try {
+        await apiFetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        Toast.show('If an account exists, password reset instructions have been dispatched.', 'success');
+        window.location.hash = '#/login';
+      } catch (err) {
+        Toast.show('Failed to send reset link.', 'error');
+      }
+    } else {
+      // STRICT SERVER LOGIN (Rejects incorrect passwords)
+      try {
+        const res = await apiFetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          state.token = data.token;
+          localStorage.setItem('bookora_auth_token', data.token);
+          state.currentUser = data.user;
+          state.isAuthenticated = true;
+          state.isAdmin = data.is_admin;
+          state.isSeller = data.is_seller;
+          state.setActiveMode(data.is_admin ? 'admin' : (data.is_seller ? 'seller' : 'buyer'));
+          await state.syncData();
+          Toast.show(`Welcome back, ${data.user.name}!`, 'success');
+          window.location.hash = getPostLoginRedirect(data.is_admin, data.is_seller);
+        } else {
+          // WRONG PASSWORD / USER NOT FOUND -> STRICT REJECTION
+          Toast.show(data.error || 'Invalid email or password.', 'error');
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Sign In';
+          }
+        }
+      } catch (netErr) {
+        Toast.show('Unable to connect to Bookora backend. Please check server status.', 'error');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Sign In';
+        }
+      }
+    }
   });
 }
