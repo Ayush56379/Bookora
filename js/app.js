@@ -1,38 +1,37 @@
-// Bookora Application Orchestrator & Router (Complete Production Suite)
+// Bookora Core Single Page Application Router & Lifecycle Controller
 import { state } from './state.js';
 import { renderHeader, initHeaderEvents } from './components/Header.js';
 import { renderFooter } from './components/Footer.js';
-import { ReaderModal } from './components/ReaderModal.js';
-import { Toast } from './components/Toast.js';
 import { BookoraAI } from './components/BookoraAI.js';
+import { Toast } from './components/Toast.js';
+import { ReaderModal } from './components/ReaderModal.js';
 
-// Public Pages
+// Pages
 import { renderHomePage, initHomePageEvents } from './pages/HomePage.js';
 import { renderExplorePage, initExploreEvents } from './pages/ExplorePage.js';
 import { renderCategoryPage } from './pages/CategoryPage.js';
+import { renderCategoriesDirectoryPage } from './pages/PublicDiscoveryPages.js';
 import { renderSearchPage } from './pages/SearchPage.js';
 import { renderBookDetailPage, initBookDetailEvents } from './pages/BookDetailPage.js';
-import { renderPricingPage, renderSubscriptionManagePage, initPricingEvents } from './pages/PricingPage.js';
-import { renderCategoriesDirectoryPage, renderCuratedCatalogPage, renderAuthorsDirectoryPage } from './pages/PublicDiscoveryPages.js';
+import { renderCuratedCatalogPage } from './pages/PublicDiscoveryPages.js';
+import { renderPricingPage, initPricingEvents } from './pages/PricingPage.js';
 import { renderStaticPage } from './pages/StaticPages.js';
 
 // Buyer Pages
-import { renderCartPage, renderOrderDetailPage } from './pages/BuyerPages.js';
+import { renderDashboardPage, initDashboardEvents } from './pages/DashboardPage.js';
 import { renderLibraryPage, initLibraryEvents } from './pages/LibraryPage.js';
 import { renderOrdersPage } from './pages/OrdersPage.js';
 import { renderWishlistPage } from './pages/WishlistPage.js';
 import { renderCheckoutPage, initCheckoutEvents } from './pages/CheckoutPage.js';
-import { renderPaymentSuccessPage, initPaymentSuccessEvents } from './pages/PaymentSuccessPage.js';
+import { renderPaymentSuccessPage } from './pages/PaymentSuccessPage.js';
 import { renderPaymentFailedPage } from './pages/PaymentFailedPage.js';
-import { renderDashboardPage, initDashboardEvents } from './pages/DashboardPage.js';
 
-// Seller Pages
+// Seller / Creator Pages
 import { renderCreatorDashboardPage, initCreatorDashboardEvents } from './pages/CreatorDashboardPage.js';
 import { renderPublishInternalPage, initPublishInternalEvents } from './pages/PublishInternalPage.js';
 import { renderPublishExternalPage, initPublishExternalEvents } from './pages/PublishExternalPage.js';
-import { renderSellerSettingsPage, initSellerSettingsEvents } from './pages/SellerSettingsPage.js';
 import { renderSellerApplyPage, initSellerApplyEvents } from './pages/SellerApplyPage.js';
-import { renderSellerWalletPage, initSellerWalletEvents } from './pages/SellerPages.js';
+import { renderSellerSettingsPage, initSellerSettingsEvents } from './pages/SellerSettingsPage.js';
 
 // Admin Pages
 import { renderAdminDashboardPage, initAdminDashboardEvents } from './pages/AdminDashboardPage.js';
@@ -62,8 +61,11 @@ class App {
     window.addEventListener('hashchange', () => this.route());
     window.addEventListener('load', () => this.route());
 
-    state.subscribe(() => {
+    state.subscribe((event) => {
       this.updateHeader();
+      if (event === 'USER_LOGGED_IN' || event === 'USER_LOGGED_OUT' || event === 'MODE_CHANGED') {
+        this.route();
+      }
     });
 
     document.addEventListener('click', (e) => {
@@ -181,7 +183,6 @@ class App {
       PUBLIC_PREFIX_MATCHES.some(prefix => path.startsWith(prefix));
 
     if (!isPublic) {
-      // 1. Authentication Check for Protected Routes
       if (!state.isAuthenticated) {
         Toast.show('Please sign in to access your ' + (path.replace('/', '') || 'account') + '.', 'info');
         const returnUrl = encodeURIComponent(path + (queryString ? `?${queryString}` : ''));
@@ -189,7 +190,6 @@ class App {
         return;
       }
 
-      // 2. Admin Role Guard
       if (path.startsWith('/admin')) {
         if (!state.isAdmin) {
           Toast.show('Access restricted: Server-verified Admin authorization required.', 'error');
@@ -198,7 +198,6 @@ class App {
         }
       }
 
-      // 3. Seller Role Guard (except seller application)
       if ((path.startsWith('/seller') || path.startsWith('/creator') || path === '/publish' || path === '/publish/external') && path !== '/seller/apply') {
         if (!state.isSeller && !state.isAdmin) {
           Toast.show('Author authorization required to access Creator Studio.', 'warning');
@@ -212,7 +211,6 @@ class App {
     let initCallback = null;
 
     // ================= ROUTE MAP =================
-    // 1. Public Discovery
     if (path === '/' || path === '') {
       pageHtml = renderHomePage();
       initCallback = () => initHomePageEvents();
@@ -234,23 +232,33 @@ class App {
     } else if (path === '/best-sellers') {
       pageHtml = renderCuratedCatalogPage('bestsellers');
     } else if (path === '/new-releases') {
-      pageHtml = renderCuratedCatalogPage('newreleases');
+      pageHtml = renderCuratedCatalogPage('new');
     } else if (path === '/trending') {
       pageHtml = renderCuratedCatalogPage('trending');
-    } else if (path === '/authors') {
-      pageHtml = renderAuthorsDirectoryPage();
-    } else if (path.startsWith('/author/')) {
-      const authorSlug = path.replace('/author/', '');
-      pageHtml = renderSearchPage(authorSlug.replace(/-/g, ' '));
-    } else if (path === '/pricing') {
+    } else if (path === '/pricing' || path === '/subscription') {
       pageHtml = renderPricingPage();
       initCallback = () => initPricingEvents();
-    } else if (['/about', '/how-it-works', '/faq', '/contact', '/help', '/terms', '/privacy', '/refund-policy', '/seller-guidelines'].includes(path)) {
-      const staticName = path.replace('/', '').replace('-policy', '').replace('-guidelines', '');
-      pageHtml = renderStaticPage(staticName);
+    } else if (path === '/about') {
+      pageHtml = renderStaticPage('about');
+    } else if (path === '/how-it-works') {
+      pageHtml = renderStaticPage('how-it-works');
+    } else if (path === '/faq') {
+      pageHtml = renderStaticPage('faq');
+    } else if (path === '/contact') {
+      pageHtml = renderStaticPage('contact');
+    } else if (path === '/help') {
+      pageHtml = renderStaticPage('help');
+    } else if (path === '/terms') {
+      pageHtml = renderStaticPage('terms');
+    } else if (path === '/privacy') {
+      pageHtml = renderStaticPage('privacy');
+    } else if (path === '/refund-policy') {
+      pageHtml = renderStaticPage('refund-policy');
+    } else if (path === '/seller-guidelines') {
+      pageHtml = renderStaticPage('seller-guidelines');
     }
 
-    // 2. Auth & Settings
+    // 2. Auth & User Profile
     else if (path === '/login') {
       pageHtml = renderAuthPage('login');
       initCallback = () => initAuthEvents('login');
@@ -277,88 +285,81 @@ class App {
     else if (path === '/dashboard') {
       pageHtml = renderDashboardPage();
       initCallback = () => initDashboardEvents();
-    } else if (path === '/library' || path === '/reading') {
+    } else if (path === '/library') {
       pageHtml = renderLibraryPage();
       initCallback = () => initLibraryEvents();
     } else if (path === '/orders') {
       pageHtml = renderOrdersPage();
-    } else if (path.startsWith('/order/')) {
-      const orderId = path.replace('/order/', '');
-      pageHtml = renderOrderDetailPage(orderId);
     } else if (path === '/wishlist') {
       pageHtml = renderWishlistPage();
-    } else if (path === '/cart') {
-      pageHtml = renderCartPage();
-    } else if (path === '/subscription' || path === '/subscription/manage') {
-      pageHtml = renderSubscriptionManagePage();
-      initCallback = () => initPricingEvents();
-    } else if (path.startsWith('/checkout')) {
-      const slug = path.replace('/checkout/', '').replace('/checkout', '') || (state.books[0] ? state.books[0].slug : 'checkout');
-      pageHtml = renderCheckoutPage(slug);
-      initCallback = () => initCheckoutEvents(slug);
+    } else if (path.startsWith('/checkout/')) {
+      const bookSlug = path.replace('/checkout/', '');
+      pageHtml = renderCheckoutPage(bookSlug);
+      initCallback = () => initCheckoutEvents(bookSlug);
     } else if (path === '/payment/success') {
       pageHtml = renderPaymentSuccessPage();
-      initCallback = () => initPaymentSuccessEvents();
-    } else if (path === '/payment/failed' || path === '/payment/pending') {
+    } else if (path === '/payment/failed') {
       pageHtml = renderPaymentFailedPage();
     }
 
-    // 4. Seller
-    else if (path === '/seller' || path === '/seller/dashboard' || path === '/creator' || path === '/creator/dashboard' || path === '/seller/books' || path === '/seller/orders' || path === '/seller/analytics') {
+    // 4. Seller / Creator Studio
+    else if (path === '/seller' || path === '/seller/dashboard' || path === '/creator' || path === '/creator/dashboard') {
       pageHtml = renderCreatorDashboardPage();
       initCallback = () => initCreatorDashboardEvents();
-    } else if (path === '/seller/books/new' || path === '/publish') {
+    } else if (path === '/publish') {
       pageHtml = renderPublishInternalPage();
       initCallback = () => initPublishInternalEvents();
-    } else if (path === '/seller/external' || path === '/publish/external') {
+    } else if (path === '/publish/external') {
       pageHtml = renderPublishExternalPage();
       initCallback = () => initPublishExternalEvents();
-    } else if (path === '/seller/wallet' || path === '/seller/earnings') {
-      pageHtml = renderSellerWalletPage();
-      initCallback = () => initSellerWalletEvents();
-    } else if (path === '/seller/settings' || path === '/creator/settings') {
-      pageHtml = renderSellerSettingsPage();
-      initCallback = () => initSellerSettingsEvents();
     } else if (path === '/seller/apply') {
       pageHtml = renderSellerApplyPage();
       initCallback = () => initSellerApplyEvents();
+    } else if (path === '/seller/settings') {
+      pageHtml = renderSellerSettingsPage();
+      initCallback = () => initSellerSettingsEvents();
     }
 
-    // 5. Admin
-    else if (path === '/admin/settings') {
+    // 5. Admin Center
+    else if (path === '/admin' || path === '/admin/overview') {
+      pageHtml = renderAdminDashboardPage();
+      initCallback = () => initAdminDashboardEvents();
+    } else if (path === '/admin/settings') {
       pageHtml = renderAdminSettingsPage();
       initCallback = () => initAdminSettingsEvents();
+    } else if (path === '/admin/security') {
+      pageHtml = renderAdminSecurityPage();
+      initCallback = () => initAdminSecurityEvents();
     } else if (path === '/admin/ai-diagnostics') {
       pageHtml = renderAdminAIDiagnosticsPage();
       initCallback = () => initAdminAIDiagnosticsEvents();
     }
-    else if (path === '/admin/security' || path === '/admin/logs') {
-      pageHtml = renderAdminSecurityPage();
-      initCallback = () => initAdminSecurityEvents();
-    } else if (path.startsWith('/admin')) {
-      const tab = path.replace('/admin/', '').replace('/admin', '') || 'overview';
-      pageHtml = renderAdminDashboardPage(tab);
-      initCallback = () => initAdminDashboardEvents();
-    }
 
-    // 6. 404 Fallback
+    // 6. 404 Catch-All
     else {
       pageHtml = renderNotFoundPage();
     }
 
+    // Render Full Page Layout
     this.root.innerHTML = `
       <div id="header-container">${renderHeader()}</div>
       <main id="main-content" style="flex: 1;">${pageHtml}</main>
       <div id="footer-container">${renderFooter()}</div>
     `;
 
+    // Initialize Header & Page Interactive Events
     initHeaderEvents();
-    if (initCallback) {
-      setTimeout(() => initCallback(), 10);
+    if (typeof initCallback === 'function') {
+      try {
+        initCallback();
+      } catch (err) {
+        console.error('Page event initialization error:', err);
+      }
     }
   }
 }
 
+// Instantiate Application on DOM Ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => new App());
 } else {
