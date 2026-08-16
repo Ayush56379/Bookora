@@ -1,13 +1,12 @@
-// Bookora Official Firebase Authentication Service
+// Bookora Firebase Authentication + Firestore
+// ------------------------------------------------
 
-import { API_BASE_URL } from '../config.js';
 import { state } from '../state.js';
 import { Toast } from '../components/Toast.js';
 
-
-// =========================================================
+// ------------------------------------------------
 // FIREBASE CONFIG
-// =========================================================
+// ------------------------------------------------
 
 export const firebaseConfig = {
   apiKey: "AIzaSyDgPa6d8gxRhrJEaPyKuki2hbTbSfAU-94",
@@ -19,13 +18,12 @@ export const firebaseConfig = {
   measurementId: "G-JB9D643JNT"
 };
 
+// ------------------------------------------------
+// FIREBASE INSTANCE
+// ------------------------------------------------
 
 let authInstance = null;
-
-
-// =========================================================
-// FIREBASE INSTANCE
-// =========================================================
+let dbInstance = null;
 
 export function getAuthInstance() {
 
@@ -33,315 +31,337 @@ export function getAuthInstance() {
     return authInstance;
   }
 
-  if (
-    window.firebase &&
-    window.firebase.auth
-  ) {
-
-    if (
-      !window.firebase.apps ||
-      window.firebase.apps.length === 0
-    ) {
-      window.firebase.initializeApp(firebaseConfig);
-    }
-
-    authInstance = window.firebase.auth();
-
-    return authInstance;
+  if (!window.firebase) {
+    console.error("Firebase SDK not loaded.");
+    return null;
   }
 
-  return null;
+  if (!window.firebase.apps.length) {
+    window.firebase.initializeApp(firebaseConfig);
+  }
+
+  authInstance = window.firebase.auth();
+
+  return authInstance;
 }
 
+export function getFirestoreInstance() {
 
-// =========================================================
-// APPS SCRIPT AUTH REQUEST
-// =========================================================
+  if (dbInstance) {
+    return dbInstance;
+  }
 
-async function appsScriptAuth(action, payload = {}) {
+  if (!window.firebase) {
+    console.error("Firebase SDK not loaded.");
+    return null;
+  }
 
-  const url = API_BASE_URL;
+  if (!window.firebase.apps.length) {
+    window.firebase.initializeApp(firebaseConfig);
+  }
 
-  const response = await fetch(url, {
-    method: 'POST',
+  dbInstance = window.firebase.firestore();
 
-    headers: {
-      'Content-Type': 'text/plain;charset=utf-8'
-    },
+  return dbInstance;
+}
 
-    body: JSON.stringify({
-      action: action,
-      ...payload
-    })
+// ------------------------------------------------
+// SAVE USER PROFILE TO FIRESTORE
+// ------------------------------------------------
+
+async function saveUserProfile(firebaseUser, extra = {}) {
+
+  const db = getFirestoreInstance();
+
+  if (!db || !firebaseUser) {
+    throw new Error("Firestore is not available.");
+  }
+
+  const userRef = db
+    .collection("users")
+    .doc(firebaseUser.uid);
+
+  const existing = await userRef.get();
+
+  const oldData = existing.exists
+    ? existing.data()
+    : {};
+
+  const isMasterAdmin =
+    firebaseUser.email?.toLowerCase() ===
+    "ayushprajpati6@gmail.com";
+
+  const userData = {
+
+    uid: firebaseUser.uid,
+
+    name:
+      extra.name ||
+      firebaseUser.displayName ||
+      oldData.name ||
+      firebaseUser.email?.split("@")[0] ||
+      "Bookora User",
+
+    email:
+      firebaseUser.email || oldData.email || "",
+
+    photoURL:
+      firebaseUser.photoURL ||
+      oldData.photoURL ||
+      "",
+
+    role:
+      isMasterAdmin
+        ? "admin"
+        : (oldData.role || extra.role || "buyer"),
+
+    isMasterAdmin,
+
+    status:
+      oldData.status || "active",
+
+    seller_status:
+      oldData.seller_status || "none",
+
+    updatedAt:
+      firebase.firestore.FieldValue.serverTimestamp(),
+
+    createdAt:
+      oldData.createdAt ||
+      firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  await userRef.set(userData, {
+    merge: true
   });
 
-  let data;
-
-  try {
-    data = await response.json();
-  } catch (error) {
-
-    throw new Error(
-      'Invalid response received from Bookora backend.'
-    );
-  }
-
-  if (!response.ok || !data.success) {
-
-    throw new Error(
-      data.error ||
-      'Bookora authentication request failed.'
-    );
-  }
-
-  return data;
+  return userData;
 }
 
+// ------------------------------------------------
+// APPLY USER TO BOOKORA STATE
+// ------------------------------------------------
 
-// =========================================================
-// 1. GOOGLE SIGN-IN
-// =========================================================
+async function completeLogin(
+  firebaseUser,
+  extra = {}
+) {
+
+  const userData =
+    await saveUserProfile(
+      firebaseUser,
+      extra
+    );
+
+  const isAdmin =
+    userData.role === "admin" ||
+    userData.isMasterAdmin === true;
+
+  const isSeller =
+    isAdmin ||
+    userData.seller_status === "approved" ||
+    userData.role === "creator" ||
+    userData.role === "seller";
+
+  state.setUser(
+    userData,
+    firebaseUser.uid
+  );
+
+  state.isAdmin = isAdmin;
+  state.isSeller = isSeller;
+
+  state.currentUser = userData;
+
+  localStorage.setItem(
+    "bookora_user_profile",
+    JSON.stringify(userData)
+  );
+
+  return {
+    success: true,
+    user: userData,
+    is_admin: isAdmin,
+    is_seller: isSeller
+  };
+}
+
+// ------------------------------------------------
+// GOOGLE LOGIN
+// ------------------------------------------------
 
 export async function firebaseGoogleSignIn(
-  roleChoice = 'buyer'
+  roleChoice = "buyer"
 ) {
 
   const auth = getAuthInstance();
 
   if (!auth) {
-
     Toast.show(
-      'Firebase SDK is loading. Please try again.',
-      'warning'
+      "Firebase is not ready. Please refresh the page.",
+      "error"
     );
 
     return {
       success: false,
-      error: 'Firebase not ready'
+      error: "Firebase not ready"
     };
   }
 
-
-  Toast.show(
-    'Connecting to Google...',
-    'info'
-  );
-
-
   try {
+
+    Toast.show(
+      "Connecting to Google...",
+      "info"
+    );
 
     const provider =
       new window.firebase.auth.GoogleAuthProvider();
 
     provider.setCustomParameters({
-      prompt: 'select_account'
+      prompt: "select_account"
     });
 
-
-    const userCredential =
+    const result =
       await auth.signInWithPopup(provider);
 
-
-    const user =
-      userCredential.user;
-
-
-    const idToken =
-      await user.getIdToken(true);
-
-
-    const data =
-      await appsScriptAuth(
-        'firebase',
+    const response =
+      await completeLogin(
+        result.user,
         {
-          id_token: idToken,
           role: roleChoice
         }
       );
 
-
-    state.setUser(
-      data.user,
-      data.token
-    );
-
-
     Toast.show(
-      `Welcome to Bookora, ${data.user.name}!`,
-      'success'
+      `Welcome to Bookora, ${response.user.name}!`,
+      "success"
     );
 
+    return response;
 
-    return {
-      success: true,
-      user: data.user,
-      is_admin: data.is_admin,
-      is_seller: data.is_seller
-    };
-
-
-  } catch (err) {
+  } catch (error) {
 
     console.error(
-      'Firebase Google Sign-In error:',
-      err
+      "Google login error:",
+      error
     );
 
+    let message =
+      "Google login failed.";
 
     if (
-      err.code ===
-      'auth/popup-closed-by-user'
+      error.code ===
+      "auth/popup-closed-by-user"
     ) {
 
-      Toast.show(
-        'Google sign-in was closed.',
-        'info'
-      );
+      message =
+        "Google login window was closed.";
 
     } else if (
-      err.code ===
-      'auth/unauthorized-domain'
+      error.code ===
+      "auth/unauthorized-domain"
     ) {
 
-      Toast.show(
-        'Domain not authorized. Add ayush56379.github.io to Firebase Authorized Domains.',
-        'error'
-      );
+      message =
+        "Add ayush56379.github.io to Firebase Authorized Domains.";
 
-    } else {
+    } else if (error.message) {
 
-      Toast.show(
-        err.message ||
-        'Google sign-in failed.',
-        'error'
-      );
+      message =
+        error.message;
     }
 
+    Toast.show(
+      message,
+      "error"
+    );
 
     return {
       success: false,
-      error: err.message
+      error: message
     };
   }
 }
 
-
-// =========================================================
-// 2. APPLE SIGN-IN
-// =========================================================
+// ------------------------------------------------
+// APPLE LOGIN
+// ------------------------------------------------
 
 export async function firebaseAppleSignIn(
-  roleChoice = 'buyer'
+  roleChoice = "buyer"
 ) {
 
   const auth = getAuthInstance();
 
   if (!auth) {
-
     Toast.show(
-      'Firebase SDK is loading. Please try again.',
-      'warning'
+      "Firebase is not ready.",
+      "error"
     );
 
     return {
-      success: false,
-      error: 'Firebase not ready'
+      success: false
     };
   }
-
-
-  Toast.show(
-    'Connecting to Apple...',
-    'info'
-  );
-
 
   try {
 
     const provider =
       new window.firebase.auth.OAuthProvider(
-        'apple.com'
+        "apple.com"
       );
 
+    provider.addScope("email");
+    provider.addScope("name");
 
-    provider.addScope('email');
-    provider.addScope('name');
-
-
-    const userCredential =
+    const result =
       await auth.signInWithPopup(provider);
 
-
-    const user =
-      userCredential.user;
-
-
-    const idToken =
-      await user.getIdToken(true);
-
-
-    const data =
-      await appsScriptAuth(
-        'firebase',
+    const response =
+      await completeLogin(
+        result.user,
         {
-          id_token: idToken,
           role: roleChoice
         }
       );
 
-
-    state.setUser(
-      data.user,
-      data.token
-    );
-
-
     Toast.show(
-      `Welcome to Bookora, ${data.user.name}!`,
-      'success'
+      `Welcome to Bookora, ${response.user.name}!`,
+      "success"
     );
 
+    return response;
 
-    return {
-      success: true,
-      user: data.user,
-      is_admin: data.is_admin,
-      is_seller: data.is_seller
-    };
-
-
-  } catch (err) {
+  } catch (error) {
 
     console.error(
-      'Firebase Apple Sign-In error:',
-      err
+      "Apple login error:",
+      error
     );
-
 
     Toast.show(
-      err.message ||
-      'Apple sign-in failed.',
-      'error'
+      error.message ||
+      "Apple login failed.",
+      "error"
     );
-
 
     return {
       success: false,
-      error: err.message
+      error: error.message
     };
   }
 }
 
-
-// =========================================================
-// 3. EMAIL + PASSWORD REGISTRATION
-// =========================================================
+// ------------------------------------------------
+// EMAIL SIGN UP
+// ------------------------------------------------
 
 export async function firebaseRegister(
   name,
   email,
   password,
-  roleChoice = 'buyer'
+  roleChoice = "buyer"
 ) {
 
   const auth = getAuthInstance();
@@ -349,396 +369,299 @@ export async function firebaseRegister(
   if (!auth) {
 
     Toast.show(
-      'Firebase SDK is loading. Please try again.',
-      'warning'
+      "Firebase is not ready.",
+      "error"
     );
 
     return {
-      success: false,
-      error: 'Firebase not ready'
+      success: false
     };
   }
 
-
   try {
 
-    const userCredential =
+    const result =
       await auth.createUserWithEmailAndPassword(
-        email,
+        email.trim(),
         password
       );
 
-
-    const user =
-      userCredential.user;
-
-
     if (
       name &&
-      user.updateProfile
+      result.user.updateProfile
     ) {
 
-      await user.updateProfile({
-        displayName: name
+      await result.user.updateProfile({
+        displayName: name.trim()
       });
     }
 
-
-    const idToken =
-      await user.getIdToken(true);
-
-
-    const data =
-      await appsScriptAuth(
-        'firebase',
+    const response =
+      await completeLogin(
+        result.user,
         {
-          id_token: idToken,
-          name: name,
+          name: name.trim(),
           role: roleChoice
         }
       );
 
-
-    state.setUser(
-      data.user,
-      data.token
-    );
-
-
     Toast.show(
-      `Account created! Welcome to Bookora, ${data.user.name}.`,
-      'success'
+      `Account created! Welcome to Bookora, ${response.user.name}.`,
+      "success"
     );
 
+    return response;
 
-    return {
-      success: true,
-      user: data.user,
-      is_admin: data.is_admin,
-      is_seller: data.is_seller
-    };
-
-
-  } catch (err) {
+  } catch (error) {
 
     console.error(
-      'Firebase Register error:',
-      err
+      "Registration error:",
+      error
     );
 
-
-    let msg =
-      'Registration failed.';
-
+    let message =
+      "Registration failed.";
 
     if (
-      err.code ===
-      'auth/email-already-in-use'
+      error.code ===
+      "auth/email-already-in-use"
     ) {
 
-      msg =
-        'An account with this email already exists. Please Sign In.';
+      message =
+        "This email is already registered. Please sign in.";
 
     } else if (
-      err.code ===
-      'auth/weak-password'
+      error.code ===
+      "auth/weak-password"
     ) {
 
-      msg =
-        'Password is too weak. Must be at least 6 characters.';
+      message =
+        "Password must be at least 6 characters.";
 
     } else if (
-      err.code ===
-      'auth/invalid-email'
+      error.code ===
+      "auth/invalid-email"
     ) {
 
-      msg =
-        'Invalid email address format.';
+      message =
+        "Please enter a valid email address.";
 
-    } else if (err.message) {
+    } else if (error.message) {
 
-      msg = err.message;
+      message =
+        error.message;
     }
 
-
     Toast.show(
-      msg,
-      'error'
+      message,
+      "error"
     );
-
 
     return {
       success: false,
-      error: msg
+      error: message
     };
   }
 }
 
-
-// =========================================================
-// 4. EMAIL + PASSWORD LOGIN
-// =========================================================
+// ------------------------------------------------
+// EMAIL LOGIN
+// ------------------------------------------------
 
 export async function firebaseLogin(
   email,
   password
 ) {
 
-  const auth =
-    getAuthInstance();
-
+  const auth = getAuthInstance();
 
   if (!auth) {
 
     Toast.show(
-      'Firebase SDK is loading. Please try again.',
-      'warning'
+      "Firebase is not ready.",
+      "error"
     );
 
     return {
-      success: false,
-      error: 'Firebase not ready'
+      success: false
     };
   }
 
-
   try {
 
-    const userCredential =
+    const result =
       await auth.signInWithEmailAndPassword(
-        email,
+        email.trim(),
         password
       );
 
-
-    const user =
-      userCredential.user;
-
-
-    const idToken =
-      await user.getIdToken(true);
-
-
-    const data =
-      await appsScriptAuth(
-        'firebase',
-        {
-          id_token: idToken
-        }
+    const response =
+      await completeLogin(
+        result.user
       );
 
-
-    state.setUser(
-      data.user,
-      data.token
-    );
-
-
     Toast.show(
-      `Welcome back, ${data.user.name}!`,
-      'success'
+      `Welcome back, ${response.user.name}!`,
+      "success"
     );
 
+    return response;
 
-    return {
-      success: true,
-      user: data.user,
-      is_admin: data.is_admin,
-      is_seller: data.is_seller
-    };
-
-
-  } catch (err) {
+  } catch (error) {
 
     console.error(
-      'Firebase Login error:',
-      err
+      "Login error:",
+      error
     );
 
-
-    let msg =
-      'Invalid email or password.';
-
+    let message =
+      "Invalid email or password.";
 
     if (
-      err.code ===
-      'auth/user-not-found' ||
-      err.code ===
-      'auth/wrong-password' ||
-      err.code ===
-      'auth/invalid-credential'
+      error.code ===
+      "auth/invalid-credential"
     ) {
 
-      msg =
-        'Invalid email or password. Please check your credentials or Sign Up.';
+      message =
+        "Invalid email or password.";
 
     } else if (
-      err.code ===
-      'auth/too-many-requests'
+      error.code ===
+      "auth/too-many-requests"
     ) {
 
-      msg =
-        'Too many failed login attempts. Please try again later.';
+      message =
+        "Too many attempts. Please try again later.";
 
-    } else if (err.message) {
+    } else if (error.message) {
 
-      msg =
-        err.message;
+      message =
+        error.message;
     }
 
-
     Toast.show(
-      msg,
-      'error'
+      message,
+      "error"
     );
-
 
     return {
       success: false,
-      error: msg
+      error: message
     };
   }
 }
 
-
-// =========================================================
-// 5. FORGOT PASSWORD
-// =========================================================
+// ------------------------------------------------
+// FORGOT PASSWORD
+// ------------------------------------------------
 
 export async function firebaseForgotPassword(
   email
 ) {
 
-  const auth =
-    getAuthInstance();
-
+  const auth = getAuthInstance();
 
   if (!auth) {
 
     Toast.show(
-      'Firebase SDK is loading. Please try again.',
-      'warning'
+      "Firebase is not ready.",
+      "error"
     );
 
     return {
-      success: false,
-      error: 'Firebase not ready'
+      success: false
     };
   }
-
 
   try {
 
     await auth.sendPasswordResetEmail(
-      email
+      email.trim()
     );
-
 
     Toast.show(
-      `Password reset link sent to ${email}.`,
-      'success'
+      "Password reset email sent.",
+      "success"
     );
-
 
     return {
       success: true
     };
 
-
-  } catch (err) {
+  } catch (error) {
 
     console.error(
-      'Firebase Forgot Password error:',
-      err
+      "Password reset error:",
+      error
     );
-
-
-    let msg =
-      'Failed to send password reset email.';
-
-
-    if (
-      err.code ===
-      'auth/user-not-found'
-    ) {
-
-      msg =
-        'No account found with this email.';
-
-    } else if (
-      err.code ===
-      'auth/invalid-email'
-    ) {
-
-      msg =
-        'Invalid email address format.';
-
-    } else if (err.message) {
-
-      msg =
-        err.message;
-    }
-
 
     Toast.show(
-      msg,
-      'error'
+      error.message ||
+      "Unable to send password reset email.",
+      "error"
     );
-
 
     return {
       success: false,
-      error: msg
+      error: error.message
     };
   }
 }
 
-
-// =========================================================
-// 6. SIGN OUT
-// =========================================================
+// ------------------------------------------------
+// SIGN OUT
+// ------------------------------------------------
 
 export async function firebaseSignOut() {
 
-  const auth =
-    getAuthInstance();
+  const auth = getAuthInstance();
 
+  try {
 
-  if (auth) {
-
-    try {
-
+    if (auth) {
       await auth.signOut();
-
-    } catch (error) {
-
-      console.warn(
-        'Firebase sign out warning:',
-        error
-      );
     }
+
+  } catch (error) {
+
+    console.warn(
+      "Firebase signout warning:",
+      error
+    );
   }
 
+  try {
+    await state.logout();
+  } catch (error) {
+    console.warn(error);
+  }
 
-  await state.logout();
+  localStorage.removeItem(
+    "bookora_auth_token"
+  );
 
+  localStorage.removeItem(
+    "bookora_user_profile"
+  );
+
+  localStorage.removeItem(
+    "bookora_active_mode"
+  );
 
   Toast.show(
-    'You have been signed out.',
-    'info'
+    "You have been signed out.",
+    "info"
   );
 }
 
-
-// =========================================================
-// 7. AUTO AUTH STATE SYNC
-// =========================================================
+// ------------------------------------------------
+// AUTH STATE LISTENER
+// ------------------------------------------------
 
 export function initAuthListener() {
 
   const auth =
     getAuthInstance();
-
 
   if (!auth) {
 
@@ -750,61 +673,40 @@ export function initAuthListener() {
     return;
   }
 
-
   auth.onAuthStateChanged(
-    async (firebaseUser) => {
+    async firebaseUser => {
 
       if (!firebaseUser) {
         return;
       }
 
-
       try {
 
-        const idToken =
-          await firebaseUser.getIdToken();
+        await completeLogin(
+          firebaseUser
+        );
 
+      } catch (error) {
 
-        const data =
-          await appsScriptAuth(
-            'firebase',
-            {
-              id_token: idToken
-            }
-          );
-
-
-        if (data.success) {
-
-          state.setUser(
-            data.user,
-            data.token
-          );
-        }
-
-
-      } catch (err) {
-
-        console.warn(
-          'Background Firebase verification notice:',
-          err
+        console.error(
+          "Auth state sync error:",
+          error
         );
       }
     }
   );
 }
 
-
-// =========================================================
-// LOAD LISTENER
-// =========================================================
+// ------------------------------------------------
+// START AUTH LISTENER
+// ------------------------------------------------
 
 if (
-  typeof window !== 'undefined'
+  typeof window !== "undefined"
 ) {
 
   window.addEventListener(
-    'load',
+    "load",
     () => {
 
       setTimeout(
