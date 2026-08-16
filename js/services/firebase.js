@@ -29,7 +29,7 @@ export function getAuthInstance() {
 }
 
 // 1. Google Sign-In via Firebase
-export async function firebaseGoogleSignIn() {
+export async function firebaseGoogleSignIn(roleChoice = 'buyer') {
   const auth = getAuthInstance();
   if (!auth) {
     Toast.show('Firebase SDK is loading. Please try in a moment.', 'warning');
@@ -53,10 +53,7 @@ export async function firebaseGoogleSignIn() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        email: user.email,
-        name: user.displayName || user.email.split('@')[0],
-        avatar: user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
-        role: 'buyer'
+        role: roleChoice
       })
     });
 
@@ -83,7 +80,7 @@ export async function firebaseGoogleSignIn() {
 }
 
 // 2. Apple Sign-In via Firebase
-export async function firebaseAppleSignIn() {
+export async function firebaseAppleSignIn(roleChoice = 'buyer') {
   const auth = getAuthInstance();
   if (!auth) {
     Toast.show('Firebase SDK is loading. Please try in a moment.', 'warning');
@@ -108,9 +105,7 @@ export async function firebaseAppleSignIn() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        email: user.email,
-        name: user.displayName || user.email.split('@')[0],
-        role: 'buyer'
+        role: roleChoice
       })
     });
 
@@ -159,7 +154,6 @@ export async function firebaseRegister(name, email, password, roleChoice = 'buye
       },
       body: JSON.stringify({
         name: name,
-        email: email,
         role: roleChoice
       })
     });
@@ -204,7 +198,7 @@ export async function firebaseLogin(email, password) {
         'Authorization': `Bearer ${idToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({})
     });
 
     const data = await res.json();
@@ -284,11 +278,7 @@ export function initAuthListener() {
             'Authorization': `Bearer ${idToken}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            email: firebaseUser.email,
-            name: firebaseUser.displayName || firebaseUser.email.split('@')[0],
-            avatar: firebaseUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
-          })
+          body: JSON.stringify({})
         });
         const data = await res.json();
         if (res.ok && data.success) {
