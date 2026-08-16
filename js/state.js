@@ -1,5 +1,5 @@
+// Reactive Global State Manager (Robust Persistent State)
 import { apiFetch } from './config.js';
-// Reactive Global State Manager (Real Data & Server-Verified Authorization)
 import { initialCategories } from './data/initialCategories.js';
 import { initialUsers } from './data/initialUsers.js';
 
@@ -18,31 +18,56 @@ class BookoraState {
     this.reviews = [];
     this.settings = {};
 
-    // Auth State
-    this.isAuthenticated = Boolean(this.token);
-    this.isAdmin = false;
-    this.isSeller = false;
-    this.sellerStatus = 'none';
-    this.activeMode = localStorage.getItem('bookora_active_mode') || 'buyer'; // 'buyer', 'seller', 'admin'
-
-    // Default Current User
-    this.currentUser = null;
-    this.library = new Set();
-    this.wishlist = new Set();
-    this.readingProgress = {};
-
-    // Verify session with backend
-    this.verifySession();
-  }
-
-  async verifySession() {
-    if (!this.token) {
-      // Default to guest / first account
+    // Restore cached user session safely
+    const cachedUser = localStorage.getItem('bookora_user_profile');
+    if (cachedUser && cachedUser !== 'undefined') {
+      try {
+        this.currentUser = JSON.parse(cachedUser);
+        this.isAuthenticated = true;
+        this.isAdmin = this.currentUser.role === 'admin' || this.currentUser.email === 'ayushprajpati6@gmail.com';
+        this.isSeller = this.isAdmin || this.currentUser.seller_status === 'approved' || this.currentUser.role === 'creator';
+      } catch(e) {
+        this.currentUser = null;
+        this.isAuthenticated = Boolean(this.token);
+        this.isAdmin = false;
+        this.isSeller = false;
+      }
+    } else {
       this.currentUser = null;
       this.isAuthenticated = false;
       this.isAdmin = false;
       this.isSeller = false;
-      this.activeMode = 'buyer';
+    }
+
+    this.activeMode = localStorage.getItem('bookora_active_mode') || (this.isAdmin ? 'admin' : (this.isSeller ? 'seller' : 'buyer'));
+    this.library = new Set();
+    this.wishlist = new Set();
+
+    this.verifySession();
+  }
+
+  setUser(user, token = '') {
+    if (!user) return;
+    this.currentUser = user;
+    this.isAuthenticated = true;
+    this.isAdmin = user.role === 'admin' || user.email === 'ayushprajpati6@gmail.com';
+    this.isSeller = this.isAdmin || user.seller_status === 'approved' || user.role === 'creator';
+    
+    if (token) {
+      this.token = token;
+      localStorage.setItem('bookora_auth_token', token);
+    }
+    
+    localStorage.setItem('bookora_user_profile', JSON.stringify(user));
+    this.activeMode = this.isAdmin ? 'admin' : (this.isSeller ? 'seller' : 'buyer');
+    localStorage.setItem('bookora_active_mode', this.activeMode);
+
+    this.notify('USER_LOGGED_IN', user);
+    this.syncData();
+  }
+
+  async verifySession() {
+    if (!this.token) {
       this.syncData();
       return;
     }
@@ -53,23 +78,17 @@ class BookoraState {
       });
       if (res.ok) {
         const data = await res.json();
-        this.isAuthenticated = data.authenticated;
-        this.currentUser = data.user;
-        this.isAdmin = data.is_admin;
-        this.isSeller = data.is_seller;
-        this.sellerStatus = data.seller_status;
-        
-        // Ensure activeMode is valid for current permissions
-        if (this.activeMode === 'admin' && !this.isAdmin) {
-          this.activeMode = 'buyer';
-        } else if (this.activeMode === 'seller' && !this.isSeller) {
-          this.activeMode = 'buyer';
+        if (data && data.authenticated && data.user) {
+          this.currentUser = data.user;
+          this.isAuthenticated = true;
+          this.isAdmin = data.is_admin;
+          this.isSeller = data.is_seller;
+          localStorage.setItem('bookora_user_profile', JSON.stringify(data.user));
+          this.notify('SESSION_VERIFIED', data.user);
         }
-      } else {
-        this.logout();
       }
     } catch (e) {
-      console.warn('Session verification fallback:', e);
+      console.warn('Background session check notice:', e);
     }
 
     this.syncData();
@@ -77,20 +96,16 @@ class BookoraState {
 
   async syncData() {
     try {
-      // 1. Fetch public settings
       const setRes = await apiFetch('/api/settings/public');
       if (setRes.ok) this.settings = await setRes.json();
 
-      // 2. Fetch approved books
       const booksRes = await apiFetch('/api/books');
       if (booksRes.ok) this.books = await booksRes.json();
 
-      // 3. Fetch categories
       const catRes = await apiFetch('/api/categories');
       if (catRes.ok) this.categories = await catRes.json();
 
-      // 4. Fetch user library if authenticated
-      if (this.isAuthenticated) {
+      if (this.isAuthenticated && this.token) {
         const libRes = await apiFetch(`/api/library`, {
           headers: { 'Authorization': `Bearer ${this.token}` }
         });
@@ -99,7 +114,6 @@ class BookoraState {
           this.library = new Set(libBooks.map(b => b.id));
         }
 
-        // 5. Fetch wishlist
         const wishRes = await apiFetch(`/api/wishlist`, {
           headers: { 'Authorization': `Bearer ${this.token}` }
         });
@@ -111,7 +125,7 @@ class BookoraState {
 
       this.notify('DATA_SYNCED');
     } catch (e) {
-      console.warn('Backend sync fallback:', e);
+      console.warn('Backend sync notice:', e);
     }
   }
 
@@ -134,67 +148,6 @@ class BookoraState {
     this.notify('MODE_CHANGED', mode);
   }
 
-  async login(email, password) {
-    try {
-      const res = await apiFetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        this.token = data.token;
-        localStorage.setItem('bookora_auth_token', data.token);
-        this.currentUser = data.user;
-        this.isAuthenticated = true;
-        this.isAdmin = data.is_admin;
-        this.isSeller = data.is_seller;
-        this.sellerStatus = data.seller_status;
-
-        // Auto-switch mode
-        if (this.isAdmin) {
-          this.setActiveMode('admin');
-        } else if (this.isSeller) {
-          this.setActiveMode('seller');
-        } else {
-          this.setActiveMode('buyer');
-        }
-
-        await this.syncData();
-        return { success: true, user: data.user, is_admin: data.is_admin };
-      }
-      return { success: false, error: data.error || 'Invalid credentials' };
-    } catch (err) {
-      return { success: false, error: 'Connection error' };
-    }
-  }
-
-  async register(name, email, roleChoice, bio = '') {
-    try {
-      const res = await apiFetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, role: roleChoice, bio })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        this.token = data.token;
-        localStorage.setItem('bookora_auth_token', data.token);
-        this.currentUser = data.user;
-        this.isAuthenticated = true;
-        this.isAdmin = data.is_admin;
-        this.isSeller = data.is_seller;
-        this.sellerStatus = data.seller_status;
-        this.setActiveMode(this.isAdmin ? 'admin' : 'buyer');
-        await this.syncData();
-        return { success: true, user: data.user };
-      }
-      return { success: false, error: data.error || 'Registration failed' };
-    } catch (err) {
-      return { success: false, error: 'Connection error' };
-    }
-  }
-
   async logout() {
     try {
       if (this.token) {
@@ -206,38 +159,19 @@ class BookoraState {
     } catch (e) {}
 
     this.token = '';
-    localStorage.removeItem('bookora_auth_token');
-    localStorage.removeItem('bookora_active_mode');
+    this.currentUser = null;
     this.isAuthenticated = false;
     this.isAdmin = false;
     this.isSeller = false;
     this.activeMode = 'buyer';
     this.library = new Set();
     this.wishlist = new Set();
-    this.currentUser = null;
-    this.notify('USER_LOGGED_OUT');
-  }
 
-  async saveAdminSettings(updatedSettings) {
-    try {
-      const res = await apiFetch('/api/admin/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`
-        },
-        body: JSON.stringify({ settings: updatedSettings })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        this.settings = updatedSettings;
-        this.notify('SETTINGS_UPDATED', this.settings);
-        return { success: true };
-      }
-      return { success: false, error: data.error || 'Failed to save settings.' };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
+    localStorage.removeItem('bookora_auth_token');
+    localStorage.removeItem('bookora_user_profile');
+    localStorage.removeItem('bookora_active_mode');
+
+    this.notify('USER_LOGGED_OUT');
   }
 
   async toggleWishlist(bookId) {
