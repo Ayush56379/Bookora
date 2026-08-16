@@ -359,7 +359,6 @@ class App {
   }
 }
 
-// Instantiate Application on DOM Ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => new App());
 } else {
