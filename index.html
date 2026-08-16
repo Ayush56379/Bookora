@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bookora — Discover. Read. Publish.</title>
+  <meta name="description" content="Bookora is a modern premium digital eBook marketplace. Discover inspiring books, read in-browser, download verified files, and publish your own works." />
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="canonical" href="https://bookora.com/" />
+
+  <!-- Google Fonts Preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet" />
+
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/bookora.css" />
+
+  <!-- OpenGraph Metadata -->
+  <meta property="og:title" content="Bookora — Discover. Read. Publish." />
+  <meta property="og:description" content="Explore world-class eBooks, direct in-browser reading, and external publications on Bookora." />
+  <meta property="og:type" content="website" />
+</head>
+<body>
+  
+  <!-- Main Single Page Application Mount Point -->
+  <div id="app" style="display: flex; flex-direction: column; min-height: 100vh;"></div>
+
+  <!-- Noscript Fallback -->
+  <noscript>
+    <div style="padding: 3rem; text-align: center; font-family: sans-serif; background: #FFF1F2; color: #9F1239;">
+      <h2>JavaScript Required</h2>
+      <p>Please enable JavaScript in your browser to experience the Bookora digital marketplace.</p>
+    </div>
+  </noscript>
+
+  <!-- Application Bundle (Universal support for file://, localhost:5500, localhost:3000, and production) -->
+  <script src="js/bundle.js"></script>
+</body>
+</html>

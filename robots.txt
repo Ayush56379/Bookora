@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /creator/
+Disallow: /checkout/
+Disallow: /payment/
+
+Sitemap: https://bookora.com/sitemap.xml
