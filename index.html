@@ -6,28 +6,46 @@
   <title>Bookora — Discover. Read. Publish.</title>
   <meta name="description" content="Bookora is a modern premium digital eBook marketplace. Discover inspiring books, read in-browser, download verified files, and publish your own works." />
   
+  <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="canonical" href="https://ayush56379.github.io/Bookora/" />
 
+  <!-- Google Fonts Preconnect -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet" />
 
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Firebase Web App & Authentication SDKs (v10 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
+  <!-- Live Render Backend Connection -->
   <script>
     window.BOOKORA_API_URL = "https://bookora-backend-x081.onrender.com";
   </script>
 
+  <!-- Stylesheet -->
   <link rel="stylesheet" href="css/bookora.css" />
 
+  <!-- OpenGraph Metadata -->
   <meta property="og:title" content="Bookora — Discover. Read. Publish." />
   <meta property="og:description" content="Explore world-class eBooks, direct in-browser reading, and external publications on Bookora." />
   <meta property="og:type" content="website" />
 </head>
 <body>
+  
+  <!-- Main Single Page Application Mount Point -->
   <div id="app" style="display: flex; flex-direction: column; min-height: 100vh;"></div>
 
+  <!-- Noscript Fallback -->
+  <noscript>
+    <div style="padding: 3rem; text-align: center; font-family: sans-serif; background: #FFF1F2; color: #9F1239;">
+      <h2>JavaScript Required</h2>
+      <p>Please enable JavaScript in your browser to experience the Bookora digital marketplace.</p>
+    </div>
+  </noscript>
+
+  <!-- Application Entry Script -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
