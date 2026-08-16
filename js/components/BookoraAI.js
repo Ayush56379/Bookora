@@ -1,5 +1,4 @@
-import { apiFetch } from '../config.js';
-// BookoraAI Component (Real Groq-Powered Context-Aware AI Assistant)
+import { apiFetch, API_BASE_URL } from '../config.js';
 import { state } from '../state.js';
 import { Toast } from './Toast.js';
 
@@ -20,7 +19,6 @@ export const BookoraAI = {
     const root = document.createElement('div');
     root.id = 'bookora-ai-root';
     root.innerHTML = `
-      <!-- Floating Trigger Button -->
       <button id="bookora-ai-trigger-btn" class="bookora-ai-btn" aria-label="Open Bookora AI Assistant">
         <div class="ai-sparkle-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2">
@@ -30,10 +28,7 @@ export const BookoraAI = {
         <span class="ai-btn-label">Ask Bookora AI</span>
       </button>
 
-      <!-- AI Chat Drawer Panel -->
       <div id="bookora-ai-drawer" class="bookora-ai-drawer">
-        
-        <!-- Header -->
         <div class="ai-drawer-header">
           <div style="display: flex; align-items: center; gap: 0.65rem;">
             <div style="width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
@@ -50,15 +45,9 @@ export const BookoraAI = {
           </div>
         </div>
 
-        <!-- Dynamic Context Suggestions -->
-        <div id="ai-suggestions-container" class="ai-suggestions-bar">
-          <!-- Dynamic Chips Injected Here -->
-        </div>
-
-        <!-- Chat Messages Area -->
+        <div id="ai-suggestions-container" class="ai-suggestions-bar"></div>
         <div id="ai-messages-list" class="ai-messages-area"></div>
 
-        <!-- Input Bar -->
         <div class="ai-input-bar">
           <form id="ai-chat-form" style="display: flex; gap: 0.5rem; width: 100%;">
             <input type="text" id="ai-user-input" placeholder="Ask anything about Bookora, accounts, or publishing..." autocomplete="off" style="flex: 1; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.875rem;" />
@@ -70,7 +59,6 @@ export const BookoraAI = {
             </button>
           </form>
         </div>
-
       </div>
     `;
 
@@ -205,14 +193,50 @@ export const BookoraAI = {
       .replace(/\n/g, '<br/>');
   },
 
+  getInstantBookoraResponse(query) {
+    const q = (query || '').toLowerCase();
+
+    if (q.includes('create account') || q.includes('signup') || q.includes('register') || q.includes('join') || q.includes('sign up')) {
+      return "To create an account on Bookora:\n\n1. Click **Sign In** in the top navigation.\n2. Select **[Sign Up](#/signup)**.\n3. Enter your **Full Name**, **Email Address**, and choose a password (minimum 8 characters).\n4. Or click **Continue with Google** / **Apple** for instant 1-click registration.\n5. Choose your initial account type: **Reader / Buyer** or apply as an **Author / Seller**.\n\nReady to get started? [Create Account](#/signup)";
+    }
+
+    if (q.includes('login') || q.includes('sign in') || q.includes('log in')) {
+      return "To sign in to Bookora:\n\n1. Open the **[Sign In](#/login)** page.\n2. Enter your registered email and password.\n3. Or use **Continue with Google** / **Continue with Apple**.\n4. If you forgot your password, click **[Forgot Password?](#/forgot-password)** to receive reset instructions.";
+    }
+
+    if (q.includes('publish') || q.includes('author') || q.includes('sell') || q.includes('creator')) {
+      return "To publish your eBook on Bookora:\n\n1. Sign in and apply for creator privileges at **[Seller Apply](#/seller/apply)**.\n2. Once approved by administration, open the **[Publish eBook](#/publish)** wizard or use our **[Smart External Importer](#/publish/external)**.\n3. Upload your PDF manuscript, cover image, set your pricing, and submit for moderation.\n4. Earn an industry-leading **85% author royalty** deposited directly to your bank via Cashfree Payouts.";
+    }
+
+    if (q.includes('buy') || q.includes('purchase') || q.includes('checkout') || q.includes('payment') || q.includes('how to buy')) {
+      return "To buy an eBook on Bookora:\n\n1. Browse titles in the **[Catalog](#/explore)** and open any book detail page.\n2. Click **Buy Now** to proceed to the secure checkout.\n3. Complete payment via **Cashfree Sandbox** (supports UPI, Debit/Credit Card, NetBanking, and Wallets).\n4. Once verified, the eBook is instantly unlocked in **[My Library](#/library)** for in-browser reading and DRM download.";
+    }
+
+    if (q.includes('subscription') || q.includes('plan') || q.includes('pricing') || q.includes('tier') || q.includes('price')) {
+      return "Bookora offers 3 flexible reading tiers:\n\n- **Free Reader (₹0)**: Browse catalog, read free 5-page sample previews, and save to wishlist.\n- **Reader Pro (₹299/mo)**: Unlimited in-browser reading on eligible titles + dark/sepia reading themes.\n- **Annual Book Club (₹2,499/yr)**: 12-month full unlimited access + 2 months free!\n\nExplore details at **[Pricing Plans](#/pricing)**.";
+    }
+
+    if (q.includes('where') && (q.includes('book') || q.includes('library') || q.includes('download') || q.includes('read'))) {
+      return "All your purchased and subscription-accessible eBooks are located in **[My Library](#/library)**.\n\nFrom your library, you can:\n- Open the in-browser reader with Day, Sepia, and Night themes.\n- Continue reading from your last saved page.\n- Download your personalized, watermarked licensed file.";
+    }
+
+    if (q.includes('what is bookora') || q.includes('about bookora')) {
+      return "Bookora is a modern, high-performance digital eBook marketplace where readers discover world-class publications with instant in-browser reading, and independent creators publish globally with verified Cashfree payouts.";
+    }
+
+    if (q === 'hi' || q === 'hello' || q === 'hey' || q === 'namaste') {
+      return "Hello! I am **Bookora AI**, your personal marketplace assistant. How can I assist you today? You can ask me how to create an account, publish an eBook, explore reading plans, or browse the [Explore Catalog](#/explore)!";
+    }
+
+    return "I am your Bookora marketplace assistant! I can help you with account creation, author publishing (85% royalties), reading subscriptions, or browsing our **[Explore Catalog](#/explore)**. What would you like to know?";
+  },
+
   async sendMessage(userText) {
     if (this.isGenerating) return;
 
-    // Add user message
     this.messages.push({ role: 'user', content: userText });
     this.renderMessages();
 
-    // Show loading state
     const list = document.getElementById('ai-messages-list');
     const loadingEl = document.createElement('div');
     loadingEl.className = 'ai-message ai-msg';
@@ -230,13 +254,15 @@ export const BookoraAI = {
       bookId = hash.replace('#/book/', '');
     }
 
+    let replyText = '';
+
     try {
-      const res = await apiFetch('/api/ai/chat', {
+      const fetchPromise = apiFetch('/api/ai/chat', {
         method: 'POST',
         signal: this.abortController.signal,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${state.token}`
+          'Authorization': `Bearer ${state.token || ''}`
         },
         body: JSON.stringify({
           message: userText,
@@ -250,54 +276,49 @@ export const BookoraAI = {
         })
       });
 
-      const data = await res.json();
-      loadingEl.remove();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('TIMEOUT')), 5000)
+      );
 
-      let replyText = '';
+      const res = await Promise.race([fetchPromise, timeoutPromise]);
+      const data = await res.json();
       if (data && (data.message || data.reply)) {
         replyText = data.message || data.reply;
-      } else {
-        replyText = "I'm ready to assist you with Bookora eBooks, orders, or publishing. What would you like to explore?";
       }
-
-      // Smooth streaming appearance
-      const aiMsgObj = { role: 'assistant', content: '' };
-      this.messages.push(aiMsgObj);
-      this.renderMessages();
-
-      const lastBubble = list?.lastElementChild?.querySelector('.msg-bubble');
-      if (lastBubble && replyText.length > 20) {
-        let curr = 0;
-        const chunkSize = Math.max(3, Math.floor(replyText.length / 30));
-        const interval = setInterval(() => {
-          curr += chunkSize;
-          if (curr >= replyText.length) {
-            curr = replyText.length;
-            clearInterval(interval);
-          }
-          aiMsgObj.content = replyText.slice(0, curr);
-          lastBubble.innerHTML = this.formatMarkdown(aiMsgObj.content);
-          if (list) list.scrollTop = list.scrollHeight;
-        }, 15);
-      } else {
-        aiMsgObj.content = replyText;
-        this.renderMessages();
-      }
-
     } catch (err) {
-      loadingEl.remove();
-      if (err.name === 'AbortError') {
-        this.messages.push({ role: 'assistant', content: 'Response generation stopped.' });
-      } else {
-        this.messages.push({
-          role: 'assistant',
-          content: 'Bookora AI is temporarily unavailable. Please check your connection or try again.'
-        });
-      }
-      this.renderMessages();
-    } finally {
-      this.toggleInputControls(false);
-      this.abortController = null;
+      // Automatic fallback to built-in intelligence
     }
+
+    if (!replyText) {
+      replyText = this.getInstantBookoraResponse(userText);
+    }
+
+    loadingEl.remove();
+
+    const aiMsgObj = { role: 'assistant', content: '' };
+    this.messages.push(aiMsgObj);
+    this.renderMessages();
+
+    const lastBubble = list?.lastElementChild?.querySelector('.msg-bubble');
+    if (lastBubble && replyText.length > 20) {
+      let curr = 0;
+      const chunkSize = Math.max(3, Math.floor(replyText.length / 25));
+      const interval = setInterval(() => {
+        curr += chunkSize;
+        if (curr >= replyText.length) {
+          curr = replyText.length;
+          clearInterval(interval);
+        }
+        aiMsgObj.content = replyText.slice(0, curr);
+        lastBubble.innerHTML = this.formatMarkdown(aiMsgObj.content);
+        if (list) list.scrollTop = list.scrollHeight;
+      }, 12);
+    } else {
+      aiMsgObj.content = replyText;
+      this.renderMessages();
+    }
+
+    this.toggleInputControls(false);
+    this.abortController = null;
   }
 };
