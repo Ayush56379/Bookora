@@ -78,6 +78,7 @@ async function handleGoogleAuthCallback(response) {
     return;
   }
 
+  // 1. Instantly parse official Google claims on client side
   const claims = parseJwtClaims(response.credential);
   const email = (claims.email || '').toLowerCase().trim();
   const name = claims.name || claims.given_name || (email ? email.split('@')[0] : 'User');
@@ -100,13 +101,8 @@ async function handleGoogleAuthCallback(response) {
     auth_provider: 'google'
   };
 
-  state.currentUser = authenticatedUser;
-  state.isAuthenticated = true;
-  state.isAdmin = isAdmin;
-  state.isSeller = true;
-  state.setActiveMode(isAdmin ? 'admin' : 'seller');
-  state.token = 'tok_g_' + Math.random().toString(36).substring(2) + Date.now();
-  localStorage.setItem('bookora_auth_token', state.token);
+  const gToken = 'tok_g_' + Math.random().toString(36).substring(2) + Date.now();
+  state.setUser(authenticatedUser, gToken);
 
   const localUsers = JSON.parse(localStorage.getItem('bookora_local_users') || '{}');
   localUsers[email] = { ...authenticatedUser };
@@ -127,9 +123,7 @@ async function handleGoogleAuthCallback(response) {
       })
     }).then(res => res.json()).then(data => {
       if (data && data.token) {
-        state.token = data.token;
-        localStorage.setItem('bookora_auth_token', data.token);
-        if (data.user) state.currentUser = data.user;
+        state.setUser(data.user || authenticatedUser, data.token);
       }
     }).catch(() => {});
   } catch (e) {}
@@ -320,13 +314,8 @@ export function initAuthEvents(type) {
       auth_provider: 'apple'
     };
 
-    state.currentUser = appleUser;
-    state.isAuthenticated = true;
-    state.isAdmin = isAdmin;
-    state.isSeller = true;
-    state.setActiveMode(isAdmin ? 'admin' : 'seller');
-    state.token = 'tok_ap_' + Math.random().toString(36).substring(2) + Date.now();
-    localStorage.setItem('bookora_auth_token', state.token);
+    const apToken = 'tok_ap_' + Math.random().toString(36).substring(2) + Date.now();
+    state.setUser(appleUser, apToken);
 
     const localUsers = JSON.parse(localStorage.getItem('bookora_local_users') || '{}');
     localUsers[email] = appleUser;
@@ -371,13 +360,8 @@ export function initAuthEvents(type) {
       localUsers[email] = newUser;
       localStorage.setItem('bookora_local_users', JSON.stringify(localUsers));
 
-      state.currentUser = newUser;
-      state.isAuthenticated = true;
-      state.isAdmin = isAdmin;
-      state.isSeller = isSeller;
-      state.setActiveMode(isAdmin ? 'admin' : (isSeller ? 'seller' : 'buyer'));
-      state.token = 'tok_u_' + Math.random().toString(36).substring(2) + Date.now();
-      localStorage.setItem('bookora_auth_token', state.token);
+      const uToken = 'tok_u_' + Math.random().toString(36).substring(2) + Date.now();
+      state.setUser(newUser, uToken);
 
       Toast.show(`Account created! Welcome to Bookora, ${name}.`, 'success');
 
@@ -388,8 +372,7 @@ export function initAuthEvents(type) {
           body: JSON.stringify({ name, email, password, role: roleChoice })
         }).then(r => r.json()).then(data => {
           if (data && data.token) {
-            state.token = data.token;
-            localStorage.setItem('bookora_auth_token', data.token);
+            state.setUser(data.user || newUser, data.token);
           }
         }).catch(() => {});
       } catch (e) {}
@@ -439,6 +422,7 @@ export function initAuthEvents(type) {
       const inputHash = await clientHash(password);
       let loginSuccessful = false;
       let loggedUser = null;
+      let finalToken = '';
 
       try {
         const res = await apiFetch('/api/auth/login', {
@@ -451,8 +435,7 @@ export function initAuthEvents(type) {
         if (res.ok && data.success) {
           loginSuccessful = true;
           loggedUser = data.user;
-          state.token = data.token;
-          localStorage.setItem('bookora_auth_token', data.token);
+          finalToken = data.token;
         }
       } catch (netErr) {}
 
@@ -460,8 +443,7 @@ export function initAuthEvents(type) {
         if (localUsers[email].password_hash === inputHash) {
           loginSuccessful = true;
           loggedUser = localUsers[email];
-          state.token = 'tok_l_' + Math.random().toString(36).substring(2) + Date.now();
-          localStorage.setItem('bookora_auth_token', state.token);
+          finalToken = 'tok_l_' + Math.random().toString(36).substring(2) + Date.now();
         } else {
           Toast.show('Invalid password. Please check your password or use Forgot Password.', 'error');
           if (submitBtn) {
@@ -486,17 +468,11 @@ export function initAuthEvents(type) {
         };
         localUsers[email] = loggedUser;
         localStorage.setItem('bookora_local_users', JSON.stringify(localUsers));
-        state.token = 'tok_adm_' + Date.now();
-        localStorage.setItem('bookora_auth_token', state.token);
+        finalToken = 'tok_adm_' + Date.now();
       }
 
       if (loginSuccessful && loggedUser) {
-        state.currentUser = loggedUser;
-        state.isAuthenticated = true;
-        state.isAdmin = isAdmin || loggedUser.role === 'admin';
-        state.isSeller = state.isAdmin || loggedUser.seller_status === 'approved' || loggedUser.role === 'creator';
-        state.setActiveMode(state.isAdmin ? 'admin' : (state.isSeller ? 'seller' : 'buyer'));
-        await state.syncData();
+        state.setUser(loggedUser, finalToken);
         Toast.show(`Welcome back, ${loggedUser.name}!`, 'success');
         window.location.hash = getPostLoginRedirect(state.isAdmin, state.isSeller);
       } else {
