@@ -113,7 +113,7 @@ export function renderAuthPage(type = 'login') {
 
               <div style="margin-bottom: 1rem;">
                 <label style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem;">Email Address *</label>
-                <input   type="email"   id="auth-email"   placeholder="name@example.com"   value=""   autocomplete="email"   required   style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" /> style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
+                <input type="email" id="auth-email" placeholder="name@example.com" value="" autocomplete="email" required style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
               </div>
 
               ${type !== 'forgot' ? `
