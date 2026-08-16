@@ -18,7 +18,7 @@
   <!-- Google Identity Services SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-  <!-- Live Render Backend Connection -->
+  <!-- Direct Render Backend Connection -->
   <script>
     window.BOOKORA_API_URL = "https://bookora-backend-x081.onrender.com";
   </script>
@@ -44,7 +44,7 @@
     </div>
   </noscript>
 
-  <!-- Application Bundle (Universal support for GitHub Pages, localhost, and file://) -->
-  <script src="js/bundle.js"></script>
+  <!-- App Entry Script -->
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
