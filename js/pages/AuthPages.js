@@ -1,35 +1,14 @@
-// AuthPages Component (Ultra-Fast Google, Apple, Email Sign In, Sign Up, Password Visibility Toggle)
-import { apiFetch, API_BASE_URL } from '../config.js';
+// AuthPages Component (Powered by Official Firebase Authentication)
 import { state } from '../state.js';
 import { updateSEO } from '../utils/seo.js';
 import { Toast } from '../components/Toast.js';
-
-const GOOGLE_CLIENT_ID = "1099320965452-bo5180hlnqiglopa1gohp30netaf0cbm.apps.googleusercontent.com";
-const ADMIN_EMAIL = "ayushprajpati6@gmail.com";
-
-// Client-side instant SHA-256
-async function clientHash(str) {
-  try {
-    const enc = new TextEncoder().encode(str + '_bookora_salt');
-    const buf = await crypto.subtle.digest('SHA-256', enc);
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-  } catch(e) {
-    return btoa(str);
-  }
-}
-
-function parseJwtClaims(token) {
-  try {
-    const base64Url = token.split('.');
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-    return JSON.parse(jsonPayload);
-  } catch (e) {
-    return {};
-  }
-}
+import { 
+  firebaseGoogleSignIn, 
+  firebaseAppleSignIn, 
+  firebaseRegister, 
+  firebaseLogin, 
+  firebaseForgotPassword 
+} from '../services/firebase.js';
 
 function getPostLoginRedirect(isAdmin, isSeller) {
   const hash = window.location.hash || '';
@@ -43,96 +22,10 @@ function getPostLoginRedirect(isAdmin, isSeller) {
   return '#/';
 }
 
-function setupGoogleIdentity() {
-  if (window.google && window.google.accounts && window.google.accounts.id) {
-    try {
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleAuthCallback,
-        auto_select: false,
-        cancel_on_tap_outside: true
-      });
-
-      const btnContainer = document.getElementById('google-btn-slot');
-      if (btnContainer) {
-        btnContainer.innerHTML = '';
-        window.google.accounts.id.renderButton(btnContainer, {
-          theme: 'outline',
-          size: 'large',
-          type: 'standard',
-          text: 'continue_with',
-          shape: 'rectangular',
-          logo_alignment: 'left',
-          width: btnContainer.offsetWidth || 340
-        });
-      }
-    } catch (err) {
-      console.warn('Google Identity notice:', err);
-    }
-  }
-}
-
-async function handleGoogleAuthCallback(response) {
-  if (!response || !response.credential) {
-    Toast.show('Google authentication was cancelled.', 'warning');
-    return;
-  }
-
-  // 1. Instantly parse official Google claims on client side
-  const claims = parseJwtClaims(response.credential);
-  const email = (claims.email || '').toLowerCase().trim();
-  const name = claims.name || claims.given_name || (email ? email.split('@')[0] : 'User');
-  const avatar = claims.picture || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
-  const isAdmin = email === ADMIN_EMAIL || email === 'ayushprajpati6@gmail.com';
-
-  if (!email) {
-    Toast.show('Google account email could not be read.', 'error');
-    return;
-  }
-
-  const authenticatedUser = {
-    id: 'usr-' + (claims.sub ? claims.sub.slice(-8) : Date.now().toString().slice(-8)),
-    name: name,
-    email: email,
-    avatar: avatar,
-    role: isAdmin ? 'admin' : 'creator',
-    seller_status: 'approved',
-    email_verified: true,
-    auth_provider: 'google'
-  };
-
-  const gToken = 'tok_g_' + Math.random().toString(36).substring(2) + Date.now();
-  state.setUser(authenticatedUser, gToken);
-
-  const localUsers = JSON.parse(localStorage.getItem('bookora_local_users') || '{}');
-  localUsers[email] = { ...authenticatedUser };
-  localStorage.setItem('bookora_local_users', JSON.stringify(localUsers));
-
-  Toast.show(`Welcome to Bookora, ${name}!`, 'success');
-  window.location.hash = getPostLoginRedirect(isAdmin, true);
-
-  try {
-    apiFetch('/api/auth/google', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        credential: response.credential,
-        email: email,
-        name: name,
-        avatar: avatar
-      })
-    }).then(res => res.json()).then(data => {
-      if (data && data.token) {
-        state.setUser(data.user || authenticatedUser, data.token);
-      }
-    }).catch(() => {});
-  } catch (e) {}
-}
-
 export function renderAuthPage(type = 'login') {
   updateSEO({
-    title: type === 'signup' || type === 'register' ? 'Create Account' : type === 'forgot' ? 'Reset Password' : type === 'reset' ? 'Set New Password' : 'Sign In',
-    description: 'Secure authentication on Bookora.'
+    title: type === 'signup' || type === 'register' ? 'Create Account' : type === 'forgot' ? 'Reset Password' : 'Sign In',
+    description: 'Secure Firebase authentication on Bookora.'
   });
 
   return `
@@ -152,7 +45,7 @@ export function renderAuthPage(type = 'login') {
               </div>
 
               <h2 style="font-family: var(--font-display); font-size: 1.85rem; font-weight: 800; line-height: 1.25; margin-bottom: 1rem;">
-                ${type === 'signup' || type === 'register' ? 'Join the Future of Digital Reading & Publishing' : type === 'forgot' || type === 'reset' ? 'Account Recovery Center' : 'Welcome Back to Your Knowledge Library'}
+                ${type === 'signup' || type === 'register' ? 'Join the Future of Digital Reading & Publishing' : type === 'forgot' ? 'Account Recovery Center' : 'Welcome Back to Your Knowledge Library'}
               </h2>
               <p style="font-size: 0.95rem; opacity: 0.85; line-height: 1.6;">
                 Discover inspiring books, read in-browser across themes, and publish your own works directly with 85% royalties.
@@ -161,7 +54,7 @@ export function renderAuthPage(type = 'login') {
 
             <div style="border-top: 1px solid rgba(255,255,255,0.15); padding-top: 1.5rem; font-size: 0.8rem; opacity: 0.75; display: flex; align-items: center; gap: 0.5rem;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              <span>256-bit Encrypted Session Security</span>
+              <span>Firebase Enterprise Identity Security</span>
             </div>
           </div>
 
@@ -169,20 +62,18 @@ export function renderAuthPage(type = 'login') {
           <div style="padding: 3rem 2.5rem;">
             
             <h1 style="font-family: var(--font-display); font-size: 1.6rem; font-weight: 800; color: var(--text-primary); margin-bottom: 0.35rem;">
-              ${type === 'signup' || type === 'register' ? 'Create Your Account' : type === 'forgot' ? 'Reset Your Password' : type === 'reset' ? 'Set New Password' : 'Sign In to Bookora'}
+              ${type === 'signup' || type === 'register' ? 'Create Your Account' : type === 'forgot' ? 'Reset Your Password' : 'Sign In to Bookora'}
             </h1>
             <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.75rem;">
-              ${type === 'signup' || type === 'register' ? 'Sign up in seconds to start reading or selling.' : type === 'forgot' ? 'Enter your email address to reset your password.' : type === 'reset' ? 'Enter your new password below.' : 'Enter your credentials to access your library.'}
+              ${type === 'signup' || type === 'register' ? 'Sign up in seconds to start reading or selling.' : type === 'forgot' ? 'Enter your registered email to receive a password reset link.' : 'Enter your credentials to access your library.'}
             </p>
 
             ${type === 'login' || type === 'signup' || type === 'register' ? `
               <div style="display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 1.5rem;">
-                <div id="google-btn-slot" style="min-height: 40px; display: flex; justify-content: center;">
-                  <button type="button" id="google-auth-btn" class="btn btn-secondary" style="width: 100%; padding: 0.65rem; font-size: 0.875rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.75rem; border-color: var(--border-medium);">
-                    <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-                    <span>Continue with Google</span>
-                  </button>
-                </div>
+                <button type="button" id="google-auth-btn" class="btn btn-secondary" style="width: 100%; padding: 0.65rem; font-size: 0.875rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.75rem; border-color: var(--border-medium);">
+                  <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+                  <span>Continue with Google</span>
+                </button>
 
                 <button type="button" id="apple-auth-btn" class="btn btn-secondary" style="width: 100%; padding: 0.65rem; font-size: 0.875rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 0.75rem; border-color: var(--border-medium);">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="#000000"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.85c.66-.82 1.11-1.96.99-3.1-.96.04-2.13.64-2.82 1.45-.61.71-1.14 1.86-1 2.98 1.07.08 2.17-.51 2.83-1.33z"/></svg>
@@ -222,7 +113,7 @@ export function renderAuthPage(type = 'login') {
 
               <div style="margin-bottom: 1rem;">
                 <label style="display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.35rem;">Email Address *</label>
-                <input type="email" id="auth-email" placeholder="name@example.com" value="${ADMIN_EMAIL}" required style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
+                <input type="email" id="auth-email" placeholder="name@example.com" value="ayushprajpati6@gmail.com" required style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
               </div>
 
               ${type !== 'forgot' ? `
@@ -232,7 +123,7 @@ export function renderAuthPage(type = 'login') {
                     ${type === 'login' ? `<a href="#/forgot-password" style="font-size: 0.75rem; color: var(--accent); font-weight: 600;">Forgot?</a>` : ''}
                   </div>
                   <div style="position: relative; display: flex; align-items: center;">
-                    <input type="password" id="auth-password" placeholder="${type === 'reset' ? 'Enter new password' : 'Enter your password'}" required minlength="6" style="width: 100%; padding: 0.65rem 2.5rem 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
+                    <input type="password" id="auth-password" placeholder="Enter password (minimum 6 characters)" required minlength="6" style="width: 100%; padding: 0.65rem 2.5rem 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
                     <button type="button" id="toggle-pw-visibility" style="position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: #64748B; padding: 4px; display: flex; align-items: center;" title="Show/Hide Password">
                       <svg id="eye-icon-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                       <svg id="eye-icon-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;"><path d="m2 2 20 20"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/></svg>
@@ -242,7 +133,7 @@ export function renderAuthPage(type = 'login') {
               ` : ''}
 
               <button type="submit" id="auth-submit-btn" class="btn btn-primary btn-lg" style="width: 100%; padding: 0.85rem; font-weight: 700; font-size: 0.95rem;">
-                ${type === 'signup' || type === 'register' ? 'Create Account' : type === 'forgot' ? 'Send Password Reset Link' : type === 'reset' ? 'Save New Password' : 'Sign In'}
+                ${type === 'signup' || type === 'register' ? 'Create Account' : type === 'forgot' ? 'Send Password Reset Link' : 'Sign In'}
               </button>
             </form>
 
@@ -266,11 +157,10 @@ export function renderAuthPage(type = 'login') {
 }
 
 export function initAuthEvents(type) {
-  setupGoogleIdentity();
   const form = document.getElementById('auth-form');
   const submitBtn = document.getElementById('auth-submit-btn');
 
-  // Password Visibility Toggle Button (Eye Icon)
+  // Password Visibility Toggle
   const toggleBtn = document.getElementById('toggle-pw-visibility');
   const pwInput = document.getElementById('auth-password');
   const eyeOpen = document.getElementById('eye-icon-open');
@@ -285,47 +175,23 @@ export function initAuthEvents(type) {
     }
   });
 
-  // Google OAuth button handler
+  // Google Sign-In Handler
   document.getElementById('google-auth-btn')?.addEventListener('click', async () => {
-    setupGoogleIdentity();
-    if (window.google?.accounts?.id) {
-      window.google.accounts.id.prompt();
-    } else {
-      Toast.show('Connecting to Google Identity Services...', 'info');
+    const res = await firebaseGoogleSignIn();
+    if (res && res.success) {
+      window.location.hash = getPostLoginRedirect(res.is_admin, res.is_seller);
     }
   });
 
-  // Apple Sign In (Instant Interactive Authentication)
+  // Apple Sign-In Handler
   document.getElementById('apple-auth-btn')?.addEventListener('click', async () => {
-    const appleEmail = prompt('Enter your Apple ID email to authenticate:', 'ayush.apple@icloud.com');
-    if (!appleEmail || !appleEmail.includes('@')) return;
-
-    const email = appleEmail.trim().toLowerCase();
-    const isAdmin = email === ADMIN_EMAIL || email === 'ayushprajpati6@gmail.com';
-    const name = email.split('@')[0];
-
-    const appleUser = {
-      id: 'usr-apple-' + Date.now().toString().slice(-8),
-      name: name,
-      email: email,
-      role: isAdmin ? 'admin' : 'creator',
-      seller_status: 'approved',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      auth_provider: 'apple'
-    };
-
-    const apToken = 'tok_ap_' + Math.random().toString(36).substring(2) + Date.now();
-    state.setUser(appleUser, apToken);
-
-    const localUsers = JSON.parse(localStorage.getItem('bookora_local_users') || '{}');
-    localUsers[email] = appleUser;
-    localStorage.setItem('bookora_local_users', JSON.stringify(localUsers));
-
-    Toast.show(`Welcome to Bookora, ${name}!`, 'success');
-    window.location.hash = getPostLoginRedirect(isAdmin, true);
+    const res = await firebaseAppleSignIn();
+    if (res && res.success) {
+      window.location.hash = getPostLoginRedirect(res.is_admin, res.is_seller);
+    }
   });
 
-  // Email / Password submit handler
+  // Form Submit Handler
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('auth-email')?.value.trim().toLowerCase();
@@ -333,150 +199,39 @@ export function initAuthEvents(type) {
 
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Processing...';
+      submitBtn.textContent = 'Verifying with Firebase...';
     }
 
-    const isAdmin = email === ADMIN_EMAIL || email === 'ayushprajpati6@gmail.com';
-
-    // 1. SIGN UP / REGISTRATION
     if (type === 'signup' || type === 'register') {
       const name = document.getElementById('auth-name')?.value.trim() || email.split('@')[0];
       const roleChoice = document.querySelector('input[name="auth-role"]:checked')?.value || 'buyer';
-      const isSeller = roleChoice === 'creator' || isAdmin;
-      const pwHash = await clientHash(password);
 
-      const newUser = {
-        id: 'usr-' + Date.now().toString().slice(-8),
-        name: name,
-        email: email,
-        role: isAdmin ? 'admin' : (isSeller ? 'creator' : 'buyer'),
-        seller_status: isSeller ? 'approved' : 'none',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        password_hash: pwHash,
-        auth_provider: 'email'
-      };
-
-      const localUsers = JSON.parse(localStorage.getItem('bookora_local_users') || '{}');
-      localUsers[email] = newUser;
-      localStorage.setItem('bookora_local_users', JSON.stringify(localUsers));
-
-      const uToken = 'tok_u_' + Math.random().toString(36).substring(2) + Date.now();
-      state.setUser(newUser, uToken);
-
-      Toast.show(`Account created! Welcome to Bookora, ${name}.`, 'success');
-
-      try {
-        apiFetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password, role: roleChoice })
-        }).then(r => r.json()).then(data => {
-          if (data && data.token) {
-            state.setUser(data.user || newUser, data.token);
-          }
-        }).catch(() => {});
-      } catch (e) {}
-
-      window.location.hash = getPostLoginRedirect(isAdmin, isSeller);
-
-    // 2. FORGOT PASSWORD
-    } else if (type === 'forgot') {
-      Toast.show(`Password reset instructions generated for ${email}.`, 'success');
-      
-      try {
-        apiFetch('/api/auth/forgot-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        }).catch(() => {});
-      } catch(e) {}
-
-      setTimeout(() => {
-        window.location.hash = `#/reset-password?email=${encodeURIComponent(email)}`;
-      }, 800);
-
-    // 3. RESET NEW PASSWORD
-    } else if (type === 'reset') {
-      const pwHash = await clientHash(password);
-      const localUsers = JSON.parse(localStorage.getItem('bookora_local_users') || '{}');
-      if (localUsers[email]) {
-        localUsers[email].password_hash = pwHash;
-        localStorage.setItem('bookora_local_users', JSON.stringify(localUsers));
-      }
-
-      Toast.show('Password successfully updated! Please sign in.', 'success');
-
-      try {
-        apiFetch('/api/auth/reset-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        }).catch(() => {});
-      } catch(e) {}
-
-      window.location.hash = '#/login';
-
-    // 4. SIGN IN / LOGIN
-    } else {
-      const localUsers = JSON.parse(localStorage.getItem('bookora_local_users') || '{}');
-      const inputHash = await clientHash(password);
-      let loginSuccessful = false;
-      let loggedUser = null;
-      let finalToken = '';
-
-      try {
-        const res = await apiFetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-
-        if (res.ok && data.success) {
-          loginSuccessful = true;
-          loggedUser = data.user;
-          finalToken = data.token;
-        }
-      } catch (netErr) {}
-
-      if (!loginSuccessful && localUsers[email]) {
-        if (localUsers[email].password_hash === inputHash) {
-          loginSuccessful = true;
-          loggedUser = localUsers[email];
-          finalToken = 'tok_l_' + Math.random().toString(36).substring(2) + Date.now();
-        } else {
-          Toast.show('Invalid password. Please check your password or use Forgot Password.', 'error');
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Sign In';
-          }
-          return;
-        }
-      }
-
-      if (!loginSuccessful && isAdmin) {
-        loginSuccessful = true;
-        loggedUser = {
-          id: 'usr-admin-ayush',
-          name: 'Ayush Prajapati',
-          email: email,
-          role: 'admin',
-          seller_status: 'approved',
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
-          password_hash: inputHash,
-          auth_provider: 'email'
-        };
-        localUsers[email] = loggedUser;
-        localStorage.setItem('bookora_local_users', JSON.stringify(localUsers));
-        finalToken = 'tok_adm_' + Date.now();
-      }
-
-      if (loginSuccessful && loggedUser) {
-        state.setUser(loggedUser, finalToken);
-        Toast.show(`Welcome back, ${loggedUser.name}!`, 'success');
-        window.location.hash = getPostLoginRedirect(state.isAdmin, state.isSeller);
+      const res = await firebaseRegister(name, email, password, roleChoice);
+      if (res && res.success) {
+        window.location.hash = getPostLoginRedirect(res.is_admin, res.is_seller);
       } else {
-        Toast.show('Account not found with this email. Please click Sign Up to create your account.', 'error');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Create Account';
+        }
+      }
+
+    } else if (type === 'forgot') {
+      const res = await firebaseForgotPassword(email);
+      if (res && res.success) {
+        window.location.hash = '#/login';
+      } else {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Send Password Reset Link';
+        }
+      }
+
+    } else {
+      const res = await firebaseLogin(email, password);
+      if (res && res.success) {
+        window.location.hash = getPostLoginRedirect(res.is_admin, res.is_seller);
+      } else {
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = 'Sign In';
