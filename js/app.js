@@ -37,6 +37,7 @@ import { renderSellerSettingsPage, initSellerSettingsEvents } from './pages/Sell
 import { renderAdminDashboardPage, initAdminDashboardEvents } from './pages/AdminDashboardPage.js';
 import { renderAdminUsersPage, initAdminUsersEvents } from './pages/AdminUsersPage.js';
 import { renderAdminSellersPage, initAdminSellersEvents } from './pages/AdminSellersPage.js';
+import { renderAdminBooksPage, initAdminBooksEvents } from './pages/AdminBooksPage.js';
 import { renderAdminSettingsPage, initAdminSettingsEvents } from './pages/AdminSettingsPage.js';
 import { renderAdminSecurityPage, initAdminSecurityEvents } from './pages/AdminSecurityPage.js';
 import { renderAdminAIDiagnosticsPage, initAdminAIDiagnosticsEvents } from './pages/AdminAIDiagnosticsPage.js';
@@ -52,7 +53,11 @@ class App {
   constructor() {
     this.root = document.getElementById('app') || document.body;
     this.init();
-    try { BookoraAI.init(); } catch (e) { console.warn('BookoraAI init notice:', e); }
+    try {
+      BookoraAI.init();
+    } catch (e) {
+      console.warn('BookoraAI init notice:', e);
+    }
   }
 
   init() {
@@ -77,6 +82,9 @@ class App {
           const iconSvg = wishBtn.querySelector('svg');
           if (iconSvg) iconSvg.setAttribute('fill', isAdded ? '#E11D48' : 'none');
           Toast.show(isAdded ? 'Added to Wishlist' : 'Removed from Wishlist', isAdded ? 'success' : 'info');
+        }).catch(err => {
+          console.error('Wishlist error:', err);
+          Toast.show('Unable to update wishlist.', 'error');
         });
         return;
       }
@@ -112,7 +120,9 @@ class App {
 
   route() {
     window.scrollTo(0, 0);
-    if (!this.root || !this.root.innerHTML) this.root = document.getElementById('app') || document.body;
+    if (!this.root || !this.root.innerHTML) {
+      this.root = document.getElementById('app') || document.body;
+    }
 
     const hash = window.location.hash || '#/';
     const [pathWithSlash, queryString] = hash.split('?');
@@ -136,6 +146,7 @@ class App {
       '/refund-policy', '/seller-guidelines', '/login', '/signup', '/register', '/forgot-password',
       '/reset-password', '/payment/success', '/payment/failed'
     ];
+
     const PUBLIC_PREFIX_MATCHES = ['/category/', '/book/', '/author/', '/search'];
     const isPublic = path === '/' || path === '' || PUBLIC_ROUTES.includes(path) || PUBLIC_PREFIX_MATCHES.some(p => path.startsWith(p));
 
@@ -146,11 +157,13 @@ class App {
         window.location.hash = `#/login?returnTo=${returnUrl}`;
         return;
       }
+
       if (path.startsWith('/admin') && !state.isAdmin) {
         Toast.show('Access restricted: Admin authorization required.', 'error');
         window.location.hash = '#/login';
         return;
       }
+
       if ((path.startsWith('/seller') || path.startsWith('/creator') || path === '/publish' || path === '/publish/external') && path !== '/seller/apply') {
         if (!state.isSeller && !state.isAdmin) {
           Toast.show('Author authorization required to access Creator Studio.', 'warning');
@@ -164,51 +177,122 @@ class App {
     let initCallback = null;
 
     // Public
-    if (path === '/' || path === '') { pageHtml = renderHomePage(); initCallback = () => initHomePageEvents(); }
-    else if (path === '/explore') { pageHtml = renderExplorePage(); initCallback = () => initExploreEvents(); }
-    else if (path === '/search') { pageHtml = renderSearchPage(params.get('q') || ''); }
-    else if (path === '/categories') { pageHtml = renderCategoriesDirectoryPage(); }
-    else if (path.startsWith('/category/')) { pageHtml = renderCategoryPage(path.replace('/category/', '')); }
-    else if (path.startsWith('/book/')) { const slug = path.replace('/book/', ''); pageHtml = renderBookDetailPage(slug); initCallback = () => initBookDetailEvents(slug); }
-    else if (path === '/best-sellers') pageHtml = renderCuratedCatalogPage('bestsellers');
-    else if (path === '/new-releases') pageHtml = renderCuratedCatalogPage('new');
-    else if (path === '/trending') pageHtml = renderCuratedCatalogPage('trending');
-    else if (path === '/pricing' || path === '/subscription') { pageHtml = renderPricingPage(); initCallback = () => initPricingEvents(); }
-    else if (['/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines'].includes(path)) pageHtml = renderStaticPage(path.slice(1));
+    if (path === '/' || path === '') {
+      pageHtml = renderHomePage();
+      initCallback = () => initHomePageEvents();
+    } else if (path === '/explore') {
+      pageHtml = renderExplorePage();
+      initCallback = () => initExploreEvents();
+    } else if (path === '/search') {
+      pageHtml = renderSearchPage(params.get('q') || '');
+    } else if (path === '/categories') {
+      pageHtml = renderCategoriesDirectoryPage();
+    } else if (path.startsWith('/category/')) {
+      pageHtml = renderCategoryPage(path.replace('/category/', ''));
+    } else if (path.startsWith('/book/')) {
+      const slug = path.replace('/book/', '');
+      pageHtml = renderBookDetailPage(slug);
+      initCallback = () => initBookDetailEvents(slug);
+    } else if (path === '/best-sellers') {
+      pageHtml = renderCuratedCatalogPage('bestsellers');
+    } else if (path === '/new-releases') {
+      pageHtml = renderCuratedCatalogPage('new');
+    } else if (path === '/trending') {
+      pageHtml = renderCuratedCatalogPage('trending');
+    } else if (path === '/pricing' || path === '/subscription') {
+      pageHtml = renderPricingPage();
+      initCallback = () => initPricingEvents();
+    } else if (['/about', '/how-it-works', '/faq', '/contact', '/help', '/terms', '/privacy', '/refund-policy', '/seller-guidelines'].includes(path)) {
+      pageHtml = renderStaticPage(path.slice(1));
+    }
 
     // Auth / profile
-    else if (path === '/login') { pageHtml = renderAuthPage('login'); initCallback = () => initAuthEvents('login'); }
-    else if (path === '/signup' || path === '/register') { pageHtml = renderAuthPage('signup'); initCallback = () => initAuthEvents('signup'); }
-    else if (path === '/forgot-password') { pageHtml = renderAuthPage('forgot'); initCallback = () => initAuthEvents('forgot'); }
-    else if (path === '/reset-password') { pageHtml = renderAuthPage('reset'); initCallback = () => initAuthEvents('reset'); }
-    else if (path === '/profile') pageHtml = renderProfilePage();
-    else if (['/settings','/settings/account','/settings/notifications','/settings/privacy'].includes(path)) { pageHtml = renderUserSettingsPage(); initCallback = () => initUserSettingsEvents(); }
-    else if (path === '/settings/security') { pageHtml = renderAccountSecurityPage(); initCallback = () => initAccountSecurityEvents(); }
+    else if (path === '/login') {
+      pageHtml = renderAuthPage('login');
+      initCallback = () => initAuthEvents('login');
+    } else if (path === '/signup' || path === '/register') {
+      pageHtml = renderAuthPage('signup');
+      initCallback = () => initAuthEvents('signup');
+    } else if (path === '/forgot-password') {
+      pageHtml = renderAuthPage('forgot');
+      initCallback = () => initAuthEvents('forgot');
+    } else if (path === '/reset-password') {
+      pageHtml = renderAuthPage('reset');
+      initCallback = () => initAuthEvents('reset');
+    } else if (path === '/profile') {
+      pageHtml = renderProfilePage();
+    } else if (['/settings', '/settings/account', '/settings/notifications', '/settings/privacy'].includes(path)) {
+      pageHtml = renderUserSettingsPage();
+      initCallback = () => initUserSettingsEvents();
+    } else if (path === '/settings/security') {
+      pageHtml = renderAccountSecurityPage();
+      initCallback = () => initAccountSecurityEvents();
+    }
 
     // Buyer
-    else if (path === '/dashboard') { pageHtml = renderDashboardPage(); initCallback = () => initDashboardEvents(); }
-    else if (path === '/library') { pageHtml = renderLibraryPage(); initCallback = () => initLibraryEvents(); }
-    else if (path === '/orders') pageHtml = renderOrdersPage();
-    else if (path === '/wishlist') pageHtml = renderWishlistPage();
-    else if (path.startsWith('/checkout/')) { const slug = path.replace('/checkout/', ''); pageHtml = renderCheckoutPage(slug); initCallback = () => initCheckoutEvents(slug); }
-    else if (path === '/payment/success') pageHtml = renderPaymentSuccessPage();
-    else if (path === '/payment/failed') pageHtml = renderPaymentFailedPage();
+    else if (path === '/dashboard') {
+      pageHtml = renderDashboardPage();
+      initCallback = () => initDashboardEvents();
+    } else if (path === '/library') {
+      pageHtml = renderLibraryPage();
+      initCallback = () => initLibraryEvents();
+    } else if (path === '/orders') {
+      pageHtml = renderOrdersPage();
+    } else if (path === '/wishlist') {
+      pageHtml = renderWishlistPage();
+    } else if (path.startsWith('/checkout/')) {
+      const slug = path.replace('/checkout/', '');
+      pageHtml = renderCheckoutPage(slug);
+      initCallback = () => initCheckoutEvents(slug);
+    } else if (path === '/payment/success') {
+      pageHtml = renderPaymentSuccessPage();
+    } else if (path === '/payment/failed') {
+      pageHtml = renderPaymentFailedPage();
+    }
 
     // Seller
-    else if (path === '/seller' || path === '/seller/dashboard' || path === '/creator' || path === '/creator/dashboard') { pageHtml = renderCreatorDashboardPage(); initCallback = () => initCreatorDashboardEvents(); }
-    else if (path === '/publish') { pageHtml = renderPublishInternalPage(); initCallback = () => initPublishInternalEvents(); }
-    else if (path === '/publish/external') { pageHtml = renderPublishExternalPage(); initCallback = () => initPublishExternalEvents(); }
-    else if (path === '/seller/apply') { pageHtml = renderSellerApplyPage(); initCallback = () => initSellerApplyEvents(); }
-    else if (path === '/seller/settings') { pageHtml = renderSellerSettingsPage(); initCallback = () => initSellerSettingsEvents(); }
+    else if (path === '/seller' || path === '/seller/dashboard' || path === '/creator' || path === '/creator/dashboard') {
+      pageHtml = renderCreatorDashboardPage();
+      initCallback = () => initCreatorDashboardEvents();
+    } else if (path === '/publish') {
+      pageHtml = renderPublishInternalPage();
+      initCallback = () => initPublishInternalEvents();
+    } else if (path === '/publish/external') {
+      pageHtml = renderPublishExternalPage();
+      initCallback = () => initPublishExternalEvents();
+    } else if (path === '/seller/apply') {
+      pageHtml = renderSellerApplyPage();
+      initCallback = () => initSellerApplyEvents();
+    } else if (path === '/seller/settings') {
+      pageHtml = renderSellerSettingsPage();
+      initCallback = () => initSellerSettingsEvents();
+    }
 
     // Admin
-    else if (path === '/admin' || path === '/admin/overview') { pageHtml = renderAdminDashboardPage(); initCallback = () => initAdminDashboardEvents(); }
-    else if (path === '/admin/users') { pageHtml = renderAdminUsersPage(); initCallback = () => initAdminUsersEvents(); }
-    else if (path === '/admin/sellers') { pageHtml = renderAdminSellersPage(); initCallback = () => initAdminSellersEvents(); }
-    else if (path === '/admin/settings') { pageHtml = renderAdminSettingsPage(); initCallback = () => initAdminSettingsEvents(); }
-    else if (path === '/admin/security') { pageHtml = renderAdminSecurityPage(); initCallback = () => initAdminSecurityEvents(); }
-    else if (path === '/admin/ai-diagnostics') { pageHtml = renderAdminAIDiagnosticsPage(); initCallback = () => initAdminAIDiagnosticsEvents(); }
-    else pageHtml = renderNotFoundPage();
+    else if (path === '/admin' || path === '/admin/overview') {
+      pageHtml = renderAdminDashboardPage();
+      initCallback = () => initAdminDashboardEvents();
+    } else if (path === '/admin/users') {
+      pageHtml = renderAdminUsersPage();
+      initCallback = () => initAdminUsersEvents();
+    } else if (path === '/admin/sellers') {
+      pageHtml = renderAdminSellersPage();
+      initCallback = () => initAdminSellersEvents();
+    } else if (path === '/admin/books') {
+      pageHtml = renderAdminBooksPage();
+      initCallback = () => initAdminBooksEvents();
+    } else if (path === '/admin/settings') {
+      pageHtml = renderAdminSettingsPage();
+      initCallback = () => initAdminSettingsEvents();
+    } else if (path === '/admin/security') {
+      pageHtml = renderAdminSecurityPage();
+      initCallback = () => initAdminSecurityEvents();
+    } else if (path === '/admin/ai-diagnostics') {
+      pageHtml = renderAdminAIDiagnosticsPage();
+      initCallback = () => initAdminAIDiagnosticsEvents();
+    } else {
+      pageHtml = renderNotFoundPage();
+    }
 
     this.root.innerHTML = `
       <div id="header-container">${renderHeader()}</div>
@@ -216,11 +300,19 @@ class App {
       <div id="footer-container">${renderFooter()}</div>`;
 
     initHeaderEvents();
+
     if (typeof initCallback === 'function') {
-      try { initCallback(); } catch (err) { console.error('Page event initialization error:', err); }
+      try {
+        initCallback();
+      } catch (err) {
+        console.error('Page event initialization error:', err);
+      }
     }
   }
 }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => new App());
-else new App();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => new App());
+} else {
+  new App();
+}
