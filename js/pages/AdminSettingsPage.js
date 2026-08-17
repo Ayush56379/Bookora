@@ -1,506 +1,147 @@
-import { apiFetch } from '../config.js';
-// AdminSettingsPage Component (Complete Platform Settings)
+// Bookora Admin Settings - Firebase/Firestore backed
 import { state } from '../state.js';
-import { updateSEO } from '../utils/seo.js';
 import { Toast } from '../components/Toast.js';
+import { updateSEO } from '../utils/seo.js';
+
+const DEFAULTS = {
+  general: { website_name: 'Bookora', tagline: 'Discover. Read. Publish.', description: 'Bookora is a modern digital eBook marketplace.', support_email: 'support@bookora.com', contact_email: 'contact@bookora.com' },
+  branding: { primary_accent: '#2563EB', secondary_accent: '#1D4ED8' },
+  marketplace: { seller_commission_pct: 85, platform_commission_pct: 15, seller_approval_required: true, book_approval_required: true, reviews_enabled: true, wishlist_enabled: true, downloads_enabled: true, pdf_preview_enabled: true },
+  payments: { cashfree_environment: 'SANDBOX', cashfree_app_id: '', api_version: '2023-08-01' },
+  currency: { default_display_currency: 'INR', currency_symbol: '₹', currency_position: 'prefix', decimal_places: 2, payment_currency: 'INR' },
+  maintenance: { enabled: false, message: 'Bookora is undergoing scheduled platform enhancements.' },
+  books_config: { max_pdf_size_mb: 100, preview_page_limit: 5, allowed_file_types: ['PDF', 'EPUB'] },
+  external_config: { external_listings_enabled: true, allowed_protocols: ['https:'], require_redirect_confirmation: true },
+  ai_config: { groq_model: 'llama-3.3-70b-versatile' }
+};
+
+const clone = value => JSON.parse(JSON.stringify(value));
+
+function mergedSettings() {
+  const src = state.settings || {};
+  return {
+    ...clone(DEFAULTS),
+    ...src,
+    general: { ...DEFAULTS.general, ...(src.general || {}) },
+    branding: { ...DEFAULTS.branding, ...(src.branding || {}) },
+    marketplace: { ...DEFAULTS.marketplace, ...(src.marketplace || {}) },
+    payments: { ...DEFAULTS.payments, ...(src.payments || {}) },
+    currency: { ...DEFAULTS.currency, ...(src.currency || {}) },
+    maintenance: { ...DEFAULTS.maintenance, ...(src.maintenance || {}) },
+    books_config: { ...DEFAULTS.books_config, ...(src.books_config || {}) },
+    external_config: { ...DEFAULTS.external_config, ...(src.external_config || {}) },
+    ai_config: { ...DEFAULTS.ai_config, ...(src.ai_config || {}) }
+  };
+}
+
+const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
 export function renderAdminSettingsPage(activeSection = 'general') {
-  updateSEO({
-    title: 'Platform Settings & Configuration',
-    description: 'Configure marketplace, currency, payments, and platform security on Bookora.'
-  });
-
-  const settings = state.settings || {};
-  const gen = settings.general || {};
-  const brand = settings.branding || {};
-  const mkt = settings.marketplace || {};
-  const curr = settings.currency || {};
-  const pay = settings.payments || {};
-  const maint = settings.maintenance || {};
-  const books = settings.books_config || {};
-  const ext = settings.external_config || {};
+  updateSEO({ title: 'Bookora Platform Settings', description: 'Manage Bookora platform configuration.' });
+  const s = mergedSettings();
+  const sections = [
+    ['general','General & Site Info'], ['branding','Branding & Theme'], ['marketplace','Marketplace & Fees'],
+    ['payments','Payments & Cashfree'], ['currency','Currency & Display'], ['maintenance','Maintenance Mode'],
+    ['books','eBook Files & Limits'], ['external','External Link Security'], ['database','Google Drive Database'], ['groq','Groq AI Configuration']
+  ];
 
   return `
-    <div class="admin-settings-page animate-fade-in" style="background: var(--bg-secondary); min-height: 85vh; padding: 3rem 0 5rem 0;">
-      <div class="container">
-        
-        <!-- Header -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem;">
-          <div>
-            <div class="badge badge-bookora" style="margin-bottom: 0.5rem;">🛡️ Admin Configuration</div>
-            <h1 style="font-family: var(--font-display); font-size: 2.2rem; font-weight: 800; color: var(--text-primary);">
-              Bookora Platform Settings
-            </h1>
-            <p style="font-size: 0.95rem; color: var(--text-secondary); margin-top: 0.25rem;">
-              Manage global configurations, Cashfree gateway credentials, currency settings, and moderation rules.
-            </p>
-          </div>
-          <button id="save-all-settings-btn" class="btn btn-primary btn-lg" style="font-weight: 700; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);">
-            Save All Settings
-          </button>
-        </div>
+  <div class="admin-settings-page" style="background:var(--bg-secondary);min-height:85vh;padding:2.5rem 0 5rem">
+    <div class="container">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;margin-bottom:2rem;flex-wrap:wrap">
+        <div><div class="badge badge-bookora">🛡️ Admin Configuration</div><h1 style="font-size:2.2rem;font-weight:800;margin:.5rem 0">Bookora Platform Settings</h1><p style="color:var(--text-secondary);margin:0">All settings below are connected to Firebase Cloud Firestore.</p></div>
+        <button id="save-all-settings-btn" class="btn btn-primary btn-lg">Save All Settings</button>
+      </div>
+      <div class="settings-grid-layout" style="display:grid;grid-template-columns:260px minmax(0,1fr);gap:1.5rem;align-items:start">
+        <aside style="background:#fff;border:1px solid var(--border-subtle);border-radius:16px;padding:.65rem;position:sticky;top:90px">
+          <div style="font-size:.72rem;font-weight:800;color:var(--text-muted);text-transform:uppercase;padding:.65rem">Configuration Categories</div>
+          ${sections.map(([id,name]) => `<button type="button" class="settings-tab-btn ${activeSection===id?'active':''}" data-section="${id}" style="width:100%;text-align:left;border:0;border-radius:10px;padding:.75rem .8rem;margin:2px 0;background:${activeSection===id?'var(--accent-light)':'transparent'};color:${activeSection===id?'var(--accent)':'var(--text-secondary)'};font-weight:700;cursor:pointer">${name}<span style="float:right">›</span></button>`).join('')}
+        </aside>
+        <section style="background:#fff;border:1px solid var(--border-subtle);border-radius:16px;padding:2rem">
+          <form id="admin-settings-form">
+            <div id="sec-general" class="settings-section" style="display:${activeSection==='general'?'block':'none'}"><h2>General Platform Information</h2><div class="settings-fields">
+              ${input('set-website-name','Website Name',s.general.website_name)}${input('set-tagline','Tagline',s.general.tagline)}${textarea('set-desc','Website Description',s.general.description)}${input('set-support-email','Support Email',s.general.support_email,'email')}${input('set-contact-email','Contact Email',s.general.contact_email,'email')}
+            </div></div>
 
-        <!-- Layout with Left Sidebar Tabs + Right Form Area -->
-        <div style="display: grid; grid-template-columns: 260px 1fr; gap: 2rem; align-items: start;" class="settings-grid-layout">
-          
-          <!-- Left Navigation Sidebar -->
-          <div style="background: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 0.75rem; box-shadow: var(--shadow-sm); position: sticky; top: 90px;">
-            <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; padding: 0.5rem 0.75rem;">
-              Configuration Categories
-            </div>
-            ${[
-              { id: 'general', name: 'General & Site Info', icon: 'globe' },
-              { id: 'branding', name: 'Branding & Theme', icon: 'palette' },
-              { id: 'marketplace', name: 'Marketplace & Fees', icon: 'shopping-bag' },
-              { id: 'payments', name: 'Payments & Cashfree', icon: 'credit-card' },
-              { id: 'currency', name: 'Currency & Display', icon: 'dollar-sign' },
-              { id: 'maintenance', name: 'Maintenance Mode', icon: 'tool' },
-              { id: 'books', name: 'eBook Files & Limits', icon: 'file-text' },
-              { id: 'external', name: 'External Link Security', icon: 'shield' },
-                            { id: 'database', name: 'Google Drive Database', icon: 'hard-drive' },
-              { id: 'groq', name: 'Groq AI Configuration', icon: 'bot' }
-            ].map(sec => `
-              <button class="settings-tab-btn ${activeSection === sec.id ? 'active' : ''}" data-section="${sec.id}" style="width: 100%; text-align: left; padding: 0.7rem 0.85rem; border-radius: var(--radius-md); font-size: 0.875rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; transition: all 0.15s; ${activeSection === sec.id ? 'background: var(--accent-light); color: var(--accent);' : 'color: var(--text-secondary); background: transparent;'}">
-                <span>${sec.name}</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
-              </button>
-            `).join('')}
-            <div style="border-top: 1px solid var(--border-subtle); margin-top: 0.5rem; padding-top: 0.5rem;">
-              <a href="#/admin/security" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 0.85rem; font-size: 0.85rem; font-weight: 700; color: #DC2626;">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                View Security Audit Logs
-              </a>
-            </div>
-          </div>
+            <div id="sec-branding" class="settings-section" style="display:${activeSection==='branding'?'block':'none'}"><h2>Branding & Theme</h2><div class="settings-fields">${color('set-primary-accent','Primary Accent',s.branding.primary_accent)}${color('set-secondary-accent','Secondary Accent',s.branding.secondary_accent)}</div><p class="settings-note">Saving these colors updates the stored platform branding configuration.</p></div>
 
-          <!-- Right Form Area -->
-          <div style="background: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 2.5rem; box-shadow: var(--shadow-sm);">
-            <form id="admin-settings-form">
-              
-              <!-- 1. GENERAL -->
-              <div id="sec-general" class="settings-section">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  General Platform Information
-                </h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Website Name</label>
-                    <input type="text" id="set-website-name" value="${gen.website_name || 'Bookora'}" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
-                  </div>
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Tagline</label>
-                    <input type="text" id="set-tagline" value="${gen.tagline || 'Discover. Read. Publish.'}" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
-                  </div>
-                </div>
+            <div id="sec-marketplace" class="settings-section" style="display:${activeSection==='marketplace'?'block':'none'}"><h2>Marketplace Rules & Fees</h2><div class="settings-fields">${number('set-author-royalty','Seller/Author Royalty (%)',s.marketplace.seller_commission_pct,0,100,.5)}${number('set-platform-fee','Platform Commission (%)',s.marketplace.platform_commission_pct,0,100,.5)}</div>${toggle('set-seller-approval-req','Require Seller Application Approval',s.marketplace.seller_approval_required)}${toggle('set-book-approval-req','Require Book Approval',s.marketplace.book_approval_required)}${toggle('set-reviews-enabled','Reviews Enabled',s.marketplace.reviews_enabled)}${toggle('set-wishlist-enabled','Wishlist Enabled',s.marketplace.wishlist_enabled)}${toggle('set-downloads-enabled','Downloads Enabled',s.marketplace.downloads_enabled)}${toggle('set-preview-enabled','PDF Preview Enabled',s.marketplace.pdf_preview_enabled)}</div>
 
-                <div style="margin-bottom: 1.25rem;">
-                  <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Website Description</label>
-                  <textarea id="set-desc" rows="2" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;">${gen.description || 'Bookora is a modern digital eBook marketplace.'}</textarea>
-                </div>
+            <div id="sec-payments" class="settings-section" style="display:${activeSection==='payments'?'block':'none'}"><h2>Payments & Cashfree</h2><div class="settings-fields"><div><label>Environment</label><select id="set-cf-env"><option value="SANDBOX" ${s.payments.cashfree_environment==='SANDBOX'?'selected':''}>SANDBOX (Test)</option><option value="PRODUCTION" ${s.payments.cashfree_environment==='PRODUCTION'?'selected':''}>PRODUCTION (Live)</option></select></div>${input('set-cf-appid','Cashfree App ID',s.payments.cashfree_app_id)}${input('set-cf-api-version','Cashfree API Version',s.payments.api_version)}</div><div class="settings-note">For security, the Cashfree Secret Key is not stored by this browser page. Keep it in the server/Apps Script secret configuration.</div></div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Support Email</label>
-                    <input type="email" id="set-support-email" value="${gen.support_email || 'support@bookora.com'}" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
-                  </div>
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Contact Email</label>
-                    <input type="email" id="set-contact-email" value="${gen.contact_email || 'contact@bookora.com'}" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
-                  </div>
-                </div>
-              </div>
+            <div id="sec-currency" class="settings-section" style="display:${activeSection==='currency'?'block':'none'}"><h2>Currency & Display</h2><div class="settings-fields"><div><label>Display Currency</label><select id="set-display-curr"><option value="INR" ${s.currency.default_display_currency==='INR'?'selected':''}>INR (₹)</option><option value="USD" ${s.currency.default_display_currency==='USD'?'selected':''}>USD ($)</option></select></div>${number('set-decimal-places','Decimal Places',s.currency.decimal_places,0,4,1)}</div></div>
 
-              <!-- 2. BRANDING -->
-              <div id="sec-branding" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  Branding & Colors
-                </h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Primary Accent (Electric Blue)</label>
-                    <input type="color" id="set-primary-accent" value="${brand.primary_accent || '#2563EB'}" style="width: 100%; height: 42px; padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border-medium); cursor: pointer;" />
-                  </div>
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Secondary Accent (Hover)</label>
-                    <input type="color" id="set-secondary-accent" value="${brand.secondary_accent || '#1D4ED8'}" style="width: 100%; height: 42px; padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border-medium); cursor: pointer;" />
-                  </div>
-                </div>
-                <div style="background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
-                  💡 <strong>Design System Note:</strong> Bookora maintains a pristine, high-converting <strong>white background</strong> as its primary foundation with subtle electric blue accents.
-                </div>
-              </div>
+            <div id="sec-maintenance" class="settings-section" style="display:${activeSection==='maintenance'?'block':'none'}"><h2>Maintenance Mode</h2>${toggle('set-maint-enabled','Enable Maintenance Mode',s.maintenance.enabled)}${textarea('set-maint-msg','Maintenance Message',s.maintenance.message)}</div>
 
-              <!-- 3. MARKETPLACE & FEES -->
-              <div id="sec-marketplace" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  Marketplace Rules & Royalty Structure
-                </h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Author Royalty Rate (%)</label>
-                    <input type="number" id="set-author-royalty" value="${mkt.seller_commission_pct || 85.0}" min="10" max="95" step="0.5" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 1rem; font-weight: 700; color: var(--accent);" />
-                  </div>
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Platform Commission (%)</label>
-                    <input type="number" id="set-platform-fee" value="${mkt.platform_commission_pct || 15.0}" min="5" max="90" step="0.5" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 1rem; font-weight: 700;" />
-                  </div>
-                </div>
+            <div id="sec-books" class="settings-section" style="display:${activeSection==='books'?'block':'none'}"><h2>eBook Files & Limits</h2><div class="settings-fields">${number('set-max-pdf-size','Maximum Upload Size (MB)',s.books_config.max_pdf_size_mb,10,500,1)}${number('set-preview-limit','Free Preview Page Limit',s.books_config.preview_page_limit,1,20,1)}</div><div class="settings-note">Allowed file types: PDF, EPUB.</div></div>
 
-                <div style="display: flex; flex-direction: column; gap: 1rem; border-top: 1px solid var(--border-subtle); padding-top: 1.25rem;">
-                  <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                    <div>
-                      <strong style="font-size: 0.9rem; color: var(--text-primary);">Require Seller Application Approval</strong>
-                      <div style="font-size: 0.75rem; color: var(--text-muted);">New creators must be approved by admin before publishing</div>
-                    </div>
-                    <input type="checkbox" id="set-seller-approval-req" ${mkt.seller_approval_required ? 'checked' : ''} style="width: 20px; height: 20px; accent-color: var(--accent);" />
-                  </label>
+            <div id="sec-external" class="settings-section" style="display:${activeSection==='external'?'block':'none'}"><h2>External Link Security</h2>${toggle('set-ext-enabled','External Listings Enabled',s.external_config.external_listings_enabled)}${toggle('set-ext-redirect-confirm','Show External Redirect Confirmation',s.external_config.require_redirect_confirmation)}<div class="settings-note">Only HTTPS external links should be accepted.</div></div>
 
-                  <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                    <div>
-                      <strong style="font-size: 0.9rem; color: var(--text-primary);">Require Book Moderation Approval</strong>
-                      <div style="font-size: 0.75rem; color: var(--text-muted);">Books are held in pending queue until approved</div>
-                    </div>
-                    <input type="checkbox" id="set-book-approval-req" ${mkt.book_approval_required ? 'checked' : ''} style="width: 20px; height: 20px; accent-color: var(--accent);" />
-                  </label>
-                </div>
-              </div>
+            <div id="sec-database" class="settings-section" style="display:${activeSection==='database'?'block':'none'}"><h2>Firebase Database & Backups</h2><div class="settings-note"><strong>Database:</strong> Firebase Cloud Firestore<br><strong>Settings document:</strong> settings/public</div><div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem"><button type="button" id="check-db-health-btn" class="btn btn-secondary">Check Firestore Health</button><button type="button" id="reload-settings-btn" class="btn btn-secondary">Reload Settings</button></div></div>
 
-              <!-- 4. PAYMENTS & CASHFREE -->
-              <div id="sec-payments" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  Cashfree Payment Gateway Integration
-                </h3>
-
-                <div style="margin-bottom: 1.5rem;">
-                  <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Environment Mode</label>
-                  <select id="set-cf-env" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem; font-weight: 700; background: #FFFFFF;">
-                    <option value="SANDBOX" ${pay.cashfree_environment === 'SANDBOX' ? 'selected' : ''}>SANDBOX (Test Mode)</option>
-                    <option value="PRODUCTION" ${pay.cashfree_environment === 'PRODUCTION' ? 'selected' : ''}>PRODUCTION (Live Real Money)</option>
-                  </select>
-                </div>
-
-                <div style="margin-bottom: 1.25rem;">
-                  <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Cashfree App ID (Client ID)</label>
-                  <input type="text" id="set-cf-appid" placeholder="e.g. TEST100849204..." value="${pay.cashfree_app_id || ''}" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem; font-family: monospace;" />
-                </div>
-
-                <div style="margin-bottom: 1.5rem;">
-                  <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Cashfree Secret Key (Server-Side Masked)</label>
-                  <input type="password" id="set-cf-secret" placeholder="••••••••••••••••" value="${pay.cashfree_secret_key ? '••••••••••••••••' : ''}" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem; font-family: monospace;" />
-                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem;">
-                    🔒 Stored securely on server. Never exposed to browser or client JavaScript.
-                  </div>
-                </div>
-
-                <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: var(--radius-md); padding: 1rem; font-size: 0.85rem; color: #166534;">
-                  <strong>Cashfree Gateway Status:</strong> Payment Currency is set to <strong>INR (₹)</strong> per Cashfree specification.
-                </div>
-              </div>
-
-              <!-- 5. CURRENCY & DISPLAY -->
-              <div id="sec-currency" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  Currency & Regional Formats
-                </h3>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem;">
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Default Marketplace Display Currency</label>
-                    <select id="set-display-curr" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem; background: #FFFFFF;">
-                      <option value="INR" ${curr.default_display_currency === 'INR' ? 'selected' : ''}>INR (₹ - Indian Rupee)</option>
-                      <option value="USD" ${curr.default_display_currency === 'USD' ? 'selected' : ''}>USD ($ - US Dollar)</option>
-                      <option value="EUR" ${curr.default_display_currency === 'EUR' ? 'selected' : ''}>EUR (€ - Euro)</option>
-                      <option value="GBP" ${curr.default_display_currency === 'GBP' ? 'selected' : ''}>GBP (£ - British Pound)</option>
-                      <option value="AED" ${curr.default_display_currency === 'AED' ? 'selected' : ''}>AED (د.إ - UAE Dirham)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Payment Gateway Currency (Fixed)</label>
-                    <input type="text" readonly value="INR (₹) - Cashfree Gateway" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem; background: var(--bg-tertiary);" />
-                  </div>
-                </div>
-
-                <div style="background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem; font-size: 0.825rem; color: var(--text-secondary); line-height: 1.5;">
-                  ℹ️ <strong>Currency Separation:</strong> The marketplace Display Currency formats visual prices for international browsing. The Payment Currency strictly corresponds to the configured payment gateway processor.
-                </div>
-              </div>
-
-              <!-- 6. MAINTENANCE MODE -->
-              <div id="sec-maintenance" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  Maintenance Mode
-                </h3>
-                <label style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; cursor: pointer;">
-                  <div>
-                    <strong style="font-size: 1rem; color: var(--text-primary);">Enable Maintenance Mode</strong>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">When active, non-admin visitors see a maintenance screen</div>
-                  </div>
-                  <input type="checkbox" id="set-maint-enabled" ${maint.enabled ? 'checked' : ''} style="width: 22px; height: 22px; accent-color: #DC2626;" />
-                </label>
-                <div>
-                  <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Public Maintenance Message</label>
-                  <textarea id="set-maint-msg" rows="3" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;">${maint.message || 'Bookora is undergoing scheduled platform enhancements.'}</textarea>
-                </div>
-              </div>
-
-              <!-- 7. BOOKS & FILES -->
-              <div id="sec-books" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  eBook Constraints & Sample Limits
-                </h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Max Upload Size (MB)</label>
-                    <input type="number" id="set-max-pdf-size" value="${books.max_pdf_size_mb || 100}" min="10" max="500" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
-                  </div>
-                  <div>
-                    <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Free Preview Page Limit</label>
-                    <input type="number" id="set-preview-limit" value="${books.preview_page_limit || 5}" min="1" max="20" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;" />
-                  </div>
-                </div>
-              </div>
-
-              <!-- 8. EXTERNAL LINK SECURITY -->
-              <div id="sec-external" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  External Discovery Security Rules
-                </h3>
-                <div style="display: flex; flex-direction: column; gap: 1rem;">
-                  <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                    <div>
-                      <strong style="font-size: 0.9rem; color: var(--text-primary);">Enforce HTTPS Strict Scheme</strong>
-                      <div style="font-size: 0.75rem; color: var(--text-muted);">Rejects non-https links, javascript:, data:, and insecure protocols</div>
-                    </div>
-                    <input type="checkbox" checked disabled style="width: 20px; height: 20px; accent-color: var(--accent);" />
-                  </label>
-                  <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                    <div>
-                      <strong style="font-size: 0.9rem; color: var(--text-primary);">External Redirect Confirmation Banner</strong>
-                      <div style="font-size: 0.75rem; color: var(--text-muted);">Inform users they are leaving Bookora to checkout on the publisher site</div>
-                    </div>
-                    <input type="checkbox" id="set-ext-redirect-confirm" ${ext.require_redirect_confirmation ? 'checked' : ''} style="width: 20px; height: 20px; accent-color: var(--accent);" />
-                  </label>
-                </div>
-              </div>
-
-                          <!-- 9. GOOGLE DRIVE DATABASE & BACKUPS -->
-              <div id="sec-database" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  Google Drive Database & Fast Cache
-                </h3>
-
-                <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <div>
-                      <strong style="color: #166534; font-size: 0.95rem;">Drive Database Status: CONNECTED & SYNCED</strong>
-                      <div style="font-size: 0.8rem; color: #15803D; margin-top: 2px;">
-                        Folder ID: <code>1I9o_gyaAqLi3-W4ZI7EXpIyqwt4Qlhah</code> (Persistent Master Storage)
-                      </div>
-                    </div>
-                    <button type="button" id="check-db-health-btn" class="btn btn-secondary btn-sm" style="font-size: 0.75rem;">
-                      Check System Health
-                    </button>
-                  </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.5rem;">
-                  <div style="background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
-                    <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Cache Architecture</span>
-                    <strong style="display: block; font-size: 0.95rem; color: var(--text-primary); margin-top: 2px;">3-Tier (Browser + Memory + Drive)</strong>
-                  </div>
-                  <div style="background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
-                    <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Concurrency Lock</span>
-                    <strong style="display: block; font-size: 0.95rem; color: #16A34A; margin-top: 2px;">Atomic Locking Enabled</strong>
-                  </div>
-                </div>
-
-                <div style="border-top: 1px solid var(--border-subtle); padding-top: 1.5rem;">
-                  <h4 style="font-size: 1rem; font-weight: 700; margin-bottom: 0.75rem;">Database Backups & Snapshots</h4>
-                  <div style="display: flex; gap: 0.75rem; align-items: center;">
-                    <button type="button" id="create-backup-btn" class="btn btn-primary btn-sm">
-                      Create Database Backup Snapshot
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-            
-              <!-- 10. GROQ AI CONFIGURATION -->
-              <div id="sec-groq" class="settings-section" style="display: none;">
-                <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 0.75rem;">
-                  Groq AI Smart Intelligence Engine
-                </h3>
-
-                <div style="background: linear-gradient(135deg, #F8FAFC 0%, #F5F3FF 100%); border: 1px solid #DDD6FE; border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <div>
-                      <strong style="color: #6D28D9; font-size: 0.95rem;">Groq Low-Latency Engine: SERVER-SIDE CONFIGURED</strong>
-                      <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">
-                        Powers Bookora AI Assistant, Creator Studio Description Gen, and Semantic Search.
-                      </div>
-                    </div>
-                    <span class="badge badge-external" style="font-size: 0.75rem;">Llama-3.3-70B Ready</span>
-                  </div>
-                </div>
-
-                <div style="margin-bottom: 1.25rem;">
-                  <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Groq API Key (Server Protected)</label>
-                  <input type="password" id="set-groq-key" placeholder="gsk_••••••••••••••••••••••••" value="${state.settings?.ai_config?.groq_api_key ? '••••••••••••••••' : ''}" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem; font-family: monospace;" />
-                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem;">
-                    🔒 Stored securely on server. Never exposed to browser or client JavaScript.
-                  </div>
-                </div>
-
-                <div style="margin-bottom: 1.5rem;">
-                  <label style="display: block; font-size: 0.825rem; font-weight: 600; margin-bottom: 0.35rem;">Groq AI Model</label>
-                  <select id="set-groq-model" style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem; background: #FFFFFF;">
-                    <option value="llama-3.3-70b-versatile" selected>llama-3.3-70b-versatile (Recommended - High Speed & Intelligence)</option>
-                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Ultra Fast Inference)</option>
-                    <option value="mixtral-8x7b-32768">mixtral-8x7b-32768 (Long Context Window)</option>
-                  </select>
-                </div>
-              </div>
-
-            </form>
-          </div>
-
-        </div>
-
+            <div id="sec-groq" class="settings-section" style="display:${activeSection==='groq'?'block':'none'}"><h2>Groq AI Configuration</h2><div class="settings-fields"><div><label>Groq Model</label><select id="set-groq-model"><option value="llama-3.3-70b-versatile" ${s.ai_config.groq_model==='llama-3.3-70b-versatile'?'selected':''}>llama-3.3-70b-versatile</option><option value="llama-3.1-8b-instant" ${s.ai_config.groq_model==='llama-3.1-8b-instant'?'selected':''}>llama-3.1-8b-instant</option></select></div></div><div class="settings-note">Groq API keys must remain server-side. This page only stores the selected model.</div></div>
+          </form>
+        </section>
       </div>
     </div>
-  `;
+  </div>
+  <style>.settings-section h2{font-size:1.35rem;margin:0 0 1.5rem;padding-bottom:.8rem;border-bottom:1px solid var(--border-subtle)}.settings-fields{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.2rem}.settings-fields>div:has(textarea){grid-column:1/-1}.settings-section label{display:block;font-size:.82rem;font-weight:700;margin-bottom:.35rem}.settings-section input,.settings-section select,.settings-section textarea{width:100%;box-sizing:border-box;padding:.72rem .85rem;border:1px solid var(--border-medium);border-radius:10px;background:#fff;font:inherit}.settings-section textarea{resize:vertical}.settings-note{padding:1rem;border-radius:10px;background:var(--bg-secondary);color:var(--text-secondary);font-size:.85rem;margin-top:1rem}.setting-toggle{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;border-top:1px solid var(--border-subtle)}@media(max-width:800px){.settings-grid-layout{grid-template-columns:1fr!important}.settings-grid-layout aside{position:static;display:grid;grid-template-columns:1fr 1fr;gap:3px}.settings-grid-layout aside>div{grid-column:1/-1}.settings-fields{grid-template-columns:1fr}.settings-section{overflow:hidden}section{padding:1.2rem!important}}@media(max-width:480px){.settings-grid-layout aside{grid-template-columns:1fr}.admin-settings-page{padding-top:1rem!important}.admin-settings-page h1{font-size:1.65rem!important}}</style>`;
 }
 
-export function initAdminSettingsEvents() {
-  // Tab Switching
-  document.querySelectorAll('.settings-tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.settings-tab-btn').forEach(b => {
-        b.style.background = 'transparent';
-        b.style.color = 'var(--text-secondary)';
-        b.classList.remove('active');
-      });
-      btn.style.background = 'var(--accent-light)';
-      btn.style.color = 'var(--accent)';
-      btn.classList.add('active');
+function input(id,label,value,type='text'){return `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" value="${esc(value)}"></div>`}
+function textarea(id,label,value){return `<div style="grid-column:1/-1"><label for="${id}">${label}</label><textarea id="${id}" rows="3">${esc(value)}</textarea></div>`}
+function color(id,label,value){return `<div><label for="${id}">${label}</label><input id="${id}" type="color" value="${esc(value)}" style="height:46px;padding:4px"></div>`}
+function number(id,label,value,min,max,step){return `<div><label for="${id}">${label}</label><input id="${id}" type="number" value="${Number(value)}" min="${min}" max="${max}" step="${step}"></div>`}
+function toggle(id,label,checked){return `<label class="setting-toggle"><span><strong>${label}</strong></span><input id="${id}" type="checkbox" ${checked?'checked':''} style="width:20px;height:20px;accent-color:var(--accent)"></label>`}
 
-      const secId = btn.dataset.section;
-      document.querySelectorAll('.settings-section').forEach(s => s.style.display = 'none');
-      const targetSec = document.getElementById(`sec-${secId}`);
-      if (targetSec) targetSec.style.display = 'block';
-    });
+export function initAdminSettingsEvents(){
+  document.querySelectorAll('.settings-tab-btn').forEach(btn=>btn.addEventListener('click',()=>{
+    const id=btn.dataset.section;
+    document.querySelectorAll('.settings-section').forEach(x=>x.style.display='none');
+    document.getElementById(`sec-${id}`)?.style.setProperty('display','block');
+    document.querySelectorAll('.settings-tab-btn').forEach(x=>{x.classList.remove('active');x.style.background='transparent';x.style.color='var(--text-secondary)'});
+    btn.classList.add('active');btn.style.background='var(--accent-light)';btn.style.color='var(--accent)';
+  }));
+
+  document.getElementById('save-all-settings-btn')?.addEventListener('click', saveSettings);
+  document.getElementById('reload-settings-btn')?.addEventListener('click', async()=>{await state.syncData();window.location.hash=window.location.hash;Toast.show('Settings reloaded from Firestore.','success');});
+  document.getElementById('check-db-health-btn')?.addEventListener('click', async()=>{
+    try{const {db}=await state.getFirebase();await db.collection('settings').doc('public').get();Toast.show('Firestore connection is working.','success');}
+    catch(e){Toast.show(`Firestore error: ${e.message}`,'error');}
   });
-
-  // Save Settings
-  const saveBtn = document.getElementById('save-all-settings-btn');
-  saveBtn?.addEventListener('click', async () => {
-    const envChoice = document.getElementById('set-cf-env')?.value;
-    
-    // Production confirmation guard
-    if (envChoice === 'PRODUCTION' && state.settings?.payments?.cashfree_environment !== 'PRODUCTION') {
-      const confirmWord = prompt('⚠️ WARNING: Switching to Cashfree PRODUCTION mode processes real financial transactions. Type "PRODUCTION" to confirm:');
-      if (confirmWord !== 'PRODUCTION') {
-        Toast.show('Production switch cancelled.', 'warning');
-        return;
-      }
-    }
-
-    const updatedSettings = {
-      general: {
-        website_name: document.getElementById('set-website-name')?.value.trim() || 'Bookora',
-        tagline: document.getElementById('set-tagline')?.value.trim() || 'Discover. Read. Publish.',
-        description: document.getElementById('set-desc')?.value.trim() || '',
-        support_email: document.getElementById('set-support-email')?.value.trim() || 'support@bookora.com',
-        contact_email: document.getElementById('set-contact-email')?.value.trim() || 'contact@bookora.com',
-        timezone: 'Asia/Kolkata',
-        date_format: 'DD/MM/YYYY',
-        default_language: 'English'
-      },
-      branding: {
-        primary_accent: document.getElementById('set-primary-accent')?.value || '#2563EB',
-        secondary_accent: document.getElementById('set-secondary-accent')?.value || '#1D4ED8',
-        border_radius: '10px',
-        button_style: 'rounded-lg'
-      },
-      marketplace: {
-        seller_commission_pct: parseFloat(document.getElementById('set-author-royalty')?.value || 85.0),
-        platform_commission_pct: parseFloat(document.getElementById('set-platform-fee')?.value || 15.0),
-        seller_approval_required: document.getElementById('set-seller-approval-req')?.checked || false,
-        book_approval_required: document.getElementById('set-book-approval-req')?.checked || false,
-        reviews_enabled: true,
-        wishlist_enabled: true,
-        downloads_enabled: true,
-        pdf_preview_enabled: true
-      },
-      currency: {
-        default_display_currency: document.getElementById('set-display-curr')?.value || 'INR',
-        currency_symbol: document.getElementById('set-display-curr')?.value === 'INR' ? '₹' : '$',
-        currency_position: 'prefix',
-        decimal_places: 2,
-        thousands_separator: ',',
-        decimal_separator: '.',
-        payment_currency: 'INR'
-      },
-      payments: {
-        cashfree_environment: envChoice || 'SANDBOX',
-        cashfree_app_id: document.getElementById('set-cf-appid')?.value.trim() || '',
-        cashfree_secret_key: document.getElementById('set-cf-secret')?.value.trim() || '',
-        api_version: '2023-08-01'
-      },
-      maintenance: {
-        enabled: document.getElementById('set-maint-enabled')?.checked || false,
-        message: document.getElementById('set-maint-msg')?.value.trim() || 'Bookora is undergoing scheduled platform enhancements.'
-      },
-      books_config: {
-        max_pdf_size_mb: parseInt(document.getElementById('set-max-pdf-size')?.value || 100, 10),
-        preview_page_limit: parseInt(document.getElementById('set-preview-limit')?.value || 5, 10),
-        allowed_file_types: ['PDF', 'EPUB']
-      },
-      external_config: {
-        external_listings_enabled: true,
-        allowed_protocols: ['https:'],
-        require_redirect_confirmation: document.getElementById('set-ext-redirect-confirm')?.checked || false
-      }
-    };
-
-    saveBtn.disabled = true;
-    saveBtn.textContent = 'Saving Settings...';
-
-    const res = await state.saveAdminSettings(updatedSettings);
-    saveBtn.disabled = false;
-    saveBtn.textContent = 'Save All Settings';
-
-    if (res.success) {
-      Toast.show('Settings saved successfully to server!', 'success');
-    } else {
-      Toast.show(res.error || 'Failed to save settings.', 'error');
-    }
-  });
-
-  // Database Tools Events
-  document.getElementById('check-db-health-btn')?.addEventListener('click', async () => {
-    try {
-      const res = await apiFetch('/api/health');
-      const data = await res.json();
-      alert(`System Health Report:\n- API: ${data.api}\n- Database: ${data.database.status}\n- Folder ID: ${data.database.folder_id}\n- Cache Hit Rate: ${data.cache.hit_rate}`);
-    } catch (e) {
-      Toast.show('Health check error.', 'error');
-    }
-  });
-
-  document.getElementById('create-backup-btn')?.addEventListener('click', async () => {
-    try {
-      const res = await apiFetch('/api/admin/backups/create', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${state.token}` }
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        Toast.show(`Backup snapshot created: ${data.backup_id}`, 'success');
-      }
-    } catch (e) {
-      Toast.show('Failed to create backup.', 'error');
-    }
-  });
-
 }
+
+async function saveSettings(){
+  if(!state.isAdmin){Toast.show('Admin authorization required.','error');return;}
+  const btn=document.getElementById('save-all-settings-btn');
+  const before=mergedSettings();
+  const currency=document.getElementById('set-display-curr')?.value||before.currency.default_display_currency;
+  const next={
+    ...before,
+    general:{website_name:v('set-website-name',before.general.website_name),tagline:v('set-tagline',before.general.tagline),description:v('set-desc',before.general.description),support_email:v('set-support-email',before.general.support_email),contact_email:v('set-contact-email',before.general.contact_email)},
+    branding:{primary_accent:v('set-primary-accent',before.branding.primary_accent),secondary_accent:v('set-secondary-accent',before.branding.secondary_accent)},
+    marketplace:{seller_commission_pct:n('set-author-royalty',before.marketplace.seller_commission_pct),platform_commission_pct:n('set-platform-fee',before.marketplace.platform_commission_pct),seller_approval_required:c('set-seller-approval-req'),book_approval_required:c('set-book-approval-req'),reviews_enabled:c('set-reviews-enabled'),wishlist_enabled:c('set-wishlist-enabled'),downloads_enabled:c('set-downloads-enabled'),pdf_preview_enabled:c('set-preview-enabled')},
+    payments:{...before.payments,cashfree_environment:v('set-cf-env',before.payments.cashfree_environment),cashfree_app_id:v('set-cf-appid',before.payments.cashfree_app_id),api_version:v('set-cf-api-version',before.payments.api_version)},
+    currency:{...before.currency,default_display_currency:currency,currency_symbol:currency==='INR'?'₹':'$',decimal_places:n('set-decimal-places',before.currency.decimal_places),payment_currency:'INR'},
+    maintenance:{enabled:c('set-maint-enabled'),message:v('set-maint-msg',before.maintenance.message)},
+    books_config:{...before.books_config,max_pdf_size_mb:n('set-max-pdf-size',before.books_config.max_pdf_size_mb),preview_page_limit:n('set-preview-limit',before.books_config.preview_page_limit),allowed_file_types:['PDF','EPUB']},
+    external_config:{...before.external_config,external_listings_enabled:c('set-ext-enabled'),allowed_protocols:['https:'],require_redirect_confirmation:c('set-ext-redirect-confirm')},
+    ai_config:{...before.ai_config,groq_model:v('set-groq-model',before.ai_config.groq_model)}
+  };
+  delete next.payments.cashfree_secret_key;
+  delete next.ai_config.groq_api_key;
+  try{
+    btn.disabled=true;btn.textContent='Saving...';
+    const {db}=await state.getFirebase();
+    await db.collection('settings').doc('public').set({...next,updatedAt:new Date().toISOString(),updatedBy:state.currentUser?.uid||''},{merge:false});
+    state.settings=next;state.notify('SETTINGS_UPDATED',next);
+    if(next.branding?.primary_accent)document.documentElement.style.setProperty('--accent',next.branding.primary_accent);
+    if(next.branding?.secondary_accent)document.documentElement.style.setProperty('--accent-hover',next.branding.secondary_accent);
+    Toast.show('All settings saved to Firebase Firestore.','success');
+  }catch(e){console.error(e);Toast.show(`Save failed: ${e.message}`,'error');}
+  finally{btn.disabled=false;btn.textContent='Save All Settings'}
+}
+const el=id=>document.getElementById(id);
+const v=(id,fallback='')=>el(id)?.value ?? fallback;
+const n=(id,fallback=0)=>Number(el(id)?.value ?? fallback);
+const c=id=>!!el(id)?.checked;
