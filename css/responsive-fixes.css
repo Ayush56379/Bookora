@@ -1,0 +1,110 @@
+/* Bookora — universal responsive safety layer
+   Keeps every SPA page usable on desktop, tablet and mobile. */
+
+html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+#app, #main-content { width: 100%; min-width: 0; }
+
+/* Prevent long content, tables and code-like values from breaking layouts. */
+#app * { min-width: 0; }
+#app img, #app video, #app iframe { max-width: 100%; height: auto; }
+#app table { width: 100%; border-collapse: collapse; }
+#app pre, #app code { max-width: 100%; overflow-x: auto; }
+#app input, #app select, #app textarea { max-width: 100%; }
+
+/* Generic page/layout grids used throughout Bookora. */
+.grid, .books-grid, .book-grid, .card-grid, .catalog-grid, .stats-grid,
+.admin-grid, .dashboard-grid, .settings-grid, .form-grid {
+  width: 100%;
+}
+
+/* Safe flex behavior. */
+.flex, .flex-row, .page-header, .section-header, .toolbar, .actions,
+.form-actions, .modal-actions { min-width: 0; }
+
+/* Touch targets. */
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button, .btn, a[role="button"] { touch-action: manipulation; }
+
+/* Tablet: reduce oversized spacing without changing the desktop design. */
+@media (max-width: 1024px) {
+  .container { max-width: 100%; padding-left: 1.25rem; padding-right: 1.25rem; }
+  .page-container, .content-container { max-width: 100%; padding-left: 1.25rem; padding-right: 1.25rem; }
+  .hero, .hero-section { padding-left: 1.25rem; padding-right: 1.25rem; }
+
+  .grid, .books-grid, .book-grid, .card-grid, .catalog-grid,
+  .admin-grid, .dashboard-grid, .settings-grid, .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-header, .section-header, .toolbar { flex-wrap: wrap; gap: .75rem; }
+  .modal, .dialog, .drawer { max-width: calc(100vw - 32px); }
+}
+
+/* Mobile: one-column content, compact controls and no horizontal overflow. */
+@media (max-width: 700px) {
+  .container, .page-container, .content-container {
+    width: 100%;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .grid, .books-grid, .book-grid, .card-grid, .catalog-grid,
+  .admin-grid, .dashboard-grid, .settings-grid, .form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .page-header, .section-header, .toolbar, .actions, .form-actions,
+  .modal-actions { width: 100%; flex-wrap: wrap; }
+
+  .page-header > *, .section-header > * { max-width: 100%; }
+  .toolbar input, .toolbar select, .toolbar .search-input { width: 100%; }
+
+  h1 { font-size: clamp(1.75rem, 7vw, 2.35rem); line-height: 1.15; }
+  h2 { font-size: clamp(1.4rem, 6vw, 1.9rem); line-height: 1.2; }
+  h3 { font-size: clamp(1.1rem, 5vw, 1.4rem); }
+
+  .btn, button { max-width: 100%; }
+  .btn-lg { padding: .75rem 1.1rem; }
+
+  /* Large desktop tables become scrollable instead of breaking the page. */
+  .table-responsive, .table-wrap, .data-table-wrap { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-responsive table, .table-wrap table, .data-table-wrap table { min-width: 620px; }
+
+  /* Dialogs/modals fit small screens. */
+  .modal, .dialog, [role="dialog"] {
+    width: min(100% - 24px, 560px) !important;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+  }
+
+  .bookora-ai-btn { right: 14px; bottom: 14px; padding: 10px 14px; }
+  .bookora-ai-drawer {
+    right: 10px;
+    bottom: 70px;
+    width: calc(100vw - 20px);
+    max-width: none;
+    height: min(72vh, 540px);
+    border-radius: 16px;
+  }
+
+  .mobile-nav-drawer { width: min(88vw, 340px); }
+}
+
+/* Very small phones. */
+@media (max-width: 390px) {
+  .container, .page-container, .content-container { padding-left: .75rem; padding-right: .75rem; }
+  .btn { width: 100%; }
+  .btn-sm { width: auto; }
+  .mobile-nav-drawer { padding-left: 1rem; padding-right: 1rem; }
+}
+
+/* Landscape phones/tablets: don't let fixed panels exceed the viewport. */
+@media (max-height: 600px) and (orientation: landscape) {
+  .mobile-nav-drawer { overflow-y: auto; }
+  .bookora-ai-drawer { max-height: calc(100vh - 80px); }
+}
+
+/* Accessibility / device behavior. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
