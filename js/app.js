@@ -34,10 +34,30 @@ import { renderSellerApplyPage, initSellerApplyEvents } from './pages/SellerAppl
 import { renderSellerSettingsPage, initSellerSettingsEvents } from './pages/SellerSettingsPage.js';
 
 // Admin Pages
-import { renderAdminDashboardPage, initAdminDashboardEvents } from './pages/AdminDashboardPage.js';
-import { renderAdminSettingsPage, initAdminSettingsEvents } from './pages/AdminSettingsPage.js';
-import { renderAdminSecurityPage, initAdminSecurityEvents } from './pages/AdminSecurityPage.js';
-import { renderAdminAIDiagnosticsPage, initAdminAIDiagnosticsEvents } from './pages/AdminAIDiagnosticsPage.js';
+import {
+  renderAdminDashboardPage,
+  initAdminDashboardEvents
+} from './pages/AdminDashboardPage.js';
+
+import {
+  renderAdminUsersPage,
+  initAdminUsersEvents
+} from './pages/AdminUsersPage.js';
+
+import {
+  renderAdminSettingsPage,
+  initAdminSettingsEvents
+} from './pages/AdminSettingsPage.js';
+
+import {
+  renderAdminSecurityPage,
+  initAdminSecurityEvents
+} from './pages/AdminSecurityPage.js';
+
+import {
+  renderAdminAIDiagnosticsPage,
+  initAdminAIDiagnosticsEvents
+} from './pages/AdminAIDiagnosticsPage.js';
 
 // Auth Pages
 import { renderAuthPage, initAuthEvents } from './pages/AuthPages.js';
@@ -321,19 +341,67 @@ class App {
     }
 
     // 5. Admin Center
-    else if (path === '/admin' || path === '/admin/overview') {
-      pageHtml = renderAdminDashboardPage();
-      initCallback = () => initAdminDashboardEvents();
-    } else if (path === '/admin/settings') {
-      pageHtml = renderAdminSettingsPage();
-      initCallback = () => initAdminSettingsEvents();
-    } else if (path === '/admin/security') {
-      pageHtml = renderAdminSecurityPage();
-      initCallback = () => initAdminSecurityEvents();
-    } else if (path === '/admin/ai-diagnostics') {
-      pageHtml = renderAdminAIDiagnosticsPage();
-      initCallback = () => initAdminAIDiagnosticsEvents();
+else if (path === '/admin' || path === '/admin/overview') {
+
+  pageHtml = renderAdminDashboardPage();
+
+  initCallback = () => {
+    try {
+      initAdminDashboardEvents();
+    } catch (error) {
+      console.error('Admin dashboard initialization error:', error);
     }
+  };
+
+} else if (path === '/admin/users') {
+
+  pageHtml = renderAdminUsersPage();
+
+  initCallback = () => {
+    try {
+      initAdminUsersEvents();
+    } catch (error) {
+      console.error('Admin users initialization error:', error);
+    }
+  };
+
+} else if (path === '/admin/settings') {
+
+  pageHtml = renderAdminSettingsPage();
+
+  initCallback = () => {
+    try {
+      initAdminSettingsEvents();
+    } catch (error) {
+      console.error('Admin settings initialization error:', error);
+    }
+  };
+
+} else if (path === '/admin/security') {
+
+  pageHtml = renderAdminSecurityPage();
+
+  initCallback = () => {
+    try {
+      initAdminSecurityEvents();
+    } catch (error) {
+      console.error('Admin security initialization error:', error);
+    }
+  };
+
+} else if (path === '/admin/ai-diagnostics') {
+
+  pageHtml = renderAdminAIDiagnosticsPage();
+
+  initCallback = () => {
+    try {
+      initAdminAIDiagnosticsEvents();
+    } catch (error) {
+      console.error('Admin AI diagnostics initialization error:', error);
+    }
+  };
+
+}
 
     // 6. 404 Catch-All
     else {
