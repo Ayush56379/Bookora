@@ -717,3 +717,312 @@ if (
     }
   );
 }
+
+// ============================================================
+// BOOKORA - FIRESTORE BOOK FUNCTIONS
+// ============================================================
+
+export async function createBook(bookData = {}) {
+  const db = getFirestoreInstance();
+
+  if (!db) {
+    throw new Error("Firestore is not available.");
+  }
+
+  const auth = getAuthInstance();
+
+  if (!auth || !auth.currentUser) {
+    throw new Error("Please sign in first.");
+  }
+
+  const uid = auth.currentUser.uid;
+
+  const userRef = db.collection("users").doc(uid);
+  const userSnap = await userRef.get();
+
+  if (!userSnap.exists) {
+    throw new Error("User profile not found.");
+  }
+
+  const user = userSnap.data() || {};
+
+  const isAdmin =
+    user.role === "admin" ||
+    user.isMasterAdmin === true;
+
+  const isApprovedSeller =
+    user.seller_status === "approved" ||
+    user.role === "seller" ||
+    user.role === "creator";
+
+  if (!isAdmin && !isApprovedSeller) {
+    throw new Error(
+      "Seller approval is required before publishing."
+    );
+  }
+
+  const bookRef = db.collection("books").doc();
+
+  const now =
+    window.firebase.firestore.FieldValue.serverTimestamp();
+
+  const book = {
+    id: bookRef.id,
+
+    seller_id: uid,
+
+    title: String(bookData.title || "").trim(),
+    subtitle: String(bookData.subtitle || "").trim(),
+    author: String(bookData.author || "").trim(),
+
+    category: String(bookData.category || "").trim(),
+    description: String(bookData.description || "").trim(),
+
+    tags: Array.isArray(bookData.tags)
+      ? bookData.tags
+      : [],
+
+    pages: Number(bookData.pages || 0),
+
+    format: String(bookData.format || "PDF"),
+
+    price: Number(bookData.price || 0),
+
+    sale_price:
+      bookData.sale_price === null ||
+      bookData.sale_price === undefined ||
+      bookData.sale_price === ""
+        ? null
+        : Number(bookData.sale_price),
+
+    // Google Drive information
+    cover_url: bookData.cover_url || "",
+    cover_file_id: bookData.cover_file_id || "",
+
+    pdf_url: bookData.pdf_url || "",
+    pdf_file_id: bookData.pdf_file_id || "",
+
+    // Admin moderation
+    status: "pending",
+
+    createdAt: now,
+    updatedAt: now
+  };
+
+  await bookRef.set(book);
+
+  return {
+    success: true,
+    bookId: bookRef.id,
+    book
+  };
+}
+
+
+// ============================================================
+// GET APPROVED BOOKS
+// ============================================================
+
+export async function getApprovedBooks() {
+  const db = getFirestoreInstance();
+
+  if (!db) {
+    throw new Error("Firestore is not available.");
+  }
+
+  const snapshot = await db
+    .collection("books")
+    .where("status", "==", "approved")
+    .get();
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+}
+
+
+// ============================================================
+// GET SINGLE BOOK
+// ============================================================
+
+export async function getBook(bookId) {
+  const db = getFirestoreInstance();
+
+  if (!db) {
+    throw new Error("Firestore is not available.");
+  }
+
+  if (!bookId) {
+    throw new Error("Book ID is required.");
+  }
+
+  const doc = await db
+    .collection("books")
+    .doc(bookId)
+    .get();
+
+  if (!doc.exists) {
+    return null;
+  }
+
+  return {
+    id: doc.id,
+    ...doc.data()
+  };
+}
+
+
+// ============================================================
+// GET SELLER BOOKS
+// ============================================================
+
+export async function getMyBooks() {
+  const db = getFirestoreInstance();
+  const auth = getAuthInstance();
+
+  if (!db || !auth?.currentUser) {
+    throw new Error("Please sign in first.");
+  }
+
+  const uid = auth.currentUser.uid;
+
+  const snapshot = await db
+    .collection("books")
+    .where("seller_id", "==", uid)
+    .get();
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+}
+
+
+// ============================================================
+// ADMIN - GET ALL BOOKS
+// ============================================================
+
+export async function getAllBooks() {
+  const db = getFirestoreInstance();
+
+  if (!db) {
+    throw new Error("Firestore is not available.");
+  }
+
+  const snapshot = await db
+    .collection("books")
+    .get();
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+}
+
+
+// ============================================================
+// ADMIN - APPROVE BOOK
+// ============================================================
+
+export async function approveBook(bookId) {
+  const db = getFirestoreInstance();
+
+  if (!db) {
+    throw new Error("Firestore is not available.");
+  }
+
+  const auth = getAuthInstance();
+
+  if (!auth?.currentUser) {
+    throw new Error("Please sign in first.");
+  }
+
+  const uid = auth.currentUser.uid;
+
+  const userSnap = await db
+    .collection("users")
+    .doc(uid)
+    .get();
+
+  const user = userSnap.exists
+    ? userSnap.data()
+    : {};
+
+  if (
+    user.role !== "admin" &&
+    user.isMasterAdmin !== true
+  ) {
+    throw new Error("Admin access required.");
+  }
+
+  await db
+    .collection("books")
+    .doc(bookId)
+    .update({
+      status: "approved",
+      approvedAt:
+        window.firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt:
+        window.firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+  return {
+    success: true,
+    bookId
+  };
+}
+
+
+// ============================================================
+// ADMIN - REJECT BOOK
+// ============================================================
+
+export async function rejectBook(bookId, reason = "") {
+  const db = getFirestoreInstance();
+
+  if (!db) {
+    throw new Error("Firestore is not available.");
+  }
+
+  const auth = getAuthInstance();
+
+  if (!auth?.currentUser) {
+    throw new Error("Please sign in first.");
+  }
+
+  const uid = auth.currentUser.uid;
+
+  const userSnap = await db
+    .collection("users")
+    .doc(uid)
+    .get();
+
+  const user = userSnap.exists
+    ? userSnap.data()
+    : {};
+
+  if (
+    user.role !== "admin" &&
+    user.isMasterAdmin !== true
+  ) {
+    throw new Error("Admin access required.");
+  }
+
+  await db
+    .collection("books")
+    .doc(bookId)
+    .update({
+      status: "rejected",
+      rejection_reason: String(reason || ""),
+      rejectedAt:
+        window.firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt:
+        window.firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+  return {
+    success: true,
+    bookId
+  };
+}
