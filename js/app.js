@@ -37,6 +37,7 @@ import { renderSellerSettingsPage, initSellerSettingsEvents } from './pages/Sell
 import { renderAdminDashboardPage, initAdminDashboardEvents } from './pages/AdminDashboardPage.js';
 import { renderAdminUsersPage, initAdminUsersEvents } from './pages/AdminUsersPage.js';
 import { renderAdminSellersPage, initAdminSellersEvents } from './pages/AdminSellersPage.js';
+import { renderAdminBooksPage, initAdminBooksEvents } from './pages/AdminBooksPage.js';
 import { renderAdminSettingsPage, initAdminSettingsEvents } from './pages/AdminSettingsPage.js';
 import { renderAdminSecurityPage, initAdminSecurityEvents } from './pages/AdminSecurityPage.js';
 import { renderAdminAIDiagnosticsPage, initAdminAIDiagnosticsEvents } from './pages/AdminAIDiagnosticsPage.js';
@@ -169,6 +170,7 @@ class App {
     else if (path === '/admin' || path === '/admin/overview') { pageHtml = renderAdminDashboardPage(); initCallback = () => initAdminDashboardEvents(); }
     else if (path === '/admin/users') { pageHtml = renderAdminUsersPage(); initCallback = () => initAdminUsersEvents(); }
     else if (path === '/admin/sellers') { pageHtml = renderAdminSellersPage(); initCallback = () => initAdminSellersEvents(); }
+    else if (path === '/admin/books') { pageHtml = renderAdminBooksPage(); initCallback = () => initAdminBooksEvents(); }
     else if (path === '/admin/settings') { pageHtml = renderAdminSettingsPage(); initCallback = () => initAdminSettingsEvents(); }
     else if (path === '/admin/security') { pageHtml = renderAdminSecurityPage(); initCallback = () => initAdminSecurityEvents(); }
     else if (path === '/admin/ai-diagnostics') { pageHtml = renderAdminAIDiagnosticsPage(); initCallback = () => initAdminAIDiagnosticsEvents(); }
