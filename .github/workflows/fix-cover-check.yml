@@ -1,0 +1,26 @@
+name: Fix Optional Cover Check
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix null cover check
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('js/pages/PublishInternalPage.js')
+          s=p.read_text().replace('if (selectedCover.size > MAX_COVER_SIZE) {', 'if (selectedCover && selectedCover.size > MAX_COVER_SIZE) {')
+          p.write_text(s)
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/pages/PublishInternalPage.js
+          git diff --cached --quiet || git commit -m "Fix optional cover validation"
+          git push
