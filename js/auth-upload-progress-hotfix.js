@@ -4,8 +4,10 @@ const API = 'https://bookora-backend-x08l.onrender.com';
 const UPLOAD_PATH = '/api/books/upload-files';
 let authPromise = null;
 
-async function exchangeFirebaseSession() {
-  if (state.token) return state.token;
+// Always exchange a fresh Firebase ID token for the short-lived Bookora
+// backend session. A stale localStorage/state token was causing /api/auth/me
+// and /api/books/upload-files to return 401 after the Render redeploy.
+async function exchangeFirebaseSession(forceRefresh = true) {
   if (authPromise) return authPromise;
 
   authPromise = (async () => {
@@ -13,7 +15,7 @@ async function exchangeFirebaseSession() {
     const user = window.firebase.auth().currentUser;
     if (!user) return '';
 
-    const idToken = await user.getIdToken(true);
+    const idToken = await user.getIdToken(forceRefresh);
     const response = await fetch(`${API}/api/auth/firebase`, {
       method: 'POST',
       headers: {
@@ -29,23 +31,24 @@ async function exchangeFirebaseSession() {
     }
 
     state.token = data.token;
-    try { localStorage.setItem('bookora_auth_token', data.token); } catch (_) {}
+    state.isAuthenticated = true;
+    state.isAdmin = !!data.is_admin;
+    state.isSeller = !!data.is_seller;
     if (data.user) {
       state.currentUser = data.user;
-      state.isAuthenticated = true;
-      state.isAdmin = !!data.is_admin;
-      state.isSeller = !!data.is_seller;
       try { localStorage.setItem('bookora_user_profile', JSON.stringify(data.user)); } catch (_) {}
     }
+    try { localStorage.setItem('bookora_auth_token', data.token); } catch (_) {}
     return data.token;
   })().finally(() => { authPromise = null; });
 
   return authPromise;
 }
 
-async function ensureSession() {
-  if (state.token) return state.token;
-  return exchangeFirebaseSession();
+async function ensureSession(forceRefresh = true) {
+  // Never trust a cached backend token for an upload. Render deployments can
+  // invalidate old sessions, while the Firebase session remains valid.
+  return exchangeFirebaseSession(forceRefresh);
 }
 
 function installAuthRefresh() {
@@ -55,11 +58,11 @@ function installAuthRefresh() {
       if (!auth) return false;
       auth.onAuthStateChanged(async user => {
         if (!user) return;
-        try { await exchangeFirebaseSession(); } catch (error) {
+        try { await exchangeFirebaseSession(true); } catch (error) {
           console.warn('Bookora backend session sync:', error.message);
         }
       });
-      if (auth.currentUser) exchangeFirebaseSession().catch(() => {});
+      if (auth.currentUser) exchangeFirebaseSession(true).catch(() => {});
       return true;
     } catch (_) { return false; }
   };
@@ -125,8 +128,8 @@ function patchUploadFetch() {
     if (!String(url).includes(UPLOAD_PATH)) return originalFetch(input, init);
 
     try {
-      const token = await ensureSession();
-      if (!token) throw new Error('Your login session is not ready. Please wait a moment and try again.');
+      const token = await ensureSession(true);
+      if (!token) throw new Error('Your Firebase login session is not ready. Please sign in again.');
 
       let body = init.body;
       if (body == null && typeof input !== 'string' && input?.body) body = input.body;
@@ -135,12 +138,13 @@ function patchUploadFetch() {
       }
 
       createProgressUI();
-      updateProgress(2, 'Preparing upload', 'Connecting to Bookora server…');
+      updateProgress(2, 'Preparing upload', 'Secure session verified. Connecting to Bookora…');
 
       return await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open(String(init.method || 'POST'), String(url), true);
         xhr.responseType = 'text';
+        xhr.timeout = 15 * 60 * 1000;
         const headers = new Headers(init.headers || {});
         headers.set('Authorization', `Bearer ${token}`);
         headers.set('Accept', 'application/json');
@@ -160,7 +164,7 @@ function patchUploadFetch() {
         xhr.upload.onloadstart = () => updateProgress(3, 'Uploading eBook', 'Starting file transfer…');
         xhr.upload.onload = () => updateProgress(95, 'Processing upload', 'Files received. Verifying and saving…');
         xhr.onerror = () => { finishProgress(false, 'Network error while uploading.'); reject(new Error('Network error while uploading the eBook.')); };
-        xhr.ontimeout = () => { finishProgress(false, 'The upload timed out.'); reject(new Error('The upload timed out. Please try again.')); };
+        xhr.ontimeout = () => { finishProgress(false, 'The upload timed out after 15 minutes.'); reject(new Error('The upload timed out. Please try again.')); };
         xhr.onload = () => {
           const text = xhr.responseText || '';
           let data = {};
@@ -173,8 +177,9 @@ function patchUploadFetch() {
               headers: { 'Content-Type': xhr.getResponseHeader('Content-Type') || 'application/json' }
             }));
           } else {
-            finishProgress(false, data.error || `Server returned ${xhr.status}.`);
-            resolve(new Response(text || JSON.stringify({ error: data.error || `Upload failed (${xhr.status})` }), {
+            const message = data.error || `Server returned ${xhr.status}.`;
+            finishProgress(false, message);
+            resolve(new Response(text || JSON.stringify({ error: message }), {
               status: xhr.status,
               statusText: xhr.statusText,
               headers: { 'Content-Type': 'application/json' }
@@ -195,8 +200,8 @@ function installProgressTrigger() {
     const button = event.target?.closest?.('#submit-pub-btn');
     if (!button) return;
     createProgressUI();
-    updateProgress(1, 'Preparing upload', 'Checking your secure session…');
-    ensureSession().catch(error => {
+    updateProgress(1, 'Preparing upload', 'Refreshing secure Firebase session…');
+    ensureSession(true).catch(error => {
       updateProgress(0, 'Authentication error', error.message);
     });
   }, true);
