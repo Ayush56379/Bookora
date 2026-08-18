@@ -87,7 +87,7 @@ function validateStep2() {
     Toast.show('Please select the eBook cover image.', 'warning');
     return false;
   }
-  if (selectedCover.size > MAX_COVER_SIZE) {
+  if (selectedCover && selectedCover.size > MAX_COVER_SIZE) {
     Toast.show('Cover must be 5 MB or smaller.', 'warning');
     return false;
   }
