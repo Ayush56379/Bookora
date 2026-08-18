@@ -54,7 +54,10 @@ class App {
 
     state.subscribe((event) => {
       this.updateHeader();
-      if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) this.route();
+      // DATA_SYNCED is important: the live Render backend may finish after
+      // the first page render. Re-render the current route so new approved
+      // books immediately appear everywhere the catalog is used.
+      if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED', 'DATA_SYNCED'].includes(event)) this.route();
     });
 
     document.addEventListener('click', (e) => {
