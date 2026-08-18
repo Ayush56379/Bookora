@@ -1,106 +1,52 @@
-// Bookora - Google Apps Script API
+// Bookora frontend API configuration
+// All production data, uploads, AI and payments go through the Render backend.
 
-export const API_BASE_URL =
-  'https://script.google.com/macros/s/AKfycbzUu9SstSp1ONdUOLb6hAeCtDzlxrvymtf_y2c5ISacPNRYXaJThewGzqbIO0vzQqYfnw/exec';
+export const API_BASE_URL = 'https://bookora-backend-x08l.onrender.com';
 
-
-// ---------------------------------------------------------
-// Apps Script API helper
-// ---------------------------------------------------------
+const endpointMap = {
+  '/api/auth/me': '/api/auth/me',
+  '/api/auth/logout': '/api/auth/logout',
+  '/api/books': '/api/books',
+  '/api/categories': '/api/categories',
+  '/api/settings/public': '/api/settings/public',
+  '/api/library': '/api/library',
+  '/api/wishlist': '/api/wishlist',
+  '/api/cart': '/api/cart',
+  '/api/orders': '/api/orders',
+  '/api/admin/stats': '/api/admin/overview',
+  '/api/ai/chat': '/api/ai/chat',
+  '/api/books/upload-files': '/api/books/upload-files',
+  '/api/books/create': '/api/books/create',
+  '/api/admin/books': '/api/admin/books',
+  '/api/admin/users': '/api/admin/users',
+  '/api/admin/settings': '/api/admin/settings',
+  '/api/cashfree/create-order': '/api/cashfree/create-order',
+  '/api/cashfree/verify-order': '/api/cashfree/verify-order'
+};
 
 export async function apiFetch(endpoint, options = {}) {
+  const path = endpointMap[endpoint] || endpoint;
+  const method = String(options.method || 'GET').toUpperCase();
+  const headers = new Headers(options.headers || {});
+  headers.set('Accept', 'application/json');
 
-  let action = '';
-
-  const map = {
-
-    '/api/auth/me': 'me',
-    '/api/auth/logout': 'logout',
-
-    '/api/books': 'books',
-    '/api/categories': 'categories',
-
-    '/api/settings/public': 'settings',
-
-    '/api/library': 'myLibrary',
-    '/api/wishlist': 'getWishlist',
-
-    '/api/cart': 'getCart',
-    '/api/orders': 'myOrders',
-
-    '/api/admin/stats': 'adminStats'
-
-  };
-
-
-  action = map[endpoint] || endpoint;
-
-
-  // GET request
-  if (!options.method || options.method.toUpperCase() === 'GET') {
-
-    const url =
-      `${API_BASE_URL}?action=${encodeURIComponent(action)}`;
-
-
-    return fetch(url, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json'
-      }
-    });
+  if (statefulAuthToken(options)) {
+    headers.set('Authorization', `Bearer ${statefulAuthToken(options)}`);
   }
 
-
-  // POST request
-  let payload = {};
-
-  if (options.body) {
-
-    try {
-
-      payload =
-        typeof options.body === 'string'
-          ? JSON.parse(options.body)
-          : options.body;
-
-    } catch (_) {
-
-      payload = {};
-    }
+  if (method !== 'GET' && method !== 'HEAD' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
   }
 
+  const url = `${API_BASE_URL}${path}`;
+  return fetch(url, { ...options, method, headers });
+}
 
-  payload.action =
-    payload.action || action;
+function statefulAuthToken(options) {
+  const h = options.headers || {};
+  return h.Authorization || h.authorization || '';
+}
 
-
-  const headers = {
-    Accept: 'application/json',
-    'Content-Type': 'text/plain;charset=utf-8'
-  };
-
-
-  // Authorization token
-  const authHeader =
-    options.headers?.Authorization ||
-    options.headers?.authorization;
-
-
-  if (authHeader) {
-
-    payload.token =
-      authHeader.replace(/^Bearer\s+/i, '');
-  }
-
-
-  return fetch(API_BASE_URL, {
-
-    method: 'POST',
-
-    headers,
-
-    body: JSON.stringify(payload)
-
-  });
+export function apiUrl(path = '') {
+  return `${API_BASE_URL}${path}`;
 }
