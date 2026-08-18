@@ -1,0 +1,45 @@
+/* Bookora AI — premium assistant UI */
+#bookora-ai-root #bookora-ai-trigger-btn{appearance:none!important;-webkit-appearance:none!important;border:1px solid rgba(255,255,255,.28)!important;outline:none!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:9px!important;padding:11px 18px!important;border-radius:999px!important;background:linear-gradient(135deg,#1d4ed8 0%,#2563eb 52%,#7c3aed 100%)!important;color:#fff!important;font:700 14px/1 Inter,system-ui,sans-serif!important;box-shadow:0 10px 28px rgba(37,99,235,.28),0 2px 8px rgba(15,23,42,.12)!important;transition:transform .2s ease,box-shadow .2s ease!important}
+#bookora-ai-root #bookora-ai-trigger-btn:hover{transform:translateY(-2px)!important;box-shadow:0 14px 32px rgba(37,99,235,.34),0 3px 10px rgba(15,23,42,.14)!important}
+#bookora-ai-root .ai-sparkle-icon{width:24px!important;height:24px!important;display:grid!important;place-items:center!important;flex:0 0 24px!important}
+#bookora-ai-root #bookora-ai-drawer{box-sizing:border-box!important;width:420px!important;height:600px!important;max-width:calc(100vw - 32px)!important;max-height:calc(100vh - 110px)!important;background:rgba(255,255,255,.98)!important;border:1px solid #e2e8f0!important;border-radius:22px!important;box-shadow:0 24px 70px rgba(15,23,42,.18),0 8px 24px rgba(15,23,42,.08)!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;color:#0f172a!important;font-family:Inter,system-ui,sans-serif!important}
+#bookora-ai-root .ai-drawer-header{min-height:72px!important;padding:14px 16px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;background:linear-gradient(180deg,#fff 0%,#f8fafc 100%)!important;border-bottom:1px solid #e2e8f0!important;flex:0 0 auto!important}
+#bookora-ai-root .ai-drawer-header>div:first-child{min-width:0!important}
+#bookora-ai-root .ai-drawer-header>div:first-child>div:first-child{width:38px!important;height:38px!important;border-radius:11px!important;background:linear-gradient(135deg,#2563eb,#7c3aed)!important;box-shadow:0 6px 14px rgba(37,99,235,.22)!important}
+#bookora-ai-root .ai-drawer-header>div:first-child>div:last-child>div:first-child{font:800 15px/1.1 'Plus Jakarta Sans',Inter,sans-serif!important;color:#0f172a!important}
+#bookora-ai-root .ai-drawer-header>div:first-child>div:last-child>div:last-child{font:500 11px/1.2 Inter,sans-serif!important;color:#64748b!important;margin-top:4px!important}
+#bookora-ai-root .ai-drawer-header button{appearance:none!important;border:0!important;background:transparent!important;color:#64748b!important;cursor:pointer!important;font:600 12px/1 Inter,sans-serif!important;padding:7px 9px!important;border-radius:8px!important;transition:.15s ease!important}
+#bookora-ai-root .ai-drawer-header button:hover{background:#f1f5f9!important;color:#0f172a!important}
+#bookora-ai-root #ai-close-btn{font-size:19px!important;font-weight:400!important;line-height:1!important;padding:5px 7px!important}
+#bookora-ai-root .ai-suggestions-bar{display:flex!important;gap:7px!important;padding:11px 13px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important;background:#fff!important;border-bottom:1px solid #f1f5f9!important;flex:0 0 auto!important}
+#bookora-ai-root .ai-suggestions-bar::-webkit-scrollbar{display:none!important}
+#bookora-ai-root .ai-chip-btn{appearance:none!important;-webkit-appearance:none!important;flex:0 0 auto!important;white-space:nowrap!important;border:1px solid #dbe4f0!important;border-radius:999px!important;background:#f8fafc!important;color:#334155!important;padding:7px 11px!important;font:600 11px/1 Inter,sans-serif!important;cursor:pointer!important;transition:.15s ease!important}
+#bookora-ai-root .ai-chip-btn:hover{background:#eff6ff!important;color:#2563eb!important;border-color:#bfdbfe!important;transform:translateY(-1px)!important}
+#bookora-ai-root .ai-messages-area{flex:1 1 auto!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;padding:16px!important;background:linear-gradient(180deg,#fbfdff 0%,#f8fafc 100%)!important;scroll-behavior:smooth!important}
+#bookora-ai-root .ai-message{display:flex!important;width:100%!important;margin:0 0 12px!important}
+#bookora-ai-root .ai-message.user-msg{justify-content:flex-end!important}
+#bookora-ai-root .msg-bubble{max-width:84%!important;padding:10px 12px!important;border-radius:15px 15px 15px 5px!important;background:#fff!important;border:1px solid #e2e8f0!important;color:#334155!important;box-shadow:0 2px 8px rgba(15,23,42,.04)!important;font:400 13px/1.55 Inter,sans-serif!important;overflow-wrap:anywhere!important}
+#bookora-ai-root .user-msg .msg-bubble{border-radius:15px 15px 5px 15px!important;background:linear-gradient(135deg,#2563eb,#1d4ed8)!important;border-color:#2563eb!important;color:#fff!important;box-shadow:0 5px 14px rgba(37,99,235,.18)!important}
+#bookora-ai-root .msg-bubble strong{font-weight:800!important;color:#0f172a!important}
+#bookora-ai-root .user-msg .msg-bubble strong{color:#fff!important}
+#bookora-ai-root .msg-bubble h3,#bookora-ai-root .msg-bubble h4{color:#1e3a8a!important;font-family:'Plus Jakarta Sans',Inter,sans-serif!important}
+#bookora-ai-root .msg-bubble .ai-action-link{display:inline-flex!important;align-items:center!important;margin:5px 3px 2px 0!important;padding:5px 8px!important;background:#eff6ff!important;color:#2563eb!important;border:1px solid #bfdbfe!important;border-radius:8px!important;font-weight:700!important;text-decoration:none!important}
+#bookora-ai-root .ai-input-bar{flex:0 0 auto!important;padding:11px 12px!important;background:#fff!important;border-top:1px solid #e2e8f0!important}
+#bookora-ai-root #ai-chat-form{display:flex!important;align-items:center!important;gap:8px!important;width:100%!important;margin:0!important}
+#bookora-ai-root #ai-user-input{box-sizing:border-box!important;min-width:0!important;width:auto!important;flex:1 1 auto!important;height:42px!important;padding:0 13px!important;border:1px solid #cbd5e1!important;border-radius:12px!important;background:#fff!important;color:#0f172a!important;outline:none!important;font:400 13px/1 Inter,sans-serif!important;box-shadow:inset 0 1px 2px rgba(15,23,42,.03)!important}
+#bookora-ai-root #ai-user-input::placeholder{color:#94a3b8!important}
+#bookora-ai-root #ai-user-input:focus{border-color:#60a5fa!important;box-shadow:0 0 0 3px rgba(37,99,235,.1)!important}
+#bookora-ai-root #ai-send-btn,#bookora-ai-root #ai-stop-btn{appearance:none!important;flex:0 0 auto!important;height:42px!important;min-width:68px!important;padding:0 14px!important;border-radius:12px!important;border:1px solid #2563eb!important;background:#2563eb!important;color:#fff!important;font:700 13px/1 Inter,sans-serif!important;cursor:pointer!important;box-shadow:0 4px 12px rgba(37,99,235,.18)!important;transition:.15s ease!important}
+#bookora-ai-root #ai-send-btn:hover{background:#1d4ed8!important;transform:translateY(-1px)!important}
+#bookora-ai-root #ai-stop-btn{background:#fff!important;color:#dc2626!important;border-color:#fecaca!important;box-shadow:none!important}
+#bookora-ai-root #ai-stop-btn:hover{background:#fff1f2!important}
+@media(max-width:600px){
+  #bookora-ai-root #bookora-ai-trigger-btn{padding:10px 14px!important;font-size:12px!important}
+  #bookora-ai-root #bookora-ai-drawer{width:calc(100vw - 20px)!important;height:min(620px,calc(100vh - 90px))!important;max-width:none!important;border-radius:18px!important}
+  #bookora-ai-root .ai-drawer-header{min-height:66px!important;padding:12px!important}
+  #bookora-ai-root .ai-suggestions-bar{padding:9px 10px!important}
+  #bookora-ai-root .ai-messages-area{padding:12px!important}
+  #bookora-ai-root .msg-bubble{max-width:90%!important;font-size:12.5px!important}
+  #bookora-ai-root #ai-user-input{height:40px!important}
+  #bookora-ai-root #ai-send-btn,#bookora-ai-root #ai-stop-btn{height:40px!important;min-width:62px!important}
+}
