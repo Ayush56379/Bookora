@@ -1,0 +1,146 @@
+/* Bookora — universal responsive layout system
+   Loaded after the existing styles so every SPA page gets the same
+   desktop/tablet/mobile safety rules without changing page functionality. */
+
+*,*::before,*::after{box-sizing:border-box}
+html,body,#app{width:100%;max-width:100%;min-width:0}
+html{overflow-x:hidden}
+body{overflow-x:hidden;min-height:100vh}
+#app{min-height:100vh}
+#app>*{min-width:0;max-width:100%}
+#app img,#app picture,#app video,#app canvas,#app iframe,#app svg{max-width:100%}
+#app img,#app video{height:auto;object-fit:cover}
+#app input,#app select,#app textarea{max-width:100%;min-width:0}
+#app button{max-width:100%;min-width:0}
+
+/* Prevent long titles, URLs, emails and generated content from stretching cards. */
+#app h1,#app h2,#app h3,#app h4,#app h5,#app h6,#app p,#app a,#app span,#app td,#app th{overflow-wrap:anywhere;word-break:normal}
+#app pre,#app code{max-width:100%;overflow:auto;white-space:pre-wrap;word-break:break-word}
+
+/* Common SPA layout names. */
+.container,.page-container,.content-container,.main-container,.section-container{width:100%;max-width:1240px;margin-left:auto;margin-right:auto}
+.page-header,.section-header,.toolbar,.actions,.form-actions,.modal-actions{min-width:0}
+
+/* Inline grid/flex layouts used by individual pages should never exceed viewport. */
+[style*="grid-template-columns"],[style*="display: grid"]{min-width:0;max-width:100%}
+[style*="display: flex"]{min-width:0;max-width:100%}
+
+/* Data-heavy admin pages: horizontal scrolling is intentional rather than broken layout. */
+.table-responsive,.table-wrap,.data-table-wrap,.admin-table-wrap,.orders-table-wrap{width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch}
+.table-responsive table,.table-wrap table,.data-table-wrap table,.admin-table-wrap table,.orders-table-wrap table{width:100%;min-width:680px;border-collapse:collapse}
+
+/* Forms stay inside their card. */
+form{max-width:100%}
+input,select,textarea{width:100%;max-width:100%}
+textarea{resize:vertical}
+
+/* Header: desktop stays spacious, tablet/mobile never overflows. */
+.header-sticky{width:100%;max-width:100%}
+.header-sticky>.container{min-width:0}
+.desktop-nav{min-width:0;max-width:100%}
+.desktop-nav .nav-link{white-space:nowrap}
+
+/* Modals, drawers and popovers. */
+.modal,.dialog,[role="dialog"]{max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);overflow:auto}
+
+/* ---------- TABLET ---------- */
+@media (max-width:1024px){
+  .container,.page-container,.content-container,.main-container,.section-container{max-width:100%;padding-left:1.25rem;padding-right:1.25rem}
+  .header-sticky>.container{padding-left:1.25rem;padding-right:1.25rem}
+  .desktop-nav{gap:.1rem}
+  .desktop-nav .nav-link{padding:.45rem .55rem;font-size:.82rem}
+
+  .grid,.books-grid,.book-grid,.card-grid,.catalog-grid,.stats-grid,.admin-grid,.dashboard-grid,.settings-grid,.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+
+  .page-header,.section-header,.toolbar,.actions,.form-actions,.modal-actions{flex-wrap:wrap;gap:.75rem}
+  .page-header>*,.section-header>*,.toolbar>*{min-width:0;max-width:100%}
+
+  .book-card{min-width:0}
+  .book-card img{width:100%;height:auto}
+
+  .mobile-nav-toggle{flex:0 0 auto}
+}
+
+/* ---------- MOBILE ---------- */
+@media (max-width:868px){
+  .desktop-nav{display:none!important}
+  .mobile-nav-toggle{display:block!important}
+  .header-sticky>.container{height:auto!important;min-height:64px;padding-top:.65rem;padding-bottom:.65rem}
+}
+
+@media (max-width:700px){
+  .container,.page-container,.content-container,.main-container,.section-container{width:100%;padding-left:1rem;padding-right:1rem}
+  .header-sticky>.container{padding-left:1rem;padding-right:1rem;gap:.5rem}
+
+  .grid,.books-grid,.book-grid,.card-grid,.catalog-grid,.stats-grid,.admin-grid,.dashboard-grid,.settings-grid,.form-grid{grid-template-columns:minmax(0,1fr)!important}
+  [style*="grid-template-columns"]{grid-template-columns:minmax(0,1fr)!important}
+
+  .page-header,.section-header,.toolbar,.actions,.form-actions,.modal-actions{width:100%;display:flex;flex-wrap:wrap;gap:.65rem}
+  .page-header>*,.section-header>*,.toolbar>*,.actions>*,.form-actions>*,.modal-actions>*{min-width:0;max-width:100%}
+  .toolbar input,.toolbar select,.toolbar .search-input{width:100%;flex:1 1 100%}
+
+  h1{font-size:clamp(1.65rem,7vw,2.25rem);line-height:1.15}
+  h2{font-size:clamp(1.35rem,6vw,1.8rem);line-height:1.2}
+  h3{font-size:clamp(1.08rem,5vw,1.4rem);line-height:1.25}
+
+  .btn-lg{padding:.72rem 1rem}
+  .btn,.btn-lg{max-width:100%}
+  .btn:not(.btn-sm){white-space:normal}
+
+  /* Cards and book covers. */
+  .book-card{width:100%;min-width:0}
+  .book-card img{max-height:none}
+
+  /* Inline two-column forms become one column. */
+  .as-grid{grid-template-columns:1fr!important}
+  .as-field.full{grid-column:auto!important}
+
+  /* Admin sidebars become horizontal/stacked navigation instead of narrow columns. */
+  .as-layout{grid-template-columns:1fr!important}
+  .as-side{position:static!important;width:100%;max-width:100%;overflow-x:auto}
+
+  /* Tables scroll inside their container. */
+  .table-responsive,.table-wrap,.data-table-wrap,.admin-table-wrap,.orders-table-wrap{overflow-x:auto}
+  .table-responsive table,.table-wrap table,.data-table-wrap table,.admin-table-wrap table,.orders-table-wrap table{min-width:680px}
+
+  /* Dialogs and drawers fit the phone viewport. */
+  .modal,.dialog,[role="dialog"]{width:calc(100vw - 24px)!important;max-width:560px!important;max-height:calc(100vh - 24px);margin:12px auto}
+  .mobile-nav-drawer{width:min(88vw,340px);max-width:340px}
+
+  /* Floating AI assistant. */
+  .bookora-ai-btn{right:12px;bottom:12px;max-width:calc(100vw - 24px);padding:9px 13px;font-size:.82rem}
+  .bookora-ai-drawer{right:10px;bottom:66px;width:calc(100vw - 20px);max-width:none;height:min(72vh,540px);max-height:calc(100vh - 90px);border-radius:16px}
+  .ai-drawer-header{padding:.8rem 1rem}
+  .ai-messages-area{padding:.75rem}
+  .ai-input-bar{padding:.65rem .75rem}
+
+  /* Avoid fixed-width inline cards/sections. */
+  [style*="width: 380px"],[style*="width:380px"],[style*="width: 420px"],[style*="width:420px"],[style*="width: 500px"],[style*="width:500px"]{width:100%!important;max-width:100%!important}
+  [style*="max-width: 1200px"],[style*="max-width:1200px"],[style*="max-width: 1240px"],[style*="max-width:1240px"]{max-width:100%!important}
+}
+
+@media (max-width:480px){
+  .container,.page-container,.content-container,.main-container,.section-container{padding-left:.8rem;padding-right:.8rem}
+  .header-sticky>.container{padding-left:.8rem;padding-right:.8rem}
+  .btn:not(.btn-sm){width:100%}
+  .btn-sm{width:auto}
+  .mobile-nav-drawer{width:90vw;padding-left:1rem;padding-right:1rem}
+  .user-menu-dropdown{max-width:calc(100vw - 20px)!important}
+}
+
+@media (max-width:360px){
+  html{font-size:15px}
+  .container,.page-container,.content-container,.main-container,.section-container{padding-left:.65rem;padding-right:.65rem}
+  .header-sticky>.container{padding-left:.65rem;padding-right:.65rem}
+}
+
+/* Landscape phones. */
+@media (max-height:600px) and (orientation:landscape){
+  .mobile-nav-drawer{overflow-y:auto}
+  .bookora-ai-drawer{max-height:calc(100vh - 80px)}
+  .modal,.dialog,[role="dialog"]{max-height:calc(100vh - 16px)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
