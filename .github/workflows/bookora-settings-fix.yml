@@ -1,0 +1,77 @@
+name: Bookora Settings Fix
+on:
+  push:
+    paths:
+      - '.github/workflows/bookora-settings-fix.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Bookora global settings
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('js/state.js')
+          s=p.read_text(encoding='utf-8')
+          if 'async loadPublicSettings()' not in s:
+              marker='    // Firebase Auth will perform the real authentication.\n'
+              insert="""    // Load public settings immediately, including for logged-out visitors.\n    this.loadPublicSettings();\n\n"""
+              s=s.replace(marker,insert+marker,1)
+              marker2='  // ----------------------------------------------------------\n  // FIREBASE AUTH SESSION\n'
+              method="""  async loadPublicSettings() {\n    try {\n      const { db } = await this.getFirebase();\n      const snap = await db.collection('settings').doc('public').get();\n      if (snap.exists) {\n        this.settings = snap.data() || {};\n        this.notify('SETTINGS_UPDATED', this.settings);\n        return;\n      }\n    } catch (e) { console.warn('Public settings load skipped:', e.message); }\n    try {\n      const base = window.BOOKORA_API_URL || '';\n      const r = await fetch(base + '/api/settings/public');\n      if (r.ok) {\n        const d = await r.json();\n        this.settings = { ...(this.settings || {}), ...d };\n        this.notify('SETTINGS_UPDATED', this.settings);\n      }\n    } catch (e) { console.warn('Public settings API fallback skipped:', e.message); }\n  }\n\n\n"""
+              s=s.replace(marker2,method+marker2,1)
+              p.write_text(s,encoding='utf-8')
+
+          p=Path('js/components/Header.js')
+          s=p.read_text(encoding='utf-8')
+          if 'const siteName = state.settings?.general?.website_name' not in s:
+              s=s.replace("  const hash = window.location.hash || '#/';", "  const hash = window.location.hash || '#/';\n  const siteName = state.settings?.general?.website_name || 'Bookora';\n  const tagline = state.settings?.general?.tagline || 'Discover. Read. Publish.';\n  const primary = state.settings?.branding?.primary_accent || '#2563EB';\n  const secondary = state.settings?.branding?.secondary_accent || '#1D4ED8';",1)
+              s=s.replace('<div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);', '<div style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, ${primary} 0%, ${secondary} 100%);',1)
+              s=s.replace('>\n              Bookora\n            </div>', '>\n              ${siteName}\n            </div>',1)
+              s=s.replace('>\n              Discover. Read. Publish.\n            </div>', '>\n              ${tagline}\n            </div>',1)
+              s=s.replace('<div style="font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; color: #0F172A;">\n            Bookora', '<div style="font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; color: #0F172A;">\n            ${siteName}',1)
+              p.write_text(s,encoding='utf-8')
+
+          p=Path('js/components/Footer.js')
+          s=p.read_text(encoding='utf-8')
+          if 'const siteName = state.settings?.general?.website_name' not in s:
+              s=s.replace("export function renderFooter() {\n", "export function renderFooter() {\n  const siteName = state.settings?.general?.website_name || 'Bookora';\n  const tagline = state.settings?.general?.tagline || 'Discover. Read. Publish.';\n",1)
+              s=s.replace('<span style="font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; color: var(--text-primary);">Bookora</span>', '<span style="font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; color: var(--text-primary);">${siteName}</span>',1)
+              s=s.replace("The world's premier digital eBook marketplace.", "${tagline} — the digital eBook marketplace.",1)
+              s=s.replace('© 2026 Bookora Inc.', '© 2026 ${siteName} Inc.',1)
+              p.write_text(s,encoding='utf-8')
+
+          p=Path('js/utils/seo.js')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("const baseTitle = 'Bookora — Discover. Read. Publish.';", "const siteName = window.bookoraSiteName || 'Bookora';\n  const siteTagline = window.bookoraSiteTagline || 'Discover. Read. Publish.';\n  const baseTitle = `${siteName} — ${siteTagline}`;",1)
+          p.write_text(s,encoding='utf-8')
+
+          p=Path('js/app.js')
+          s=p.read_text(encoding='utf-8')
+          if 'SETTINGS_UPDATED' not in s:
+              needle="state.subscribe((event)=>{this.updateHeader();if(['USER_LOGGED_IN','USER_LOGGED_OUT','MODE_CHANGED'].includes(event))this.route();});"
+              repl="state.subscribe((event)=>{this.updateHeader();if(event==='SETTINGS_UPDATED'){const g=state.settings?.general||{};const b=state.settings?.branding||{};window.bookoraSiteName=g.website_name||'Bookora';window.bookoraSiteTagline=g.tagline||'Discover. Read. Publish.';document.documentElement.style.setProperty('--accent',b.primary_accent||'#2563EB');document.documentElement.style.setProperty('--accent-hover',b.secondary_accent||'#1D4ED8');document.title=window.bookoraSiteName+' — '+window.bookoraSiteTagline; } if(['USER_LOGGED_IN','USER_LOGGED_OUT','MODE_CHANGED'].includes(event))this.route();});"
+              s=s.replace(needle,repl,1)
+              p.write_text(s,encoding='utf-8')
+
+          # Backend: add a server-side admin settings route if absent.
+          p=Path('backend/server.py') if Path('backend/server.py').exists() else Path('server.py')
+          s=p.read_text(encoding='utf-8')
+          if 'path == "/api/admin/settings"' not in s:
+              marker='                elif path == "/api/admin/users":\n                    return self.send_json(200, db.get("users", []))\n'
+              insert=marker+'                elif path == "/api/admin/settings":\n                    return self.send_json(200, db.get("settings", {}))\n'
+              s=s.replace(marker,insert,1)
+          if 'elif path == "/api/admin/settings":' not in s:
+              pass
+          p.write_text(s,encoding='utf-8')
+      - name: Commit patched files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/state.js js/components/Header.js js/components/Footer.js js/utils/seo.js js/app.js backend/server.py server.py 2>/dev/null || true
+          git diff --cached --quiet && exit 0 || true
+          git commit -m 'Fix global Bookora settings and branding sync'
+          git push
