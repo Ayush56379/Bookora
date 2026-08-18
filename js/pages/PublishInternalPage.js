@@ -101,7 +101,7 @@ function validateStep2() {
 
   // Cover is optional. If it is omitted, the backend keeps the listing valid.
 
-  if (selectedCover.size > MAX_COVER_SIZE) {
+  if (selectedCover && selectedCover.size > MAX_COVER_SIZE) {
     Toast.show(
       'Cover image is too large. Maximum allowed size is 5 MB.',
       'warning'
