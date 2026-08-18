@@ -12,6 +12,7 @@ import { renderCategoriesDirectoryPage, renderCuratedCatalogPage } from './pages
 import { renderSearchPage } from './pages/SearchPage.js';
 import { renderBookDetailPage, initBookDetailEvents } from './pages/BookDetailPage.js';
 import { renderPricingPage, initPricingEvents } from './pages/PricingPage.js';
+import { renderSubscriptionManagePage, initSubscriptionManageEvents } from './pages/SubscriptionManagePage.js';
 import { renderStaticPage } from './pages/StaticPages.js';
 import { renderDashboardPage, initDashboardEvents } from './pages/DashboardPage.js';
 import { renderLibraryPage, initLibraryEvents } from './pages/LibraryPage.js';
@@ -56,52 +57,36 @@ class App {
       if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) this.route();
     });
 
-    // Reliable SPA navigation bridge. Native hash links normally work, but
-    // this explicit handler also works when a rendered component is replaced
-    // during a route update. It only handles internal #/ routes and leaves
-    // forms, buttons, external links and page-specific handlers alone.
     document.addEventListener('click', (e) => {
       const target = e.target instanceof Element ? e.target : null;
       const link = target?.closest('a[href^="#/"]');
       if (!link || e.defaultPrevented) return;
-
       const href = link.getAttribute('href');
       if (!href) return;
-
       e.preventDefault();
-      if (window.location.hash === href) {
-        window.dispatchEvent(new Event('hashchange'));
-      } else {
-        window.location.hash = href;
-      }
+      if (window.location.hash === href) window.dispatchEvent(new Event('hashchange'));
+      else window.location.hash = href;
     });
 
     document.addEventListener('click', (e) => {
       const wishBtn = e.target.closest('.book-wishlist-btn');
       if (wishBtn) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         state.toggleWishlist(wishBtn.dataset.id).then(isAdded => {
           wishBtn.classList.toggle('active', isAdded);
           const iconSvg = wishBtn.querySelector('svg');
           if (iconSvg) iconSvg.setAttribute('fill', isAdded ? '#E11D48' : 'none');
           Toast.show(isAdded ? 'Added to Wishlist' : 'Removed from Wishlist', isAdded ? 'success' : 'info');
-        }).catch(err => {
-          console.error(err);
-          Toast.show('Unable to update wishlist.', 'error');
-        });
+        }).catch(err => { console.error(err); Toast.show('Unable to update wishlist.', 'error'); });
         return;
       }
-
       const previewBtn = e.target.closest('.quick-preview-btn');
       if (previewBtn) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         const book = state.books.find(b => b.id === previewBtn.dataset.id);
         if (book) ReaderModal.open(book, true);
         return;
       }
-
       const cartRemoveBtn = e.target.closest('.cart-remove-btn');
       if (cartRemoveBtn) {
         e.preventDefault();
@@ -114,21 +99,15 @@ class App {
 
   updateHeader() {
     const c = document.getElementById('header-container');
-    if (c) {
-      c.innerHTML = renderHeader();
-      initHeaderEvents();
-    }
+    if (c) { c.innerHTML = renderHeader(); initHeaderEvents(); }
   }
 
   route() {
-    // Always clear stale mobile navigation state after a route replacement.
     const drawer = document.getElementById('mobile-nav-drawer');
     const backdrop = document.getElementById('mobile-drawer-backdrop');
-    drawer?.classList.remove('open');
-    backdrop?.classList.remove('open');
+    drawer?.classList.remove('open'); backdrop?.classList.remove('open');
     document.documentElement.classList.remove('bookora-menu-open');
     document.body.classList.remove('bookora-menu-open');
-
     window.scrollTo(0, 0);
     this.root = document.getElementById('app') || document.body;
     const hash = window.location.hash || '#/';
@@ -141,7 +120,7 @@ class App {
       return;
     }
 
-    const PUBLIC_ROUTES = ['/','/explore','/categories','/best-sellers','/new-releases','/trending','/authors','/pricing','/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines','/login','/signup','/register','/forgot-password','/reset-password','/payment/success','/payment/failed'];
+    const PUBLIC_ROUTES = ['/','/explore','/categories','/best-sellers','/new-releases','/trending','/authors','/pricing','/subscription','/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines','/login','/signup','/register','/forgot-password','/reset-password','/payment/success','/payment/failed'];
     const PUBLIC_PREFIX_MATCHES = ['/category/','/book/','/author/','/search'];
     const isPublic = path === '/' || path === '' || PUBLIC_ROUTES.includes(path) || PUBLIC_PREFIX_MATCHES.some(p => path.startsWith(p));
 
@@ -175,6 +154,7 @@ class App {
     else if (path === '/new-releases') pageHtml = renderCuratedCatalogPage('new');
     else if (path === '/trending') pageHtml = renderCuratedCatalogPage('trending');
     else if (path === '/pricing' || path === '/subscription') { pageHtml = renderPricingPage(); initCallback = () => initPricingEvents(); }
+    else if (path === '/subscription/manage') { pageHtml = renderSubscriptionManagePage(); initCallback = () => initSubscriptionManageEvents(); }
     else if (['/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines'].includes(path)) pageHtml = renderStaticPage(path.slice(1));
     else if (path === '/login') { pageHtml = renderAuthPage('login'); initCallback = () => initAuthEvents('login'); }
     else if (path === '/signup' || path === '/register') { pageHtml = renderAuthPage('signup'); initCallback = () => initAuthEvents('signup'); }
