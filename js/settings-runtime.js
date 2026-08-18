@@ -50,13 +50,82 @@ function setPropertyMeta(property, content) {
   el.content = content;
 }
 
+function normalizeColor(value, fallback) {
+  const v = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(v) ? v : fallback;
+}
+
 function applyBranding(s) {
-  const primary = s.branding.primary_accent || DEFAULTS.branding.primary_accent;
-  const secondary = s.branding.secondary_accent || DEFAULTS.branding.secondary_accent;
+  const primary = normalizeColor(s.branding.primary_accent, DEFAULTS.branding.primary_accent);
+  const secondary = normalizeColor(s.branding.secondary_accent, DEFAULTS.branding.secondary_accent);
+
   document.documentElement.style.setProperty('--accent', primary);
   document.documentElement.style.setProperty('--accent-hover', secondary);
+  document.documentElement.style.setProperty('--brand-primary', primary);
+  document.documentElement.style.setProperty('--brand-secondary', secondary);
   document.documentElement.style.setProperty('--border-focus', primary);
   document.documentElement.style.setProperty('--accent-light', `${primary}18`);
+
+  // A number of older components use hard-coded Bookora blue values.
+  // Override only known brand UI elements; never touch arbitrary page text/content.
+  let style = document.getElementById('bookora-branding-runtime-style');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'bookora-branding-runtime-style';
+    document.head.appendChild(style);
+  }
+
+  style.textContent = `
+    .btn-primary,
+    .as-save,
+    .nav-link.active,
+    .as-tab.active,
+    .badge-bookora,
+    .mobile-nav-drawer .btn-primary {
+      --brand-current: ${primary};
+    }
+
+    .btn-primary,
+    .as-save {
+      background: ${primary} !important;
+      border-color: ${primary} !important;
+    }
+
+    .btn-primary:hover,
+    .as-save:hover {
+      background: ${secondary} !important;
+      border-color: ${secondary} !important;
+    }
+
+    .nav-link.active,
+    .as-tab.active {
+      color: ${primary} !important;
+    }
+
+    .badge-bookora {
+      color: ${primary} !important;
+      background: ${primary}18 !important;
+      border-color: ${primary}35 !important;
+    }
+
+    .header-sticky a[href="#/"] > div:first-child {
+      background: linear-gradient(135deg, ${primary} 0%, ${secondary} 100%) !important;
+      box-shadow: 0 4px 12px ${primary}4D !important;
+    }
+
+    .header-sticky a[href="#/"] > div:first-child + div > div:first-child {
+      color: ${primary} !important;
+    }
+
+    .admin-settings .as-save:focus-visible,
+    .admin-settings .as-tab:focus-visible,
+    .admin-settings input:focus,
+    .admin-settings select:focus,
+    .admin-settings textarea:focus {
+      outline-color: ${primary} !important;
+      border-color: ${primary} !important;
+    }
+  `;
 }
 
 function applyBrandSlots(s) {
