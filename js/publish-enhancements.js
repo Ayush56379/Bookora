@@ -127,6 +127,79 @@ async function runAiDetection(book) {
   return decision;
 }
 
+function showDetailedPreview() {
+  const step = document.getElementById('step-4');
+  if (!step) return;
+
+  const title = value('pub-title', 'Untitled eBook');
+  const subtitle = value('pub-subtitle', '');
+  const author = value('pub-author', 'Author');
+  const category = value('pub-category', '—');
+  const description = value('pub-description', '—');
+  const tags = value('pub-tags', '').split(',').map(x => x.trim()).filter(Boolean);
+  const pages = value('pub-pages', '—');
+  const format = value('pub-format', 'PDF');
+  const listPrice = number('pub-price', 0);
+  const saleRaw = document.getElementById('pub-saleprice')?.value?.trim() || '';
+  const salePrice = saleRaw === '' ? null : Number(saleRaw);
+  const effectivePrice = salePrice == null ? listPrice : salePrice;
+  const royaltyPct = Number(window.BOOKORA_MARKETPLACE?.sellerCommissionPct ?? 85);
+  const royalty = Number.isFinite(royaltyPct) ? effectivePrice * royaltyPct / 100 : 0;
+  const pdf = document.getElementById('pub-pdf')?.files?.[0] || null;
+  const cover = document.getElementById('pub-cover')?.files?.[0] || null;
+
+  const existing = document.getElementById('bookora-full-preview');
+  if (existing) existing.remove();
+
+  const box = document.createElement('div');
+  box.id = 'bookora-full-preview';
+  box.style.cssText = 'margin:1.25rem 0;padding:1.25rem;border:1px solid var(--border-subtle,#E2E8F0);border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.06);';
+  const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  const tagsHtml = tags.length ? tags.map(t => `<span style="display:inline-block;padding:4px 9px;border-radius:999px;background:#F1F5F9;margin:3px;font-size:.78rem;">${escHtml(t)}</span>`).join('') : '<span style="color:#64748B;">No tags</span>';
+  const saleText = salePrice == null ? 'No sale price' : `₹${salePrice.toFixed(2)}`;
+  const fileText = pdf ? `${pdf.name} · ${(pdf.size / 1048576).toFixed(2)} MB` : 'No PDF selected';
+  const coverText = cover ? `${cover.name} · ${(cover.size / 1048576).toFixed(2)} MB` : 'No cover selected';
+
+  box.innerHTML = `
+    <div style="display:grid;grid-template-columns:minmax(100px,150px) minmax(0,1fr);gap:1.25rem;align-items:start;">
+      <div id="bookora-preview-cover" style="width:100%;aspect-ratio:3/4;border-radius:12px;background:#E2E8F0 center/cover no-repeat;overflow:hidden;"></div>
+      <div>
+        <div style="font-size:.75rem;font-weight:800;color:var(--accent,#2563EB);text-transform:uppercase;letter-spacing:.08em;">Complete Preview</div>
+        <h3 style="margin:.35rem 0 .2rem;">${escHtml(title)}</h3>
+        ${subtitle ? `<div style="color:#475569;margin-bottom:.35rem;">${escHtml(subtitle)}</div>` : ''}
+        <div style="color:#64748B;">by ${escHtml(author)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.8rem;font-size:.86rem;">
+          <span><strong>Category:</strong> ${escHtml(category)}</span>
+          <span><strong>Pages:</strong> ${escHtml(pages)}</span>
+          <span><strong>Format:</strong> ${escHtml(format)}</span>
+        </div>
+        <div style="margin-top:1rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.6rem;">
+          <div style="padding:.7rem;background:#F8FAFC;border-radius:10px;"><small>List Price</small><div style="font-weight:800;">₹${listPrice.toFixed(2)}</div></div>
+          <div style="padding:.7rem;background:#F8FAFC;border-radius:10px;"><small>Sale Price</small><div style="font-weight:800;">${saleText}</div></div>
+          <div style="padding:.7rem;background:#F8FAFC;border-radius:10px;"><small>Est. Royalty</small><div style="font-weight:800;">₹${royalty.toFixed(2)} (${Number.isFinite(royaltyPct) ? royaltyPct : 85}%)</div></div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:1.2rem;padding-top:1.1rem;border-top:1px solid #E2E8F0;">
+      <strong>Description</strong>
+      <p style="white-space:pre-wrap;color:#475569;line-height:1.65;margin:.45rem 0 1rem;">${escHtml(description)}</p>
+      <strong>Tags</strong>
+      <div style="margin:.4rem 0 1rem;">${tagsHtml}</div>
+      <strong>Files</strong>
+      <div style="margin-top:.4rem;color:#475569;font-size:.88rem;line-height:1.7;">
+        <div>📄 ${escHtml(fileText)}</div>
+        <div>🖼️ ${escHtml(coverText)}</div>
+      </div>
+    </div>`;
+
+  step.querySelector('h3')?.insertAdjacentElement('afterend', box);
+
+  if (cover) {
+    const coverEl = document.getElementById('bookora-preview-cover');
+    if (coverEl) coverEl.style.backgroundImage = `url("${URL.createObjectURL(cover)}")`;
+  }
+}
+
 async function resizeCover(file) {
   if (!file || file.type === 'image/webp' || file.size < 700 * 1024) return file;
   try {
@@ -181,27 +254,46 @@ async function enhancedSubmit() {
     };
     validate(book);
 
-    await runAiDetection(book);
-    Toast.show('AI check passed. Preparing files...', 'success');
+    try {
+      await runAiDetection(book);
+      Toast.show('AI check passed. Preparing files...', 'success');
+    } catch (aiError) {
+      // Do not make a temporary AI-service/parser failure prevent a valid seller from uploading.
+      // A clear AI rejection still blocks submission; service/unreadable-result errors are non-blocking.
+      const message = String(aiError?.message || aiError || '');
+      if (/AI check rejected/i.test(message)) throw aiError;
+      console.warn('Bookora AI precheck unavailable; continuing to upload:', message);
+      Toast.show('AI precheck is temporarily unavailable. Continuing with upload...', 'info');
+    }
 
     setSubmitText('Preparing files...');
-    // Convert PDF and cover concurrently instead of sequentially. This noticeably reduces waiting time on mobile.
     const optimizedCoverPromise = resizeCover(book.cover);
     const [pdfBase64, optimizedCover] = await Promise.all([fileToBase64(book.pdf), optimizedCoverPromise]);
     const coverBase64 = await fileToBase64(optimizedCover);
 
     setSubmitText('Uploading to Drive...');
-    const uploadResponse = await apiFetch('/api/books/upload-files', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${state.token}` },
-      body: JSON.stringify({
-        action: 'uploadBookFiles',
-        pdf: { name: book.pdf.name, mimeType: 'application/pdf', data: pdfBase64 },
-        cover: { name: optimizedCover.name, mimeType: optimizedCover.type, data: coverBase64 }
-      })
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+    let uploadResponse;
+    try {
+      uploadResponse = await apiFetch('/api/books/upload-files', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { Authorization: `Bearer ${state.token}` },
+        body: JSON.stringify({
+          action: 'uploadBookFiles',
+          pdf: { name: book.pdf.name, mimeType: 'application/pdf', data: pdfBase64 },
+          cover: { name: optimizedCover.name, mimeType: optimizedCover.type, data: coverBase64 }
+        })
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
     const uploadData = await uploadResponse.json().catch(() => ({}));
-    if (!uploadResponse.ok || !uploadData.success) throw new Error(uploadData.error || 'File upload failed.');
+    if (!uploadResponse.ok || !uploadData.success) {
+      throw new Error(uploadData.error || `File upload failed (HTTP ${uploadResponse.status}).`);
+    }
 
     setSubmitText('Creating book listing...');
     const bookResponse = await apiFetch('/api/books/create', {
@@ -217,14 +309,17 @@ async function enhancedSubmit() {
       })
     });
     const bookData = await bookResponse.json().catch(() => ({}));
-    if (!bookResponse.ok || !bookData.success) throw new Error(bookData.error || 'Book creation failed.');
+    if (!bookResponse.ok || !bookData.success) throw new Error(bookData.error || `Book creation failed (HTTP ${bookResponse.status}).`);
 
     Toast.show('eBook submitted successfully for admin review!', 'success');
     setSubmitText('Submitted ✓');
     setTimeout(() => { window.location.hash = '#/creator/dashboard'; }, 700);
   } catch (error) {
     console.error('Enhanced publish error:', error);
-    Toast.show(error?.message || 'Unable to publish eBook.', 'error');
+    const message = error?.name === 'AbortError'
+      ? 'Upload timed out after 5 minutes. Please try again with a stable connection.'
+      : (error?.message || 'Unable to publish eBook.');
+    Toast.show(message, 'error');
     setSubmitText('Upload & Submit 🚀');
     setSubmitBusy(false);
   } finally {
@@ -247,7 +342,49 @@ function attach() {
   }, true);
 }
 
-const observer = new MutationObserver(attach);
+function syncPreviewOnInputs() {
+  const ids = ['pub-title','pub-subtitle','pub-author','pub-category','pub-description','pub-tags','pub-pages','pub-format','pub-price','pub-saleprice'];
+  ids.forEach(id => document.getElementById(id)?.addEventListener('input', () => {
+    if (document.getElementById('step-4')?.style.display !== 'none') showDetailedPreview();
+  }));
+  ['pub-category'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
+    if (document.getElementById('step-4')?.style.display !== 'none') showDetailedPreview();
+  }));
+  document.getElementById('pub-pdf')?.addEventListener('change', () => {
+    if (document.getElementById('step-4')?.style.display !== 'none') showDetailedPreview();
+  });
+  document.getElementById('pub-cover')?.addEventListener('change', () => {
+    if (document.getElementById('step-4')?.style.display !== 'none') showDetailedPreview();
+  });
+}
+
+function attachPreviewHooks() {
+  const form = document.getElementById('publish-wizard-form');
+  if (!form || form.dataset.previewFix === '1') return;
+  form.dataset.previewFix = '1';
+  syncPreviewOnInputs();
+  form.addEventListener('click', event => {
+    const next = event.target.closest('.next-step-btn');
+    if (next?.dataset.next === '4') {
+      setTimeout(showDetailedPreview, 30);
+    }
+    const back = event.target.closest('.prev-step-btn');
+    if (back?.dataset.prev === '4') {
+      setTimeout(showDetailedPreview, 30);
+    }
+  }, true);
+  const originalShow = window.BookoraShowPublishPreview;
+  window.BookoraShowPublishPreview = () => showDetailedPreview();
+  setTimeout(() => {
+    if (document.getElementById('step-4')?.style.display !== 'none') showDetailedPreview();
+  }, 50);
+}
+
+const observer = new MutationObserver(() => {
+  attach();
+  attachPreviewHooks();
+});
 observer.observe(document.documentElement, { childList: true, subtree: true });
-window.addEventListener('hashchange', () => setTimeout(attach, 0));
+window.addEventListener('hashchange', () => setTimeout(() => { attach(); attachPreviewHooks(); }, 0));
 attach();
+attachPreviewHooks();
