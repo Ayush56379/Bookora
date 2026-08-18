@@ -7,7 +7,7 @@ import { updateSEO } from '../utils/seo.js';
 import { formatPrice } from '../utils/formatters.js';
 import { Toast } from '../components/Toast.js';
 
-const MAX_PDF_SIZE = 15 * 1024 * 1024; // 15 MB
+const MAX_PDF_SIZE = 100 * 1024 * 1024; // 100 MB
 const MAX_COVER_SIZE = 5 * 1024 * 1024; // 5 MB
 
 let selectedPDF = null;
@@ -85,7 +85,7 @@ function validateStep2() {
 
   if (selectedPDF.size > MAX_PDF_SIZE) {
     Toast.show(
-      'PDF is too large. Maximum allowed size is 15 MB.',
+      'PDF is too large. Maximum allowed size is 100 MB.',
       'warning'
     );
     return false;
@@ -99,10 +99,7 @@ function validateStep2() {
     return false;
   }
 
-  if (!selectedCover) {
-    Toast.show('Please select a cover image.', 'warning');
-    return false;
-  }
+  // Cover is optional. If it is omitted, the backend keeps the listing valid.
 
   if (selectedCover.size > MAX_COVER_SIZE) {
     Toast.show(
@@ -1057,7 +1054,7 @@ export function initPublishInternalEvents() {
       if (file.size > MAX_PDF_SIZE) {
 
         Toast.show(
-          'PDF must be 15 MB or smaller.',
+          'PDF must be 100 MB or smaller.',
           'warning'
         );
 
