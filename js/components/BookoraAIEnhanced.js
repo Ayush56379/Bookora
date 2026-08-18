@@ -52,20 +52,28 @@ function fallbackAnswer(query) {
   return `I can help with the current **${site.name}** website. I do not want to guess when live information is unavailable. Ask me about this page, books, buying, library, publishing, seller access, plans or settings.`;
 }
 
+function syncAIRootState() {
+  const root = document.getElementById('bookora-ai-root');
+  if (!root) return;
+  const trigger = root.querySelector('#bookora-ai-trigger-btn');
+  const drawer = root.querySelector('#bookora-ai-drawer');
+  const open = Boolean(drawer?.classList.contains('open'));
+
+  // The root itself never captures clicks. The closed drawer MUST also be
+  // removed from hit-testing, otherwise its invisible fixed rectangle can
+  // sit above page links/buttons on phones and desktop.
+  root.style.position = 'fixed';
+  root.style.zIndex = '2147483000';
+  root.style.pointerEvents = 'none';
+  if (trigger) trigger.style.pointerEvents = 'auto';
+  if (drawer) drawer.style.pointerEvents = open ? 'auto' : 'none';
+}
+
 function installEnhancedAI() {
   const originalInit = BaseAI.init.bind(BaseAI);
   BaseAI.init = function () {
     originalInit();
-    const root = document.getElementById('bookora-ai-root');
-    if (root) {
-      root.style.position = 'fixed';
-      root.style.zIndex = '2147483000';
-      root.style.pointerEvents = 'none';
-      const trigger = root.querySelector('#bookora-ai-trigger-btn');
-      const drawer = root.querySelector('#bookora-ai-drawer');
-      if (trigger) trigger.style.pointerEvents = 'auto';
-      if (drawer) drawer.style.pointerEvents = 'auto';
-    }
+    syncAIRootState();
   };
 
   BaseAI.updateContextChips = function () {
@@ -131,6 +139,13 @@ function installEnhancedAI() {
   BaseAI.open = function () {
     originalOpen();
     this.updateContextChips();
+    syncAIRootState();
+  };
+
+  const originalClose = BaseAI.close.bind(BaseAI);
+  BaseAI.close = function () {
+    originalClose();
+    syncAIRootState();
   };
 
   return BaseAI;
