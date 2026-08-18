@@ -1,0 +1,99 @@
+/* Bookora global interaction safety
+   Loaded last so it can neutralize accidental transparent overlays and keep
+   navigation controls above page content on touch devices. */
+
+html, body { width:100%; max-width:100%; overflow-x:hidden; }
+
+/* Normal controls must remain hit-testable. */
+a, button, input, select, textarea, summary, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a, button, [role="button"] { touch-action: manipulation; }
+button:not(:disabled), a, [role="button"] { cursor:pointer; }
+
+/* The application must never create a transparent full-page hit area. */
+#app { position:relative; z-index:1; }
+#main-content { position:relative; z-index:1; }
+
+/* Sticky header and its controls stay above page content. */
+#main-header { position:sticky; top:0; z-index:10000 !important; isolation:isolate; }
+#main-header .container { position:relative; z-index:10001; }
+#main-header a, #main-header button { position:relative; z-index:10002; }
+
+/* Closed drawer layers are completely removed from hit testing. */
+#mobile-drawer-backdrop {
+  position:fixed !important;
+  inset:0 !important;
+  z-index:2147483000 !important;
+  opacity:0 !important;
+  visibility:hidden !important;
+  pointer-events:none !important;
+  transition:opacity .25s ease, visibility .25s ease !important;
+}
+
+#mobile-drawer-backdrop.open {
+  opacity:1 !important;
+  visibility:visible !important;
+  pointer-events:auto !important;
+}
+
+#mobile-nav-drawer {
+  position:fixed !important;
+  top:0 !important;
+  right:0 !important;
+  bottom:0 !important;
+  z-index:2147483001 !important;
+  visibility:hidden !important;
+  pointer-events:none !important;
+  transform:translateX(100%) !important;
+  transition:transform .3s cubic-bezier(.16,1,.3,1), visibility 0s linear .3s !important;
+}
+
+#mobile-nav-drawer.open {
+  visibility:visible !important;
+  pointer-events:auto !important;
+  transform:translateX(0) !important;
+  transition:transform .3s cubic-bezier(.16,1,.3,1), visibility 0s !important;
+}
+
+#mobile-nav-drawer a,
+#mobile-nav-drawer button {
+  pointer-events:auto !important;
+  position:relative;
+  z-index:1;
+}
+
+#mobile-nav-toggle-btn {
+  position:relative !important;
+  z-index:2147483002 !important;
+  pointer-events:auto !important;
+  cursor:pointer !important;
+}
+
+html.bookora-menu-open,
+body.bookora-menu-open { overflow:hidden !important; }
+
+/* AI assistant stays clickable but must not cover the header. */
+.bookora-ai-btn { z-index:9000 !important; pointer-events:auto !important; }
+.bookora-ai-drawer { z-index:9001 !important; }
+
+/* Disabled controls remain intentionally disabled; do not fake-enable them. */
+button:disabled,
+[aria-disabled="true"] { cursor:not-allowed !important; }
+
+@media (max-width:930px) {
+  .desktop-nav { display:none !important; }
+  #mobile-nav-toggle-btn { display:flex !important; align-items:center; justify-content:center; }
+}
+
+@media (min-width:931px) {
+  #mobile-nav-toggle-btn,
+  #mobile-nav-drawer,
+  #mobile-drawer-backdrop { pointer-events:none !important; }
+  #mobile-nav-toggle-btn { display:none !important; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  #mobile-nav-drawer, #mobile-drawer-backdrop { transition:none !important; }
+}
