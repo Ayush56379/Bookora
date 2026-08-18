@@ -28,7 +28,7 @@ import { renderSellerSettingsPage, initSellerSettingsEvents } from './pages/Sell
 import { renderAdminDashboardPage, initAdminDashboardEvents } from './pages/AdminDashboardPage.js';
 import { renderAdminUsersPage, initAdminUsersEvents } from './pages/AdminUsersPage.js';
 import { renderAdminSellersPage, initAdminSellersEvents } from './pages/AdminSellersPage.js';
-import { renderAdminBooksPage, initAdminBooksEvents } from './pages/AdminBooksPage.js';
+import { renderAdminBooksPage, initAdminBooksEvents } from './pages/AdminBooksBackendPage.js';
 import { renderAdminOrdersPage, initAdminOrdersEvents } from './pages/AdminOrdersPage.js';
 import { renderAdminPlansPage, initAdminPlansEvents } from './pages/AdminPlansPage.js';
 import { renderAdminSettingsPage, initAdminSettingsEvents } from './pages/AdminSettingsPage.js';
