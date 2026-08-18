@@ -1,0 +1,27 @@
+name: Switch Admin Books To Backend
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Switch admin books import
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('js/app.js')
+          s=p.read_text()
+          s=s.replace("import { renderAdminBooksPage, initAdminBooksEvents } from './pages/AdminBooksPage.js';", "import { renderAdminBooksPage, initAdminBooksEvents } from './pages/AdminBooksBackendPage.js';")
+          p.write_text(s)
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/app.js
+          git diff --cached --quiet || git commit -m "Connect admin books to backend API"
+          git push
