@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { renderHeader, initHeaderEvents } from './components/Header.js';
 import { renderFooter } from './components/Footer.js';
-import { BookoraAI } from './components/BookoraAI.js';
+import { BookoraAI } from './components/BookoraAIEnhanced.js';
 import { Toast } from './components/Toast.js';
 import { ReaderModal } from './components/ReaderModal.js';
 import { renderHomePage, initHomePageEvents } from './pages/HomePage.js';
