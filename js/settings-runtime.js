@@ -47,20 +47,14 @@ function applyBranding(s) {
 function applyBrandText(s) {
   const name = s.general.website_name || 'Bookora';
   const tagline = s.general.tagline || '';
-
-  // Desktop header brand.
   const brand = document.querySelector('.header-sticky a[href="#/"]');
   if (brand) {
     const blocks = brand.querySelectorAll(':scope > div:last-child > div');
     if (blocks[0]) blocks[0].textContent = name;
     if (blocks[1]) blocks[1].textContent = tagline;
   }
-
-  // Mobile drawer brand.
   const drawer = document.querySelector('#mobile-nav-drawer > div:first-child > div:first-child');
   if (drawer) drawer.textContent = name;
-
-  // Footer brand and copyright/description.
   const footer = document.querySelector('#footer-container footer');
   if (footer) {
     const footerBrand = footer.querySelector('span[style*="font-family"]');
@@ -72,7 +66,6 @@ function applyBrandText(s) {
       yearLine.innerHTML = `© ${new Date().getFullYear()} ${esc(name)}. All rights reserved. <strong>${esc(tagline)}</strong>`;
     }
   }
-
   document.title = `${name} — ${tagline || 'Digital eBook Marketplace'}`;
   setMeta('description', s.general.description || DEFAULTS.general.description);
 }
@@ -81,27 +74,26 @@ function applySettings() {
   const s = merged();
   applyBranding(s);
   applyBrandText(s);
-
-  // Expose a single normalized runtime configuration for pages that need it.
   window.BOOKORA_SETTINGS = s;
   window.BOOKORA_CURRENCY = {
     code: s.currency.default_display_currency || 'INR',
     symbol: s.currency.currency_symbol || (s.currency.default_display_currency === 'USD' ? '$' : '₹'),
     decimals: Number.isFinite(Number(s.currency.decimal_places)) ? Number(s.currency.decimal_places) : 2
   };
-
-  if (state.settings?.maintenance?.enabled && !state.isAdmin) {
-    // The main router owns the maintenance screen. Trigger it immediately after
-    // an admin changes the setting rather than waiting for another navigation.
-    if (!document.querySelector('.bookora-runtime-maintenance')) {
-      window.dispatchEvent(new Event('hashchange'));
-    }
-  }
 }
 
+let refreshPending = false;
 state.subscribe((event) => {
-  if (event === 'SETTINGS_UPDATED' || event === 'DATA_SYNCED') {
-    applySettings();
+  if (event !== 'SETTINGS_UPDATED' && event !== 'DATA_SYNCED') return;
+  applySettings();
+  if (event === 'SETTINGS_UPDATED' && !refreshPending) {
+    refreshPending = true;
+    // Re-run the current SPA route so settings-dependent UI is rebuilt from the
+    // newly saved Firestore values instead of only changing CSS variables.
+    setTimeout(() => {
+      refreshPending = false;
+      window.dispatchEvent(new Event('hashchange'));
+    }, 0);
   }
 });
 
