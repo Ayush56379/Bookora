@@ -1,0 +1,111 @@
+/* Bookora interaction hotfix: mobile drawer + global hit testing */
+
+/* A backdrop-filter on the sticky header can clip fixed descendants on mobile.
+   Remove that containing-block behavior so the drawer can cover the viewport. */
+.header-sticky,
+#main-header,
+#header-container {
+  overflow: visible !important;
+  isolation: auto !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Header remains above normal page content. */
+.header-sticky { z-index: 1000 !important; }
+
+/* Full-screen mobile drawer */
+.mobile-nav-drawer {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: auto !important;
+  width: min(88vw, 360px) !important;
+  max-width: 360px !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  z-index: 2147483001 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  background: #fff !important;
+  box-shadow: -12px 0 32px rgba(15,23,42,.18) !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  transform: translate3d(100%,0,0) !important;
+  transition: transform .28s cubic-bezier(.16,1,.3,1), visibility 0s linear .28s !important;
+}
+
+.mobile-nav-drawer.open {
+  pointer-events: auto !important;
+  visibility: visible !important;
+  transform: translate3d(0,0,0) !important;
+  transition: transform .28s cubic-bezier(.16,1,.3,1), visibility 0s linear 0s !important;
+}
+
+.mobile-nav-drawer a,
+.mobile-nav-drawer button {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Full viewport backdrop */
+.drawer-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  z-index: 2147483000 !important;
+  background: rgba(15,23,42,.52) !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  transition: opacity .2s ease, visibility 0s linear .2s !important;
+}
+
+.drawer-backdrop.open {
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transition: opacity .2s ease, visibility 0s linear 0s !important;
+}
+
+.mobile-nav-toggle {
+  position: relative !important;
+  z-index: 2147483002 !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+/* Never allow transparent decorative layers to steal taps. */
+#app a,
+#app button,
+#app input,
+#app select,
+#app textarea,
+#app [role="button"] {
+  pointer-events: auto;
+}
+
+a[href^="#/"] {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+button,
+.btn,
+[role="button"] {
+  cursor: pointer !important;
+  touch-action: manipulation;
+}
+
+html.bookora-menu-open,
+body.bookora-menu-open {
+  overflow: hidden !important;
+}
+
+@media (max-width: 700px) {
+  .mobile-nav-drawer { width: min(90vw, 350px) !important; max-width: 350px !important; }
+}
