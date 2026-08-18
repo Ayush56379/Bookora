@@ -1,0 +1,9 @@
+/* Bookora AI drawer visibility hotfix */
+#bookora-ai-root{position:fixed!important;inset:0!important;z-index:2147483647!important;pointer-events:none!important}
+#bookora-ai-root #bookora-ai-trigger-btn{position:fixed!important;right:24px!important;bottom:24px!important;z-index:2147483647!important;pointer-events:auto!important;cursor:pointer!important}
+#bookora-ai-root #bookora-ai-drawer{position:fixed!important;right:24px!important;bottom:84px!important;z-index:2147483646!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;transform:translateY(15px) scale(.97)!important}
+#bookora-ai-root #bookora-ai-drawer.open{opacity:1!important;visibility:visible!important;pointer-events:auto!important;transform:translateY(0) scale(1)!important}
+@media(max-width:600px){
+  #bookora-ai-root #bookora-ai-trigger-btn{right:14px!important;bottom:14px!important}
+  #bookora-ai-root #bookora-ai-drawer{right:10px!important;bottom:70px!important;width:calc(100vw - 20px)!important;height:min(560px,calc(100vh - 95px))!important;max-width:none!important}
+}
