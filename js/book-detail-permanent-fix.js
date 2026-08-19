@@ -1,6 +1,5 @@
 // Bookora — stable Book Detail runtime.
-// Important: this layer never scrolls, routes, or rebuilds the page.
-// It only enhances the already-rendered detail view.
+// This layer never routes, scrolls, or rebuilds the page.
 import { state } from './state.js';
 import { ReaderModal } from './components/ReaderModal.js';
 import { apiUrl } from './config.js';
@@ -11,6 +10,7 @@ import { Toast } from './components/Toast.js';
   const MAX_SAMPLE_PAGES = 5;
   let sampleBusy = false;
   let coverEnhanceQueued = false;
+  let lastCoverKey = '';
 
   function currentBook() {
     try {
@@ -42,7 +42,8 @@ import { Toast } from './components/Toast.js';
       if (!value) return;
       const id = driveId(value);
       if (id) {
-        // Thumbnail is generally much faster than Drive's full file endpoint.
+        // Smaller thumbnail first: less data, faster first paint.
+        add(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w600`);
         add(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1000`);
         add(`https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1600`);
         add(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`);
@@ -57,6 +58,21 @@ import { Toast } from './components/Toast.js';
       || document.querySelector('.book-detail-page .bookora-cover-ready-box')
       || document.querySelector('.book-detail-page .book-cover-spine')?.parentElement
       || document.querySelector('.book-detail-layout > div:first-child > div:first-child');
+  }
+
+  function addCoverPreload(url, key) {
+    if (!url || !/^https?:\/\//i.test(url)) return;
+    const id = `bookora-cover-preload-${key}`;
+    let link = document.getElementById(id);
+    if (!link) {
+      link = document.createElement('link');
+      link.id = id;
+      link.rel = 'preload';
+      link.as = 'image';
+      link.fetchPriority = 'high';
+      document.head.appendChild(link);
+    }
+    link.href = url;
   }
 
   function repairCover() {
@@ -76,30 +92,34 @@ import { Toast } from './components/Toast.js';
       img.loading = 'eager';
       img.fetchPriority = 'high';
       img.referrerPolicy = 'no-referrer';
+      img.setAttribute('fetchpriority', 'high');
       box.prepend(img);
     }
 
     const sourceKey = sources.join('|');
-    if (img.dataset.sourceKey === sourceKey) return;
+    if (img.dataset.sourceKey === sourceKey && img.src) return;
     img.dataset.sourceKey = sourceKey;
+    lastCoverKey = sourceKey;
 
+    // IMPORTANT: do not wait for a second Image() preload before showing the
+    // cover. That old approach caused an unnecessary extra network/decoding
+    // step. Put the fastest thumbnail directly on the visible image so the
+    // browser can paint it immediately; only use fallbacks if it fails.
     let index = 0;
-    const tryNext = () => {
+    const showNext = () => {
       if (index >= sources.length) return;
       const next = sources[index++];
-      // Preload first, then swap into the visible image. This avoids a blank
-      // cover during Drive redirects and failed fallback attempts.
-      const preload = new Image();
-      preload.decoding = 'async';
-      preload.onload = () => {
-        img.src = next;
-        img.classList.add('loaded');
-        box.classList.add('bookora-cover-loaded');
-      };
-      preload.onerror = tryNext;
-      preload.src = next;
+      if (index === 1) addCoverPreload(next, String(book.id || 'book'));
+      img.classList.remove('loaded');
+      img.src = next;
     };
-    tryNext();
+
+    img.onload = () => {
+      img.classList.add('loaded');
+      box.classList.add('bookora-cover-loaded');
+    };
+    img.onerror = () => showNext();
+    showNext();
   }
 
   function pdfUrl(book) {
@@ -185,7 +205,7 @@ import { Toast } from './components/Toast.js';
       html.bookora-detail-active,html.bookora-detail-active body{scroll-behavior:auto!important;}
       .bookora-detail-grid{align-items:start!important;}
       .bookora-cover-ready-box{position:relative!important;overflow:hidden!important;background:#fff!important;isolation:isolate;}
-      .bookora-permanent-cover{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;z-index:10!important;opacity:0;transition:opacity .12s ease;}
+      .bookora-permanent-cover{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;z-index:10!important;opacity:0;transition:opacity .08s linear;}
       .bookora-permanent-cover.loaded{opacity:1;}
       .bookora-cover-loaded>div:not(.book-cover-spine){opacity:0!important;pointer-events:none!important;}
       .bookora-cover-loaded .book-cover-spine{z-index:12!important;}
@@ -218,8 +238,6 @@ import { Toast } from './components/Toast.js';
     }
   }
 
-  // Hash changes are the only legitimate navigation events here. We do not
-  // call route(), scrollTo(), or synthetic hashchange from this runtime.
   window.addEventListener('hashchange', () => setTimeout(enhance, 30));
   window.addEventListener('load', () => setTimeout(enhance, 30));
   state.subscribe(event => {
