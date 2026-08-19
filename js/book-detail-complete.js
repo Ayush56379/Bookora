@@ -1,11 +1,14 @@
 /* Bookora — complete Book Detail runtime fixes.
    Keeps the existing page component, but makes cover media, wishlist,
-   verified reviews and responsive detail interactions reliable. */
+   verified reviews, direct-detail loading and responsive detail interactions reliable. */
 import { state } from './state.js';
 import { Toast } from './components/Toast.js';
 
 (() => {
   'use strict';
+
+  let recoveryInFlight = false;
+  let recoveryFinished = false;
 
   function coverUrl(book) {
     if (!book) return '';
@@ -33,6 +36,42 @@ import { Toast } from './components/Toast.js';
       if (!path.startsWith('#/book/')) return null;
       return state.getBookBySlug(decodeURIComponent(path.slice(7))) || null;
     } catch (_) { return null; }
+  }
+
+  async function recoverDirectBook() {
+    if (recoveryInFlight || recoveryFinished || !location.hash.startsWith('#/book/')) return;
+    recoveryInFlight = true;
+    try {
+      const slug = decodeURIComponent((location.hash.split('?')[0] || '').slice(7)).trim().toLowerCase();
+      if (!slug) return;
+
+      // First give the shared state a chance to finish its normal catalog sync.
+      if (!state.booksLoaded) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+      if (getBook()) { recoveryFinished = true; return; }
+
+      // Direct-detail fallback: fetch the real production catalog and match
+      // by id, slug, or generated title slug. This makes pasted/deep links
+      // work even when the page was opened before the catalog finished loading.
+      const books = await state.fetchBooksFromBackend();
+      if (Array.isArray(books) && books.length) {
+        const existing = Array.isArray(state.books) ? state.books : [];
+        const byId = new Map(existing.map(b => [String(b?.id ?? b?.bookId ?? ''), b]));
+        books.forEach(book => byId.set(String(book.id), book));
+        state.books = [...byId.values()];
+      }
+
+      recoveryFinished = true;
+      if (getBook()) {
+        window.dispatchEvent(new Event('hashchange'));
+      }
+    } catch (error) {
+      console.warn('Bookora direct book recovery failed:', error?.message || error);
+      recoveryFinished = true;
+    } finally {
+      recoveryInFlight = false;
+    }
   }
 
   function toast(message, type = 'info') {
@@ -163,7 +202,10 @@ import { Toast } from './components/Toast.js';
 
   function enhance() {
     const book = getBook();
-    if (!book) return;
+    if (!book) {
+      if (location.hash.startsWith('#/book/')) recoverDirectBook();
+      return;
+    }
     addStyles();
     const coverBox = document.querySelector('.book-detail-page .book-cover-spine')?.parentElement;
     if (coverBox) coverBox.classList.add('book-detail-cover-box');
@@ -176,7 +218,7 @@ import { Toast } from './components/Toast.js';
   document.addEventListener('submit', event => {
     if (event.target instanceof Element && event.target.closest('#submit-review-form')) handleReviewSubmit(event);
   }, true);
-  window.addEventListener('hashchange', () => setTimeout(enhance, 0));
+  window.addEventListener('hashchange', () => { recoveryInFlight = false; recoveryFinished = false; setTimeout(enhance, 0); });
   window.addEventListener('load', () => setTimeout(enhance, 0));
   new MutationObserver(() => { if (location.hash.startsWith('#/book/')) enhance(); }).observe(document.documentElement, { childList: true, subtree: true });
   setTimeout(enhance, 0);
