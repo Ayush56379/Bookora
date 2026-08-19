@@ -5,10 +5,11 @@ import { formatPrice } from '../utils/formatters.js';
 import { Toast } from '../components/Toast.js';
 
 const DEFAULT_MAX_PDF_MB = 100;
-const MAX_ADMIN_PDF_MB = 500;
+const MAX_ADMIN_PDF_MB = 100;
 const MAX_COVER_MB = 5;
 const PDFJS_VERSION = '3.11.174';
 const UPLOAD_RETRIES = 4;
+const REQUEST_TIMEOUT_MS = 240000;
 
 let selectedPDF = null;
 let selectedCover = null;
@@ -112,8 +113,18 @@ async function loadPdfJs() {
 
 async function detectPages(file) {
   if (!file) return null;
-  try { const pdfjs = await loadPdfJs(); const buffer = await file.arrayBuffer(); const pdf = await pdfjs.getDocument({ data: buffer }).promise; return Number(pdf.numPages) || null; }
-  catch (error) { console.warn('PDF page detection failed:', error); return null; }
+  let objectUrl = '';
+  try {
+    const pdfjs = await loadPdfJs();
+    objectUrl = URL.createObjectURL(file);
+    const pdf = await pdfjs.getDocument({ url: objectUrl, disableAutoFetch: false, disableStream: false }).promise;
+    return Number(pdf.numPages) || null;
+  } catch (error) {
+    console.warn('PDF page detection failed:', error);
+    return null;
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
 }
 
 async function detectAndSetPages() {
@@ -183,29 +194,44 @@ function base64FromArrayBuffer(buffer) {
 function uploadKey(file, kind) { return `bookora_upload_${kind}_${file.name}_${file.size}_${file.lastModified}`; }
 
 async function requestJson(endpoint, options) {
-  const response = await apiFetch(endpoint, options); let data = {};
-  try { data = await response.json(); } catch (_) {}
-  if (!response.ok || !data.success) { const error = new Error(data.error || `Request failed (${response.status}).`); error.status = response.status; error.data = data; throw error; }
-  return data;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const requestOptions = { ...options, signal: options?.signal || controller.signal };
+    const response = await apiFetch(endpoint, requestOptions); let data = {};
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok || !data.success) { const error = new Error(data.error || `Request failed (${response.status}).`); error.status = response.status; error.data = data; throw error; }
+    return data;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('The upload server took too long to respond. Please retry; resumable upload will continue from the last confirmed chunk.');
+    throw error;
+  } finally { clearTimeout(timeout); }
 }
 
 async function startUpload(file, kind) {
   const data = await requestJson('/api/books/upload-session/start', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ name: file.name, mimeType: kind === 'pdf' ? 'application/pdf' : file.type, size: file.size, kind }) });
-  return { token: data.upload_token, chunkSize: Number(data.chunk_size) || 2 * 1024 * 1024, offset: Number(data.next_offset) || 0 };
+  if (!data.upload_token) throw new Error('Upload server did not create a resumable session.');
+  return { token: data.upload_token, chunkSize: Math.max(256 * 1024, Number(data.chunk_size) || 2 * 1024 * 1024), offset: Number(data.next_offset) || 0 };
 }
 
 async function uploadFileResumable(file, kind, onProgress) {
   const storageKey = uploadKey(file, kind); let cachedState = null;
   try { const cached = sessionStorage.getItem(storageKey); if (cached) cachedState = JSON.parse(cached); } catch (_) {}
-  let session = cachedState?.token ? { token: cachedState.token, chunkSize: Number(cachedState.chunkSize) || 2 * 1024 * 1024, offset: 0 } : null;
+  let session = cachedState?.token ? { token: cachedState.token, chunkSize: Number(cachedState.chunkSize) || 2 * 1024 * 1024, offset: 0, resumed: true } : null;
   let restartCount = 0;
 
   while (restartCount <= 2) {
     try {
       if (!session) session = await startUpload(file, kind);
-      const status = await requestJson('/api/books/upload-session/status', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ upload_token: session.token }) });
-      session.offset = Math.max(0, Math.min(file.size, Number(status.next_offset) || 0));
-      if (status.done && status.file) { sessionStorage.removeItem(storageKey); return status.file; }
+      if (session.resumed) {
+        const status = await requestJson('/api/books/upload-session/status', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ upload_token: session.token }) });
+        session.offset = Math.max(0, Math.min(file.size, Number(status.next_offset) || 0));
+        if (status.done && status.file) { sessionStorage.removeItem(storageKey); return status.file; }
+        session.resumed = false;
+      } else {
+        session.offset = 0;
+      }
+      onProgress(session.offset / file.size);
 
       while (session.offset < file.size) {
         const start = session.offset; const end = Math.min(file.size, start + session.chunkSize); const chunk = await file.slice(start, end).arrayBuffer(); const data = base64FromArrayBuffer(chunk);
@@ -290,7 +316,7 @@ export function initPublishInternalEvents() {
       await loadUploadConfig(); if (!validateStep2()) throw new Error('The upload limit changed. Please re-check your files.');
       const title = getValue('pub-title'); const subtitle = getValue('pub-subtitle'); const author = getValue('pub-author'); const category = getValue('pub-category'); const description = getValue('pub-description'); const tags = getValue('pub-tags').split(',').map(tag => tag.trim()).filter(Boolean); const pages = getNumber('pub-pages'); const price = getNumber('pub-price'); const saleRaw = document.getElementById('pub-saleprice')?.value?.trim() || ''; const salePrice = saleRaw === '' ? null : Number(saleRaw);
       const totalBytes = selectedPDF.size + selectedCover.size;
-      setSubmitProgress('Uploading PDF...', 0);
+      setSubmitProgress('Starting PDF upload...', 0);
       const pdfFile = await uploadFileResumable(selectedPDF, 'pdf', ratio => setSubmitProgress('Uploading PDF...', ratio * selectedPDF.size / totalBytes * 100));
       setSubmitProgress('Uploading cover...', selectedPDF.size / totalBytes * 100);
       const coverFile = await uploadFileResumable(selectedCover, 'cover', ratio => setSubmitProgress('Uploading cover...', (selectedPDF.size + ratio * selectedCover.size) / totalBytes * 100));
