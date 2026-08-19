@@ -59,13 +59,22 @@ function fixExplorePriceFilter() {
   if (!slider) return;
 
   // Prices are INR. The old ₹/$100 default hid books priced above ₹100.
-  if (Number(slider.max || 0) < 10000) slider.max = '10000';
-  if (Number(slider.value || 0) < 10000) slider.value = '10000';
+  let changed = false;
+  if (Number(slider.max || 0) < 10000) {
+    slider.max = '10000';
+    changed = true;
+  }
+  if (Number(slider.value || 0) < 10000) {
+    slider.value = '10000';
+    changed = true;
+  }
 
   const label = document.getElementById('price-val-label');
-  if (label) label.textContent = '₹10,000';
+  if (label && label.textContent !== '₹10,000') label.textContent = '₹10,000';
 
-  slider.dispatchEvent(new Event('input', { bubbles: true }));
+  // Only dispatch once when the filter actually changes; this prevents the
+  // MutationObserver from creating a render loop.
+  if (changed) slider.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function refreshCatalogUI() {
