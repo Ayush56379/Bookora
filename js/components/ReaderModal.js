@@ -1,6 +1,7 @@
 // Bookora — Limited Free Sample Reader
-// Never exposes the complete PDF in the free-sample reader.
+// Free samples are capped at five pages and fetched as extracted text from the backend.
 import { state } from '../state.js';
+import { apiUrl } from '../config.js';
 import { Toast } from './Toast.js';
 
 const MAX_SAMPLE_PAGES = 5;
@@ -30,18 +31,42 @@ export const ReaderModal = {
     this.samplePages = getSamplePages(book);
     this.sampleLoading = false;
 
-    // Free sample always gets a hard 5-page ceiling.
-    // If text samples were not stored, try extracting only the first 5 PDF pages.
-    if (this.isSample && this.samplePages.length === 0 && getPdfUrl(book)) {
+    if (this.isSample) {
+      // Prefer the backend sample endpoint. It extracts and caches only the
+      // first five pages, so the complete PDF is never sent to the browser.
       this.sampleLoading = true;
       this.render();
       try {
-        this.samplePages = await this.extractPdfSample(book, MAX_SAMPLE_PAGES);
+        const response = await fetch(`${apiUrl('/api/books/sample/')}${encodeURIComponent(String(book.id))}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          credentials: 'omit',
+          cache: 'no-store'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.success && Array.isArray(data.pages)) {
+            this.samplePages = data.pages.slice(0, MAX_SAMPLE_PAGES).filter(Boolean);
+          }
+        }
       } catch (error) {
-        console.warn('Sample extraction failed:', error);
-        this.samplePages = [];
+        console.warn('Backend sample endpoint failed:', error);
       }
       this.sampleLoading = false;
+
+      // Existing stored sample pages remain a valid fallback. Only when no
+      // backend sample exists do we try the direct PDF extractor.
+      if (this.samplePages.length === 0 && getPdfUrl(book)) {
+        this.sampleLoading = true;
+        this.render();
+        try {
+          this.samplePages = await this.extractPdfSample(book, MAX_SAMPLE_PAGES);
+        } catch (error) {
+          console.warn('Direct sample extraction failed:', error);
+          this.samplePages = [];
+        }
+        this.sampleLoading = false;
+      }
     }
 
     this.render();
@@ -56,7 +81,6 @@ export const ReaderModal = {
     const url = getPdfUrl(book);
     if (!url) return [];
 
-    // PDF.js is loaded only when a sample needs to be generated.
     const pdfjs = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
 
@@ -71,7 +95,6 @@ export const ReaderModal = {
       result.push(text || `Page ${pageNo}`);
       page.cleanup?.();
     }
-
     return result;
   },
 
@@ -157,38 +180,13 @@ export const ReaderModal = {
             <button id="reader-close-btn" class="btn btn-ghost btn-sm" style="padding:4px;border-radius:var(--radius-full);" aria-label="Close reader">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
-            <div style="min-width:0;">
-              <div style="font-weight:700;font-size:.95rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${String(book.title || 'eBook')}</div>
-              <div style="font-size:.75rem;opacity:.7;">${this.isSample ? '📖 Free Sample Preview' : '✨ Full Licensed Edition'} • ${String(book.author || '')}</div>
-            </div>
+            <div style="min-width:0;"><div style="font-weight:700;font-size:.95rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${String(book.title || 'eBook')}</div><div style="font-size:.75rem;opacity:.7;">${this.isSample ? '📖 Free Sample Preview' : '✨ Full Licensed Edition'} • ${String(book.author || '')}</div></div>
           </div>
-
-          <div style="display:flex;align-items:center;gap:.5rem;">
-            <div style="display:flex;align-items:center;border:1px solid rgba(148,163,184,.3);border-radius:var(--radius-sm);padding:2px;">
-              <button id="font-dec-btn" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:.75rem;">A-</button>
-              <button id="font-inc-btn" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:.85rem;font-weight:700;">A+</button>
-            </div>
-            <div style="display:flex;gap:4px;">
-              <button class="theme-btn" data-theme="light" style="width:24px;height:24px;border-radius:99px;background:#fff;border:1px solid #CBD5E1;" title="Light Theme"></button>
-              <button class="theme-btn" data-theme="sepia" style="width:24px;height:24px;border-radius:99px;background:#FAF5EB;border:1px solid #D6D3D1;" title="Sepia Theme"></button>
-              <button class="theme-btn" data-theme="dark" style="width:24px;height:24px;border-radius:99px;background:#0F172A;border:1px solid #475569;" title="Night Theme"></button>
-            </div>
-          </div>
+          <div style="display:flex;align-items:center;gap:.5rem;"><div style="display:flex;align-items:center;border:1px solid rgba(148,163,184,.3);border-radius:var(--radius-sm);padding:2px;"><button id="font-dec-btn" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:.75rem;">A-</button><button id="font-inc-btn" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:.85rem;font-weight:700;">A+</button></div><div style="display:flex;gap:4px;"><button class="theme-btn" data-theme="light" style="width:24px;height:24px;border-radius:99px;background:#fff;border:1px solid #CBD5E1;" title="Light Theme"></button><button class="theme-btn" data-theme="sepia" style="width:24px;height:24px;border-radius:99px;background:#FAF5EB;border:1px solid #D6D3D1;" title="Sepia Theme"></button><button class="theme-btn" data-theme="dark" style="width:24px;height:24px;border-radius:99px;background:#0F172A;border:1px solid #475569;" title="Night Theme"></button></div></div>
         </div>
-
-        <div style="width:100%;height:3px;background:rgba(148,163,184,.15);">
-          <div id="reader-progress-fill" style="width:${totalPages ? Math.round((1 / totalPages) * 100) : 0}%;height:100%;background:var(--accent);transition:width .3s ease;"></div>
-        </div>
-
-        <div id="reader-content-body" class="reader-body" style="font-size:${this.fontSize}px;">
-          ${this.formatContent(initialContent)}
-        </div>
-
-        <div class="reader-footer">
-          <button id="reader-prev-btn" class="btn btn-secondary btn-sm" ${this.currentPage === 0 ? 'disabled' : ''}>Previous</button>
-          <span id="reader-page-indicator" style="font-size:.85rem;font-weight:600;opacity:.8;">${totalPages ? `Sample page 1 of ${totalPages}` : 'Sample preview'}</span>
-          <button id="reader-next-btn" class="btn btn-primary btn-sm" ${totalPages <= 1 || this.sampleLoading ? 'disabled' : ''}>Next</button>
-        </div>
+        <div style="width:100%;height:3px;background:rgba(148,163,184,.15);"><div id="reader-progress-fill" style="width:${totalPages ? Math.round((1 / totalPages) * 100) : 0}%;height:100%;background:var(--accent);transition:width .3s ease;"></div></div>
+        <div id="reader-content-body" class="reader-body" style="font-size:${this.fontSize}px;">${this.formatContent(initialContent)}</div>
+        <div class="reader-footer"><button id="reader-prev-btn" class="btn btn-secondary btn-sm" ${this.currentPage === 0 ? 'disabled' : ''}>Previous</button><span id="reader-page-indicator" style="font-size:.85rem;font-weight:600;opacity:.8;">${totalPages ? `Sample page 1 of ${totalPages}` : 'Sample preview'}</span><button id="reader-next-btn" class="btn btn-primary btn-sm" ${totalPages <= 1 || this.sampleLoading ? 'disabled' : ''}>Next</button></div>
       </div>
     `;
 
@@ -201,10 +199,7 @@ export const ReaderModal = {
     overlay.querySelectorAll('.theme-btn').forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
 
     const escHandler = e => {
-      if (e.key === 'Escape') {
-        this.close();
-        document.removeEventListener('keydown', escHandler);
-      }
+      if (e.key === 'Escape') { this.close(); document.removeEventListener('keydown', escHandler); }
     };
     document.addEventListener('keydown', escHandler);
   }
