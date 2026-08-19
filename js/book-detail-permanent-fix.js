@@ -166,6 +166,49 @@ import { Toast } from './components/Toast.js';
     await ReaderModal.open({ ...book, sample_pages: pages }, true);
   }
 
+  function openDrivePreview(book, source) {
+    const id = driveId(book?.pdf_file_id || book?.pdfFileId || book?.file_id || book?.fileId || source || book?.pdf_url || book?.pdfUrl);
+    if (!id) throw new Error('Google Drive PDF ID is missing.');
+
+    const existing = document.getElementById('bookora-drive-sample-modal');
+    existing?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'bookora-drive-sample-modal';
+    modal.innerHTML = `
+      <div class="bookora-drive-sample-shell" role="dialog" aria-modal="true" aria-label="Free sample">
+        <div class="bookora-drive-sample-head">
+          <div><strong>Read Free Sample</strong><small>${String(book?.title || 'eBook').replace(/[<>]/g, '')}</small></div>
+          <button type="button" class="bookora-drive-sample-close" aria-label="Close">×</button>
+        </div>
+        <div class="bookora-drive-sample-body">
+          <iframe title="eBook free sample" src="https://drive.google.com/file/d/${encodeURIComponent(id)}/preview" allow="autoplay" loading="eager"></iframe>
+        </div>
+      </div>`;
+
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('.bookora-drive-sample-close')?.addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    document.addEventListener('keydown', function esc(event) {
+      if (event.key === 'Escape' && document.getElementById('bookora-drive-sample-modal') === modal) {
+        close();
+        document.removeEventListener('keydown', esc);
+      }
+    });
+  }
+
+  async function openSampleSource(source, book) {
+    try {
+      await renderPdfSample(source, book);
+      return true;
+    } catch (error) {
+      console.warn('PDF.js sample renderer unavailable; using Drive preview:', error?.message || error);
+      openDrivePreview(book, source);
+      return true;
+    }
+  }
+
   async function openFreeSample(event) {
     const button = event.target instanceof Element ? event.target.closest('#detail-preview-btn') : null;
     if (!button || sampleBusy) return;
@@ -191,7 +234,7 @@ import { Toast } from './components/Toast.js';
         return;
       }
       if (apps?.pdf_url) {
-        await renderPdfSample(apps.pdf_url, book);
+        await openSampleSource(apps.pdf_url, book);
         return;
       }
 
@@ -201,13 +244,13 @@ import { Toast } from './components/Toast.js';
         return;
       }
       if (backend?.pdf_url || backend?.view_url) {
-        await renderPdfSample(backend.pdf_url || backend.view_url, book);
+        await openSampleSource(backend.pdf_url || backend.view_url, book);
         return;
       }
 
       const direct = pdfUrl(book);
       if (direct) {
-        await renderPdfSample(direct, book);
+        await openSampleSource(direct, book);
         return;
       }
       throw new Error('No PDF sample source is available for this book.');
@@ -225,7 +268,39 @@ import { Toast } from './components/Toast.js';
     if (document.getElementById('bookora-permanent-detail-styles')) return;
     const style = document.createElement('style');
     style.id = 'bookora-permanent-detail-styles';
-    style.textContent = `html.bookora-detail-active,html.bookora-detail-active body{scroll-behavior:auto!important}.bookora-detail-grid{align-items:start!important}.bookora-cover-ready-box{position:relative!important;overflow:hidden!important;background:#fff!important;isolation:isolate}.bookora-permanent-cover{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;z-index:10!important;opacity:0;transition:opacity .08s linear}.bookora-permanent-cover.loaded{opacity:1}.bookora-cover-loaded>div:not(.book-cover-spine){opacity:0!important;pointer-events:none!important}.bookora-cover-loaded .book-cover-spine{z-index:12!important}#detail-preview-btn:disabled{opacity:.65!important;cursor:wait!important}.bd-stat-icon{width:28px!important;height:28px!important;min-width:28px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;border-radius:8px!important;background:#eff6ff!important;color:#2563eb!important;font:800 10px/1 Inter,sans-serif!important;box-shadow:none!important;overflow:hidden!important}.bd-stat-icon svg{width:16px!important;height:16px!important;display:block!important;fill:none!important;stroke:currentColor!important;stroke-width:1.8!important;stroke-linecap:round!important;stroke-linejoin:round!important}.bd-stat{display:grid!important;grid-template-columns:28px 1fr!important;column-gap:8px!important;align-items:center!important}.bd-stat-label,.bd-stat-value{grid-column:2!important}#bookora-reader-modal{position:fixed!important;inset:0!important;z-index:99999!important;background:rgba(15,23,42,.72)!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:18px!important}#bookora-reader-modal .reader-container{width:min(100%,980px)!important;height:min(92vh,900px)!important;display:flex!important;flex-direction:column!important;border-radius:18px!important;overflow:hidden!important;background:#fff;box-shadow:0 24px 80px rgba(0,0,0,.28)}#bookora-reader-modal .reader-body{flex:1 1 auto!important;overflow:auto!important;padding:32px clamp(20px,6vw,72px)!important;line-height:1.8!important;overscroll-behavior:contain!important}@media(max-width:700px){.book-detail-page .book-detail-layout{grid-template-columns:1fr!important;gap:1.5rem!important;padding:1rem!important}.book-detail-page .book-detail-layout>div:first-child>div:first-child{max-width:270px!important;margin-inline:auto!important}#bookora-reader-modal{padding:0!important}#bookora-reader-modal .reader-container{width:100%!important;height:100%!important;border-radius:0!important}#bookora-reader-modal .reader-body{padding:22px 18px!important}}`;
+    style.textContent = `
+      html.bookora-detail-active,html.bookora-detail-active body{scroll-behavior:auto!important}
+      .bookora-detail-grid{align-items:start!important}
+      .bookora-cover-ready-box{position:relative!important;overflow:hidden!important;background:#fff!important;isolation:isolate}
+      .bookora-permanent-cover{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:cover!important;object-position:center!important;display:block!important;z-index:10!important;opacity:0;transition:opacity .08s linear}
+      .bookora-permanent-cover.loaded{opacity:1}
+      .bookora-cover-loaded>div:not(.book-cover-spine){opacity:0!important;pointer-events:none!important}
+      .bookora-cover-loaded .book-cover-spine{z-index:12!important}
+      #detail-preview-btn:disabled{opacity:.65!important;cursor:wait!important}
+      .bd-stat-icon{width:28px!important;height:28px!important;min-width:28px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;border-radius:8px!important;background:#eff6ff!important;color:#2563eb!important;font:800 10px/1 Inter,sans-serif!important;box-shadow:none!important;overflow:hidden!important}
+      .bd-stat-icon svg{width:16px!important;height:16px!important;display:block!important;fill:none!important;stroke:currentColor!important;stroke-width:1.8!important;stroke-linecap:round!important;stroke-linejoin:round!important}
+      .bd-stat{display:grid!important;grid-template-columns:28px 1fr!important;column-gap:8px!important;align-items:center!important}
+      .bd-stat-label,.bd-stat-value{grid-column:2!important}
+      #bookora-reader-modal{position:fixed!important;inset:0!important;z-index:99999!important;background:rgba(15,23,42,.72)!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:18px!important}
+      #bookora-reader-modal .reader-container{width:min(100%,980px)!important;height:min(92vh,900px)!important;display:flex!important;flex-direction:column!important;border-radius:18px!important;overflow:hidden!important;background:#fff;box-shadow:0 24px 80px rgba(0,0,0,.28)}
+      #bookora-reader-modal .reader-body{flex:1 1 auto!important;overflow:auto!important;padding:32px clamp(20px,6vw,72px)!important;line-height:1.8!important;overscroll-behavior:contain!important}
+      #bookora-drive-sample-modal{position:fixed!important;inset:0!important;z-index:100000!important;background:rgba(15,23,42,.78)!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:16px!important}
+      .bookora-drive-sample-shell{width:min(1100px,100%)!important;height:min(94vh,900px)!important;background:#fff!important;border-radius:18px!important;overflow:hidden!important;box-shadow:0 28px 90px rgba(0,0,0,.35)!important;display:flex!important;flex-direction:column!important}
+      .bookora-drive-sample-head{height:62px!important;flex:0 0 62px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;padding:0 18px!important;border-bottom:1px solid #e5e7eb!important;background:#fff!important;color:#111827!important}
+      .bookora-drive-sample-head strong{display:block!important;font-size:15px!important}.bookora-drive-sample-head small{display:block!important;margin-top:2px!important;color:#64748b!important;font-size:11px!important;max-width:70vw!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+      .bookora-drive-sample-close{width:36px!important;height:36px!important;border:0!important;border-radius:10px!important;background:#f1f5f9!important;color:#0f172a!important;font-size:25px!important;line-height:1!important;cursor:pointer!important}
+      .bookora-drive-sample-body{min-height:0!important;flex:1 1 auto!important;background:#f8fafc!important}
+      .bookora-drive-sample-body iframe{width:100%!important;height:100%!important;border:0!important;display:block!important;background:#fff!important}
+      @media(max-width:700px){
+        .book-detail-page .book-detail-layout{grid-template-columns:1fr!important;gap:1.5rem!important;padding:1rem!important}
+        .book-detail-page .book-detail-layout>div:first-child>div:first-child{max-width:270px!important;margin-inline:auto!important}
+        #bookora-reader-modal{padding:0!important}
+        #bookora-reader-modal .reader-container{width:100%!important;height:100%!important;border-radius:0!important}
+        #bookora-reader-modal .reader-body{padding:22px 18px!important}
+        #bookora-drive-sample-modal{padding:0!important}
+        .bookora-drive-sample-shell{width:100%!important;height:100%!important;border-radius:0!important}
+      }
+    `;
     document.head.appendChild(style);
   }
 
