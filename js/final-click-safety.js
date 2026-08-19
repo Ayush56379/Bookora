@@ -1,6 +1,4 @@
-/* Bookora final interaction guard.
-   Runs after the SPA is loaded and protects every route from stale mobile
-   overlays while providing a safe fallback for explicit route buttons. */
+/* Bookora final interaction + eBook card guard. */
 (() => {
   'use strict';
 
@@ -31,47 +29,60 @@
       else location.hash = valueText;
       return true;
     }
-    if (valueText.startsWith('/') && !valueText.startsWith('//')) {
-      location.href = valueText;
-      return true;
-    }
-    if (/^https?:\/\//i.test(valueText)) {
-      location.href = valueText;
-      return true;
-    }
+    if (valueText.startsWith('/') && !valueText.startsWith('//')) { location.href = valueText; return true; }
+    if (/^https?:\/\//i.test(valueText)) { location.href = valueText; return true; }
     return false;
   }
 
-  /* A route change must always leave the next page completely clickable. */
   window.addEventListener('hashchange', closeMobileLayers, { passive: true });
   window.addEventListener('pageshow', closeMobileLayers, { passive: true });
 
-  /* If a route replacement removes the drawer, remove stale body locking. */
   new MutationObserver(() => {
     if (!$('mobile-nav-drawer') || !$('mobile-drawer-backdrop')) closeMobileLayers();
   }).observe(document.documentElement, { childList: true, subtree: true });
 
-  /* Delegated fallback for explicit navigation controls. Existing handlers
-     still work normally; only buttons that declare a route are bridged. */
+  // Any visible part of an eBook card opens its Details page.
+  // Interactive controls keep their own behavior: wishlist, preview, buy, links.
+  document.addEventListener('click', event => {
+    if (event.defaultPrevented) return;
+    const element = event.target instanceof Element ? event.target : null;
+    const card = element?.closest('.book-card[data-book-id]');
+    if (!card) return;
+    if (element.closest('button,a,input,select,textarea,[role="button"]')) return;
+    const directLink = card.querySelector('.book-card-title-link[href^="#/book/"], .book-quick-actions a[href^="#/book/"]');
+    if (directLink?.getAttribute('href')) {
+      event.preventDefault();
+      go(directLink.getAttribute('href'));
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.defaultPrevented) return;
+    const element = event.target instanceof Element ? event.target : null;
+    const card = element?.closest('.book-card[data-book-id]');
+    if (!card || (event.key !== 'Enter' && event.key !== ' ')) return;
+    if (element.closest('button,a,input,select,textarea,[role="button"]') && element !== card) return;
+    const directLink = card.querySelector('.book-card-title-link[href^="#/book/"]');
+    if (directLink?.getAttribute('href')) {
+      event.preventDefault();
+      go(directLink.getAttribute('href'));
+    }
+  });
+
   document.addEventListener('click', event => {
     if (event.defaultPrevented) return;
     const element = event.target instanceof Element ? event.target.closest('button,[role="button"]') : null;
     if (!element) return;
-
     const route = element.dataset.route || element.dataset.navigate || element.dataset.href || element.getAttribute('data-url');
     if (route) go(route);
   });
 
-  /* Keep native SPA anchors reliable after any component re-render. */
   document.addEventListener('click', event => {
     if (event.defaultPrevented) return;
     const anchor = event.target instanceof Element ? event.target.closest('a[href^="#/"]') : null;
-    if (!anchor) return;
-    closeMobileLayers();
+    if (anchor) closeMobileLayers();
   });
 
-  /* Make keyboard activation equivalent to a real click for explicit route
-     buttons without changing normal form/button behavior. */
   document.addEventListener('keydown', event => {
     if (event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
     const element = event.target instanceof Element ? event.target.closest('button,[role="button"]') : null;
@@ -81,6 +92,17 @@
     event.preventDefault();
     go(route);
   });
+
+  // Keep cover images sharp and correctly proportioned on every catalog card.
+  const style = document.createElement('style');
+  style.id = 'bookora-card-visual-hotfix';
+  style.textContent = `
+    .book-cover-premium{aspect-ratio:2/3!important;height:auto!important;min-height:0!important;}
+    .book-cover-premium .book-cover-image{object-fit:cover!important;object-position:center!important;image-rendering:auto!important;}
+    .book-cover-premium .book-cover-image{background:#f8fafc;}
+    @media(max-width:700px){.book-cover-premium{aspect-ratio:2/3!important;}}
+  `;
+  document.head.appendChild(style);
 
   window.BookoraClickSafety = Object.freeze({ closeMobileLayers, go });
 })();
