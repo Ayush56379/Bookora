@@ -4,47 +4,75 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Bookora — Free Sample</title>
-<meta name="theme-color" content="#0f172a">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet">
+<meta name="description" content="Read selected pages from this Bookora eBook before purchase.">
+<meta name="theme-color" content="#ffffff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@700;800;900&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#f5f7fb;color:#0f172a;font-family:Inter,Arial,sans-serif}.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid #e2e8f0}.bar{max-width:1180px;margin:auto;min-height:68px;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px}.back{color:#334155;text-decoration:none;font-weight:800;font-size:14px}.back:hover{color:#2563eb}.brand{font-weight:900;letter-spacing:-.3px}.content{max-width:980px;margin:auto;padding:32px 18px 130px}.heading{text-align:center;margin:0 auto 28px}.heading h1{margin:0;font:900 clamp(28px,4vw,46px)/1.08 'Plus Jakarta Sans',Inter,sans-serif;letter-spacing:-1.6px}.heading p{margin:10px auto 0;color:#64748b;font-size:14px;line-height:1.6}.badge{display:inline-flex;padding:7px 11px;border-radius:999px;background:#eaf1ff;color:#2563eb;font-size:11px;font-weight:800;margin-bottom:12px}.note{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:13px 16px;margin:0 auto 22px;max-width:820px;text-align:center;color:#475569;font-size:12px;font-weight:700;line-height:1.5}.stack{display:flex;flex-direction:column;align-items:center;gap:28px}.sheet{width:min(820px,100%);background:#fff;border:1px solid #dbe3ee;box-shadow:0 12px 34px rgba(15,23,42,.12)}.sheet img{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none}.caption{padding:10px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;text-align:center;color:#64748b;font-size:11px;font-weight:800}.loading{padding:100px 20px;text-align:center;color:#64748b;font-weight:700}.error{background:#fff;border:1px solid #fecaca;color:#991b1b;border-radius:16px;padding:28px;text-align:center;max-width:680px;margin:50px auto}.buybar{position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(255,255,255,.96);backdrop-filter:blur(14px);border-top:1px solid #e2e8f0;padding:11px 16px;display:flex;justify-content:center;align-items:center;gap:14px}.buybar span{font-size:12px;font-weight:700;color:#475569}.buy{display:inline-flex;align-items:center;justify-content:center;background:#2563eb;color:#fff;text-decoration:none;border-radius:11px;padding:12px 19px;font-weight:800;font-size:13px;box-shadow:0 7px 18px rgba(37,99,235,.22)}.buy:hover{background:#1d4ed8}@media(max-width:640px){.bar{min-height:60px;padding:10px 14px}.content{padding:24px 10px 120px}.sheet{width:100%}.buybar span{display:none}.buybar{justify-content:center}.heading{margin-bottom:22px}}
+:root{--blue:#2563eb;--navy:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f7f9fc}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--navy);font-family:Inter,Arial,sans-serif}a{text-decoration:none}
+.site-header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.96);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.header-inner{max-width:1280px;margin:auto;min-height:74px;padding:12px 28px;display:flex;align-items:center;gap:28px}.logo{display:flex;align-items:center;gap:10px;color:var(--navy);font-weight:900;font-size:22px;letter-spacing:-.7px;white-space:nowrap}.logo-mark{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,#2563eb,#4f46e5);display:grid;place-items:center;color:#fff;box-shadow:0 7px 20px rgba(37,99,235,.22)}.logo-mark svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.tagline{font-size:9px;color:#64748b;letter-spacing:1.1px;font-weight:800;margin-top:1px}.brand-wrap{display:flex;flex-direction:column}.nav{display:flex;align-items:center;gap:25px;margin-left:auto}.nav a{color:#475569;font-size:14px;font-weight:700}.nav a:hover{color:var(--blue)}.header-actions{display:flex;align-items:center;gap:10px}.back-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;color:#334155;font-size:13px;font-weight:800}.back-btn:hover{border-color:#bfdbfe;color:var(--blue)}
+.page{max-width:1180px;margin:auto;padding:34px 24px 150px}.crumb{display:flex;gap:8px;align-items:center;color:#64748b;font-size:13px;margin:0 0 24px}.crumb a{color:#64748b}.crumb a:hover{color:var(--blue)}.hero{text-align:center;margin:0 auto 28px;max-width:800px}.badge{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;background:#eaf1ff;color:var(--blue);font-size:11px;font-weight:800;letter-spacing:.3px}.hero h1{margin:13px 0 8px;font:900 clamp(28px,4vw,48px)/1.08 'Plus Jakarta Sans',Inter,sans-serif;letter-spacing:-1.7px}.hero p{margin:0;color:var(--muted);font-size:14px;line-height:1.7}.info{display:flex;justify-content:center;flex-wrap:wrap;gap:9px;margin-top:18px}.pill{padding:8px 11px;background:#fff;border:1px solid var(--line);border-radius:9px;color:#475569;font-size:11px;font-weight:800}
+.reader-note{max-width:820px;margin:0 auto 24px;padding:13px 16px;background:#fff;border:1px solid var(--line);border-radius:12px;text-align:center;color:#475569;font-size:12px;font-weight:700;line-height:1.55;box-shadow:0 4px 16px rgba(15,23,42,.04)}
+.sample-stack{display:flex;flex-direction:column;align-items:center;gap:26px}.page-card{width:min(820px,100%);background:#fff;border:1px solid #dbe3ee;border-radius:4px;overflow:hidden;box-shadow:0 12px 34px rgba(15,23,42,.10)}.page-card img{display:block;width:100%;height:auto;user-select:none;-webkit-user-drag:none}.page-label{padding:10px 14px;background:#f8fafc;border-top:1px solid var(--line);text-align:center;color:#64748b;font-size:11px;font-weight:800}.loading-card{width:min(820px,100%);background:#fff;border:1px solid var(--line);padding:90px 20px;text-align:center;border-radius:14px;color:var(--muted);font-weight:700}.spinner{width:34px;height:34px;border:3px solid #dbeafe;border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 14px}@keyframes spin{to{transform:rotate(360deg)}}
+.error-card{width:min(700px,100%);margin:30px auto;background:#fff;border:1px solid #fecaca;border-radius:14px;padding:28px;text-align:center;color:#991b1b}.error-card p{color:#64748b;line-height:1.6}.retry{display:inline-flex;margin-top:8px;background:var(--blue);color:#fff;border-radius:10px;padding:11px 16px;font-size:13px;font-weight:800}
+.buybar{position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(255,255,255,.97);backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:11px 20px;display:flex;justify-content:center;align-items:center;gap:15px}.buy-copy{font-size:12px;color:#475569;font-weight:700}.buy{display:inline-flex;align-items:center;justify-content:center;padding:12px 20px;border-radius:10px;background:var(--blue);color:#fff;font-size:13px;font-weight:800;box-shadow:0 7px 18px rgba(37,99,235,.20)}.buy:hover{background:#1d4ed8}.site-footer{margin-top:30px;border-top:1px solid var(--line);background:#fff}.footer-inner{max-width:1180px;margin:auto;padding:42px 24px 28px;display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:34px}.footer-brand{font-size:22px;font-weight:900;margin-bottom:12px}.footer-copy{color:#64748b;font-size:13px;line-height:1.7;max-width:330px}.footer-title{font-size:12px;font-weight:900;letter-spacing:.5px;margin-bottom:15px}.footer-links{display:flex;flex-direction:column;gap:11px}.footer-links a{font-size:13px;color:#64748b}.footer-links a:hover{color:var(--blue)}.copyright{max-width:1180px;margin:auto;padding:18px 24px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:15px;color:#64748b;font-size:12px}
+@media(max-width:900px){.nav{display:none}.header-inner{padding:10px 16px}.page{padding:25px 14px 145px}.footer-inner{grid-template-columns:1fr 1fr}.copyright{flex-direction:column}}
+@media(max-width:600px){.logo{font-size:19px}.logo-mark{width:36px;height:36px}.header-inner{min-height:62px}.hero h1{letter-spacing:-1.1px}.hero p{font-size:13px}.page-card{width:100%}.buy-copy{display:none}.buybar{padding:10px 14px}.buy{width:min(340px,100%)}.footer-inner{grid-template-columns:1fr;padding:34px 18px 24px}.copyright{padding:16px 18px}}
 </style>
 </head>
 <body>
-<header class="top"><div class="bar"><a id="back" class="back" href="#">← Back to Book</a><div class="brand">Bookora <span style="color:#64748b;font-weight:700">Free Sample</span></div></div></header>
-<main class="content"><section class="heading"><div class="badge">FREE SAMPLE · 6 SELECTED PAGES</div><h1 id="title">Preparing sample…</h1><p id="subtitle">Opening pages, middle pages and ending pages are shown so readers can preview the publication before buying.</p></section><div class="note">2 opening pages · 2 middle pages · 2 ending pages · Original PDF is never opened in the browser.</div><section id="stack" class="stack"><div class="sheet"><div class="loading">Preparing your sample…</div></div></section></main><div class="buybar"><span>Like what you see? Read the complete eBook.</span><a id="buy" class="buy" href="#">Buy Full eBook →</a></div>
+<header class="site-header"><div class="header-inner">
+<a class="logo" href="./">
+<span class="logo-mark"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg></span>
+<span class="brand-wrap"><span>Bookora</span><span class="tagline">DISCOVER. READ. PUBLISH.</span></span></a>
+<nav class="nav"><a href="./">Home</a><a href="./#/explore">Explore</a><a href="./#/categories">Categories</a><a href="./#/best-sellers">Best Sellers</a><a href="./#/new-releases">New Releases</a><a href="./#/pricing">Pricing</a></nav>
+<div class="header-actions"><a id="topBack" class="back-btn" href="#">← Back</a></div>
+</div></header>
+
+<main class="page">
+<div class="crumb"><a href="./">Home</a><span>/</span><a id="bookCrumb" href="#">Book</a><span>/</span><strong>Free Sample</strong></div>
+<section class="hero"><span class="badge">FREE SAMPLE · 6 SELECTED PAGES</span><h1 id="title">Preparing sample…</h1><p>Preview the opening, middle and ending of this publication before purchasing the complete eBook.</p><div class="info"><span class="pill">2 Opening Pages</span><span class="pill">2 Middle Pages</span><span class="pill">2 Ending Pages</span><span class="pill">Protected Preview</span></div></section>
+<div class="reader-note">Only selected sample pages are displayed. Bookora does not open the original Google Drive PDF viewer on this page.</div>
+<section id="stack" class="sample-stack"><div class="loading-card"><div class="spinner"></div>Preparing your sample…</div></section>
+</main>
+
+<footer class="site-footer"><div class="footer-inner"><div><div class="footer-brand">Bookora</div><div class="footer-copy">Discover digital books, read verified publications, and publish your own work through a modern eBook marketplace.</div></div><div><div class="footer-title">EXPLORE</div><div class="footer-links"><a href="./">Home</a><a href="./#/explore">All eBooks</a><a href="./#/best-sellers">Best Sellers</a><a href="./#/new-releases">New Releases</a></div></div><div><div class="footer-title">CREATORS</div><div class="footer-links"><a href="./#/seller">Publish on Bookora</a><a href="./#/creator-studio">Creator Studio</a><a href="./#/become-creator">Become a Creator</a></div></div><div><div class="footer-title">SUPPORT & TRUST</div><div class="footer-links"><a href="./#/help">Help Center</a><a href="./#/faq">FAQ</a><a href="./#/contact">Contact Support</a><a href="./#/refund">Refund Policy</a></div></div></div><div class="copyright"><span>© 2026 Bookora. All rights reserved.</span><span>Discover. Read. Publish.</span></div></footer>
+
+<div class="buybar"><span class="buy-copy">Like what you see? Read the complete eBook.</span><a id="buy" class="buy" href="#">Buy Full eBook →</a></div>
+
 <script type="module">
 const API=(window.BOOKORA_API_URL||'https://bookora-backend-x08l.onrender.com').replace(/\/$/,'');
-const params=new URLSearchParams(location.search); const slug=params.get('book')||'';
-const titleEl=document.getElementById('title'), stack=document.getElementById('stack'), back=document.getElementById('back'), buy=document.getElementById('buy');
+const params=new URLSearchParams(location.search);const slug=params.get('book')||'';const suppliedTitle=params.get('title')||'';
+const titleEl=document.getElementById('title'),stack=document.getElementById('stack'),buy=document.getElementById('buy'),topBack=document.getElementById('topBack'),bookCrumb=document.getElementById('bookCrumb');
+const clean=s=>String(s||'').trim();
 const esc=s=>String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
-if(!slug){stack.innerHTML='<div class="error"><b>Sample not found.</b><p>No book was selected.</p></div>';}else{
- back.href=`./#/book/${encodeURIComponent(slug)}`; buy.href=`./#/checkout/${encodeURIComponent(slug)}`;
+if(!slug){stack.innerHTML='<div class="error-card"><b>Sample not found.</b><p>No eBook was selected.</p></div>';}else{
+ const bookUrl=`./#/book/${encodeURIComponent(slug)}`;topBack.href=bookUrl;bookCrumb.href=bookUrl;buy.href=`./#/checkout/${encodeURIComponent(slug)}`;
+ if(suppliedTitle)titleEl.textContent=suppliedTitle;
  try{
-  const cat=await fetch(`${API}/api/books`,{cache:'no-store',headers:{Accept:'application/json'}}).then(r=>r.json());
-  const books=Array.isArray(cat)?cat:(cat.books||[]); const book=books.find(b=>String(b.slug||b.id)===slug)||books.find(b=>String(b.id)===slug);
-  if(!book) throw new Error('This eBook is not available in the catalog.');
-  titleEl.textContent=book.title||'eBook Sample';
-  const response=await fetch(`${API}/api/books/${encodeURIComponent(book.slug||book.id)}/sample?mode=selected`,{cache:'no-store',headers:{Accept:'application/pdf'}});
+  let book={title:suppliedTitle};
+  const response=await fetch(`${API}/api/books/${encodeURIComponent(slug)}/sample?mode=selected`,{cache:'no-store',headers:{Accept:'application/pdf'}});
   if(!response.ok){let msg=`Sample could not be generated (${response.status}).`;try{const d=await response.json();if(d.error)msg=d.error}catch(_){}throw new Error(msg)}
-  const type=(response.headers.get('content-type')||'').toLowerCase(); if(!type.includes('application/pdf'))throw new Error('Sample service returned an invalid file.');
+  const type=(response.headers.get('content-type')||'').toLowerCase();if(!type.includes('application/pdf'))throw new Error('Sample service returned an invalid file.');
   const bytes=new Uint8Array(await response.arrayBuffer());
-  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs'); pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
-  const pdf=await pdfjs.getDocument({data:bytes}).promise; if(!pdf.numPages)throw new Error('The sample contains no readable pages.');
-  const total=Number(book.pages||book.pageCount||0)||pdf.numPages;
-  const selected=[0,1,Math.floor((total-1)/2),Math.ceil((total-1)/2),Math.max(0,total-2),Math.max(0,total-1)];
-  const labels=['Opening · Page 1','Opening · Page 2',`Middle · Page ${selected[2]+1}`,`Middle · Page ${selected[3]+1}`,`Ending · Page ${selected[4]+1}`,`Ending · Page ${selected[5]+1}`];
+  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+  const pdf=await pdfjs.getDocument({data:bytes}).promise;if(!pdf.numPages)throw new Error('The sample contains no readable pages.');
+  const count=Math.min(6,pdf.numPages);const positions=count===6?[0,1,2,3,4,5]:Array.from({length:count},(_,i)=>i);const labels=['Opening · Page 1','Opening · Page 2','Middle · Sample 1','Middle · Sample 2','Ending · Sample 1','Ending · Sample 2'];
   stack.innerHTML='';
-  for(let i=1;i<=pdf.numPages;i++){
-   const page=await pdf.getPage(i), base=page.getViewport({scale:1}), width=Math.min(820,stack.clientWidth||820), viewport=page.getViewport({scale:width/base.width}), ratio=Math.min(devicePixelRatio||1,2);
+  const width=Math.min(820,stack.clientWidth||820);
+  for(let i=0;i<positions.length;i++){
+   const page=await pdf.getPage(positions[i]+1),base=page.getViewport({scale:1}),viewport=page.getViewport({scale:width/base.width}),ratio=Math.min(window.devicePixelRatio||1,2);
    const canvas=document.createElement('canvas');canvas.width=Math.floor(viewport.width*ratio);canvas.height=Math.floor(viewport.height*ratio);canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';
    await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport,transform:ratio!==1?[ratio,0,0,ratio,0,0]:null}).promise;
-   const img=document.createElement('img');img.src=canvas.toDataURL('image/jpeg',.9);img.alt=`${book.title} sample page ${i}`;img.draggable=false;
-   const sheet=document.createElement('article');sheet.className='sheet';const cap=document.createElement('div');cap.className='caption';cap.textContent=labels[i-1]||`Sample page ${i}`;sheet.append(img,cap);stack.appendChild(sheet);canvas.width=1;canvas.height=1;page.cleanup?.();
+   const img=document.createElement('img');img.src=canvas.toDataURL('image/jpeg',.9);img.alt=`${book.title||'eBook'} sample ${i+1}`;img.draggable=false;img.loading=i<2?'eager':'lazy';
+   const card=document.createElement('article');card.className='page-card';const label=document.createElement('div');label.className='page-label';label.textContent=labels[i]||`Sample page ${i+1}`;card.append(img,label);stack.appendChild(card);canvas.width=1;canvas.height=1;page.cleanup?.();
   }
   pdf.cleanup?.();pdf.destroy?.();
- }catch(err){console.error(err);stack.innerHTML=`<div class="error"><b>Sample could not be opened</b><p>${esc(err.message||'Please try again.')}</p><a class="buy" href="./#/book/${encodeURIComponent(slug)}">Back to Book</a></div>`}
+ }catch(error){console.error('Bookora sample:',error);stack.innerHTML=`<div class="error-card"><b>Sample could not be opened</b><p>${esc(error.message||'Please try again.')}</p><a class="retry" href="${bookUrl}">Back to Book</a></div>`;}
 }
 </script>
-</body></html>
+</body>
+</html>
