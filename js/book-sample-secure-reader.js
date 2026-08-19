@@ -1,14 +1,24 @@
-/* Bookora — free sample SPA launcher.
- * Opens the dedicated FreeSamplePage.js route inside the existing SPA.
- * Never opens sample.html, a Google Drive viewer, or a modal.
+/* Bookora — free sample in-page reader.
+ * Opens selected sample pages as images in a clean overlay above the current book page.
+ * Never opens sample.html, a Google Drive viewer, or a separate sample page.
  */
 import { state } from './state.js';
+import { renderFreeSamplePage, initFreeSamplePage, closeFreeSamplePage } from './pages/FreeSamplePage.js';
 
 (() => {
   'use strict';
   let busy = false;
 
-  document.addEventListener('click', (event) => {
+  function close() {
+    closeFreeSamplePage();
+    document.removeEventListener('keydown', onKeyDown);
+  }
+
+  function onKeyDown(event) {
+    if (event.key === 'Escape') close();
+  }
+
+  document.addEventListener('click', async (event) => {
     const target = event.target instanceof Element ? event.target : null;
     const button = target?.closest('#detail-preview-btn');
     if (!button || busy) return;
@@ -32,14 +42,19 @@ import { state } from './state.js';
     const label = button.querySelector('span');
     if (label) label.textContent = 'Opening sample…';
 
-    // Dedicated SPA route: /sample/:slug
-    // No sample.html and no PDF viewer page.
-    window.location.hash = `#/sample/${encodeURIComponent(book.slug || book.id || slug)}`;
+    // Keep the user on the current Book Detail page.
+    // The sample is an overlay, so there is no route change or page reload.
+    document.getElementById('bookora-free-sample-page')?.remove();
+    document.body.insertAdjacentHTML('beforeend', renderFreeSamplePage(book));
+    document.body.classList.add('bookora-sample-open');
+    document.addEventListener('keydown', onKeyDown);
 
-    setTimeout(() => {
+    try {
+      await initFreeSamplePage(book);
+    } finally {
       busy = false;
       button.disabled = false;
       if (label) label.textContent = 'Read Free Sample';
-    }, 1600);
+    }
   }, true);
 })();
