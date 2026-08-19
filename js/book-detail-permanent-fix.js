@@ -98,15 +98,24 @@ import { Toast } from './components/Toast.js';
     const pdf = pdfUrl(book);
     if (!fileId && !pdf) return null;
     try {
+      // Do NOT set application/json here. That triggers a CORS OPTIONS
+      // preflight which Google Apps Script web apps do not handle reliably.
+      // A plain-text POST is CORS-safelisted and Apps Script still exposes
+      // the exact JSON string through e.postData.contents for doPost().
       const response = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify({ action: 'getBookSample', pdf_file_id: fileId, pdf_url: pdf }),
-        credentials: 'omit'
+        credentials: 'omit',
+        redirect: 'follow',
+        cache: 'no-store'
       });
-      if (!response.ok) return null;
-      const data = await response.json();
-      if (!data?.success || !data?.pdf_url) return null;
+      if (!response.ok) throw new Error(`Apps Script HTTP ${response.status}`);
+      const raw = await response.text();
+      let data;
+      try { data = JSON.parse(raw); } catch (_) { throw new Error('Apps Script returned non-JSON response'); }
+      if (!data?.success) throw new Error(data?.error || 'Apps Script sample request failed');
+      if (!data?.pdf_url && !Array.isArray(data?.pages)) throw new Error('Apps Script returned no sample source');
       return data;
     } catch (error) {
       console.warn('Apps Script sample:', error?.message || error);
@@ -164,7 +173,6 @@ import { Toast } from './components/Toast.js';
         return;
       }
 
-      // Primary source: the Google Apps Script endpoint added to the backend.
       const apps = await appsScriptSample(book);
       if (apps?.pages?.length) {
         await ReaderModal.open({ ...book, sample_pages: apps.pages.slice(0, MAX_SAMPLE_PAGES) }, true);
@@ -175,7 +183,6 @@ import { Toast } from './components/Toast.js';
         return;
       }
 
-      // Existing Render endpoint remains a fallback.
       const backend = await backendSample(book);
       if (backend?.pages?.length) {
         await ReaderModal.open({ ...book, sample_pages: backend.pages.slice(0, MAX_SAMPLE_PAGES) }, true);
@@ -186,7 +193,6 @@ import { Toast } from './components/Toast.js';
         return;
       }
 
-      // Last fallback: public Drive PDF directly.
       const direct = pdfUrl(book);
       if (direct) {
         await renderPdfSample(direct, book);
