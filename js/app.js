@@ -40,6 +40,7 @@ import { renderProfilePage } from './pages/ProfilePage.js';
 import { renderUserSettingsPage, initUserSettingsEvents } from './pages/UserSettingsPage.js';
 import { renderAccountSecurityPage, initAccountSecurityEvents } from './pages/AccountSecurityPage.js';
 import { renderNotFoundPage } from './pages/NotFoundPage.js';
+import { renderFreeSamplePage, initFreeSamplePage } from './pages/FreeSamplePage.js';
 
 class App {
   constructor() {
@@ -57,30 +58,13 @@ class App {
 
     state.subscribe((event) => {
       const path = this.currentPath();
-
-      // NEVER replace the Book Detail DOM while the user is reading/scrolling.
-      // Firebase/Render events can arrive repeatedly in the background. A full
-      // render changes document height and browser scroll anchoring then jumps
-      // the user back toward the top. Detail data is hydrated by its own page
-      // runtimes instead.
       if (path.startsWith('/book/')) {
-        if (event === 'DATA_SYNCED') {
-          window.dispatchEvent(new CustomEvent('bookora:catalog-updated'));
-        }
-        // Header changes are deliberately deferred on the detail page too;
-        // replacing the header while the wheel is moving can cause a scroll
-        // anchor correction. Navigation away will render the fresh header.
+        if (event === 'DATA_SYNCED') window.dispatchEvent(new CustomEvent('bookora:catalog-updated'));
         return;
       }
-
       this.updateHeader();
-      if (event === 'DATA_SYNCED') {
-        this.route(true, false);
-        return;
-      }
-      if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) {
-        this.route(true, false);
-      }
+      if (event === 'DATA_SYNCED') { this.route(true, false); return; }
+      if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) this.route(true, false);
     });
 
     document.addEventListener('click', (e) => {
@@ -98,8 +82,7 @@ class App {
       const target = e.target instanceof Element ? e.target : null;
       const wishBtn = target?.closest('.book-wishlist-btn');
       if (!wishBtn) return;
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
       const bookId = String(wishBtn.dataset.id || '');
       if (!bookId) return;
       if (!state.isAuthenticated) {
@@ -153,15 +136,9 @@ class App {
 
   route(force = false, navigation = false) {
     if (this.routeRunning) return;
-
     const hash = window.location.hash || '#/';
     const path = this.currentPath();
-
-    // A Book Detail view is intentionally immutable during background state
-    // changes. Even a forced state refresh must not replace its DOM.
     if (path.startsWith('/book/') && this.lastRenderedHash === hash && document.querySelector('#main-content')) return;
-
-    // Do not paint the exact same route twice.
     if (!force && this.lastRenderedHash === hash && document.querySelector('#main-content')) return;
 
     this.routeRunning = true;
@@ -171,13 +148,10 @@ class App {
       drawer?.classList.remove('open'); backdrop?.classList.remove('open');
       document.documentElement.classList.remove('bookora-menu-open');
       document.body.classList.remove('bookora-menu-open');
-
-      // Scroll is reset ONLY for real hash navigation. State synchronization
-      // never calls route() for a Book Detail page.
       if (navigation) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
       this.root = document.getElementById('app') || document.body;
-      const [pathWithSlash, queryString] = hash.split('?');
+      const [, queryString] = hash.split('?');
       const params = new URLSearchParams(queryString || '');
 
       if (state.settings?.maintenance?.enabled && !state.isAdmin && !path.startsWith('/admin') && path !== '/login') {
@@ -186,7 +160,7 @@ class App {
       }
 
       const PUBLIC_ROUTES = ['/','/explore','/categories','/best-sellers','/new-releases','/trending','/authors','/pricing','/subscription','/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines','/login','/signup','/register','/forgot-password','/reset-password','/payment/success','/payment/failed'];
-      const PUBLIC_PREFIX_MATCHES = ['/category/','/book/','/author/','/search'];
+      const PUBLIC_PREFIX_MATCHES = ['/category/','/book/','/author/','/search','/sample/'];
       const isPublic = path === '/' || path === '' || PUBLIC_ROUTES.includes(path) || PUBLIC_PREFIX_MATCHES.some(p => path.startsWith(p));
 
       if (!isPublic) {
@@ -211,6 +185,12 @@ class App {
       else if (path === '/search') pageHtml = renderSearchPage(params.get('q') || '');
       else if (path === '/categories') pageHtml = renderCategoriesDirectoryPage();
       else if (path.startsWith('/category/')) pageHtml = renderCategoryPage(path.replace('/category/',''));
+      else if (path.startsWith('/sample/')) {
+        const slug = decodeURIComponent(path.replace('/sample/',''));
+        const book = state.getBookBySlug(slug);
+        pageHtml = book ? renderFreeSamplePage(book) : `<main style="min-height:60vh;display:grid;place-items:center;padding:40px"><div style="text-align:center"><h2>Sample is loading…</h2><p>Please go back to the book and open the sample again.</p><a class="btn btn-primary" href="#/explore">Back to Explore</a></div></main>`;
+        if (book) initCallback = () => initFreeSamplePage(book);
+      }
       else if (path.startsWith('/book/')) { const slug = path.replace('/book/',''); pageHtml = renderBookDetailPage(slug); initCallback = () => initBookDetailEvents(slug); }
       else if (path === '/best-sellers') pageHtml = renderCuratedCatalogPage('bestsellers');
       else if (path === '/new-releases') pageHtml = renderCuratedCatalogPage('new');
