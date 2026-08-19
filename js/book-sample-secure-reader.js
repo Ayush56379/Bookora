@@ -1,13 +1,15 @@
-/* Bookora — secure free-sample reader hotfix */
+/* Bookora — secure free-sample reader
+ * The backend returns a NEW PDF containing only the first 5 pages.
+ * The original Google Drive PDF is never opened by the browser.
+ */
 import { state } from './state.js';
 
 (() => {
   'use strict';
 
   const MAX_PAGES = 5;
-  const APPS_SCRIPT_URL = window.BOOKORA_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzUu9SstSp1ONdUOLb6hAeCtDzlxrvymtf_y2c5ISacPNRYXaJThewGzqbIO0vzQqYfnw/exec';
+  const BACKEND_URL = String(window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com').replace(/\/$/, '');
   let busy = false;
-  let callbackCounter = 0;
 
   const esc = s => String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -18,50 +20,49 @@ import { state } from './state.js';
     } catch (_) { return null; }
   }
 
-  function driveId(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    return (/^[A-Za-z0-9_-]{20,}$/.test(raw) ? raw : '')
-      || raw.match(/[?&]id=([A-Za-z0-9_-]{10,})/i)?.[1]
-      || raw.match(/\/d\/([A-Za-z0-9_-]{10,})/i)?.[1]
-      || raw.match(/file\/d\/([A-Za-z0-9_-]{10,})/i)?.[1]
-      || '';
-  }
+  async function requestSample(book) {
+    const slug = String(book?.slug || book?.id || '').trim();
+    if (!slug) throw new Error('Book identifier is missing.');
 
-  function requestSample(book) {
-    return new Promise((resolve, reject) => {
-      const callback = `__bookoraSecureSample_${Date.now()}_${++callbackCounter}`;
-      const script = document.createElement('script');
-      const timer = setTimeout(() => { cleanup(); reject(new Error('Sample backend timed out.')); }, 20000);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000);
 
-      function cleanup() {
-        clearTimeout(timer);
-        try { delete window[callback]; } catch (_) {}
-        script.remove();
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/books/${encodeURIComponent(slug)}/sample`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/pdf' },
+        cache: 'no-store',
+        signal: controller.signal
+      });
+
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (!response.ok) {
+        let message = `Sample could not be generated (${response.status}).`;
+        try {
+          const data = await response.json();
+          if (data?.error) message = data.error;
+        } catch (_) {}
+        throw new Error(message);
       }
 
-      window[callback] = data => {
-        cleanup();
-        if (data?.success) resolve(data);
-        else reject(new Error(data?.error || 'Sample backend returned no sample.'));
-      };
-      script.onerror = () => { cleanup(); reject(new Error('Sample backend could not be reached.')); };
+      if (!contentType.includes('application/pdf')) {
+        let message = 'Sample backend returned an invalid response.';
+        try {
+          const data = await response.json();
+          if (data?.error) message = data.error;
+        } catch (_) {}
+        throw new Error(message);
+      }
 
-      const fileId = driveId(book?.pdf_file_id || book?.pdfFileId || book?.file_id || book?.fileId || book?.pdf_url || book?.pdfUrl);
-      if (!fileId) { cleanup(); reject(new Error('PDF file ID is missing for this book.')); return; }
-
-      const params = new URLSearchParams({ callback, action: 'getBookSample', pdf_file_id: fileId });
-      script.src = `${APPS_SCRIPT_URL}${APPS_SCRIPT_URL.includes('?') ? '&' : '?'}${params}`;
-      document.head.appendChild(script);
-    });
-  }
-
-  function base64ToBytes(base64) {
-    const clean = String(base64 || '').replace(/^data:application\/pdf;base64,/, '');
-    const binary = atob(clean);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!bytes.length) throw new Error('The sample PDF is empty.');
+      return bytes;
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('Sample generation timed out. Please try again.');
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   function removeModal() {
@@ -113,7 +114,7 @@ import { state } from './state.js';
     pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
     const pdf = await pdfjs.getDocument({ data: bytes }).promise;
     const total = Math.min(MAX_PAGES, pdf.numPages);
-    if (!total) throw new Error('The PDF has no readable pages.');
+    if (!total) throw new Error('The sample PDF has no readable pages.');
 
     const modal = createModal(title);
     const pages = modal.querySelector('.bosr-pages');
@@ -171,12 +172,12 @@ import { state } from './state.js';
     const original = label?.textContent || 'Read Free Sample';
     button.disabled = true;
     if (label) label.textContent = 'Opening sample…';
+
     try {
       const book = currentBook();
       if (!book) throw new Error('Book data is not available yet.');
-      const data = await requestSample(book);
-      if (!data.pdf_base64) throw new Error('Sample backend is not updated yet. Deploy the corrected Apps Script and try again.');
-      await renderPdf(base64ToBytes(data.pdf_base64), book.title);
+      const bytes = await requestSample(book);
+      await renderPdf(bytes, book.title);
     } catch (error) {
       console.error('[Bookora sample]', error);
       if (window.Toast?.show) window.Toast.show(error.message || 'Free sample could not be opened.', 'error');
