@@ -2,6 +2,7 @@
    Keeps the existing page component, but makes cover media, wishlist,
    verified reviews and responsive detail interactions reliable. */
 import { state } from './state.js';
+import { Toast } from './components/Toast.js';
 
 (() => {
   'use strict';
@@ -20,13 +21,9 @@ import { state } from './state.js';
     ];
     const raw = values.find(v => typeof v === 'string' && v.trim())?.trim() || '';
     if (!raw) return '';
-    if (/^[A-Za-z0-9_-]{20,}$/.test(raw)) {
-      return `https://drive.google.com/thumbnail?id=${encodeURIComponent(raw)}&sz=w1600`;
-    }
+    if (/^[A-Za-z0-9_-]{20,}$/.test(raw)) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(raw)}&sz=w1600`;
     const match = raw.match(/[?&]id=([A-Za-z0-9_-]{10,})/i) || raw.match(/\/d\/([A-Za-z0-9_-]{10,})/i);
-    if (/drive\.google\.com/i.test(raw) && match?.[1]) {
-      return `https://drive.google.com/thumbnail?id=${encodeURIComponent(match[1])}&sz=w1600`;
-    }
+    if (/drive\.google\.com/i.test(raw) && match?.[1]) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(match[1])}&sz=w1600`;
     return /^(https?:\/\/|data:image\/|blob:)/i.test(raw) ? raw : '';
   }
 
@@ -34,13 +31,12 @@ import { state } from './state.js';
     try {
       const path = location.hash.split('?')[0] || '';
       if (!path.startsWith('#/book/')) return null;
-      const slug = decodeURIComponent(path.slice(7));
-      return state.getBookBySlug(slug) || null;
+      return state.getBookBySlug(decodeURIComponent(path.slice(7))) || null;
     } catch (_) { return null; }
   }
 
   function toast(message, type = 'info') {
-    try { window.Toast?.show?.(message, type); } catch (_) {}
+    try { Toast.show(message, type); } catch (_) {}
   }
 
   function installCover(book) {
@@ -112,7 +108,6 @@ import { state } from './state.js';
 
     const submit = form.querySelector('button[type="submit"]');
     if (submit) { submit.disabled = true; submit.textContent = 'Publishing…'; }
-
     try {
       const firebase = window.firebase;
       if (!firebase?.apps?.length) throw new Error('Review service is not ready.');
@@ -124,9 +119,7 @@ import { state } from './state.js';
         user_id: uid,
         user_name: state.currentUser.displayName || state.currentUser.name || state.currentUser.email?.split('@')[0] || 'Reader',
         user_email: state.currentUser.email || '',
-        rating,
-        title,
-        comment,
+        rating, title, comment,
         verified_purchase: true,
         date: firebase.firestore.FieldValue.serverTimestamp(),
         created_at: firebase.firestore.FieldValue.serverTimestamp()
