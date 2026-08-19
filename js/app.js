@@ -54,9 +54,6 @@ class App {
 
     state.subscribe((event) => {
       this.updateHeader();
-      // DATA_SYNCED is important: the live Render backend may finish after
-      // the first page render. Re-render the current route so new approved
-      // books immediately appear everywhere the catalog is used.
       if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED', 'DATA_SYNCED'].includes(event)) this.route();
     });
 
@@ -71,29 +68,54 @@ class App {
       else window.location.hash = href;
     });
 
-    document.addEventListener('click', (e) => {
-      const wishBtn = e.target.closest('.book-wishlist-btn');
-      if (wishBtn) {
-        e.preventDefault(); e.stopPropagation();
-        state.toggleWishlist(wishBtn.dataset.id).then(isAdded => {
-          wishBtn.classList.toggle('active', isAdded);
-          const iconSvg = wishBtn.querySelector('svg');
-          if (iconSvg) iconSvg.setAttribute('fill', isAdded ? '#E11D48' : 'none');
-          Toast.show(isAdded ? 'Added to Wishlist' : 'Removed from Wishlist', isAdded ? 'success' : 'info');
-        }).catch(err => { console.error(err); Toast.show('Unable to update wishlist.', 'error'); });
+    // One delegated wishlist handler works for cards rendered on every route.
+    document.addEventListener('click', async (e) => {
+      const target = e.target instanceof Element ? e.target : null;
+      const wishBtn = target?.closest('.book-wishlist-btn');
+      if (!wishBtn) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const bookId = String(wishBtn.dataset.id || '');
+      if (!bookId) return;
+
+      if (!state.isAuthenticated) {
+        Toast.show('Please sign in to save eBooks to your Wishlist.', 'info');
+        window.location.hash = `#/login?returnTo=${encodeURIComponent(window.location.hash || '#/explore')}`;
         return;
       }
-      const previewBtn = e.target.closest('.quick-preview-btn');
+
+      wishBtn.disabled = true;
+      try {
+        const isAdded = await state.toggleWishlist(bookId);
+        wishBtn.classList.toggle('active', isAdded);
+        wishBtn.title = isAdded ? 'Remove from Wishlist' : 'Add to Wishlist';
+        wishBtn.setAttribute('aria-label', isAdded ? 'Remove from Wishlist' : 'Add to Wishlist');
+        const iconSvg = wishBtn.querySelector('svg');
+        if (iconSvg) iconSvg.setAttribute('fill', isAdded ? '#E11D48' : 'none');
+        Toast.show(isAdded ? 'Added to Wishlist' : 'Removed from Wishlist', isAdded ? 'success' : 'info');
+      } catch (err) {
+        console.error('Wishlist update failed:', err);
+        Toast.show('Wishlist could not be updated. Please try again.', 'error');
+      } finally {
+        wishBtn.disabled = false;
+      }
+      return;
+    });
+
+    document.addEventListener('click', (e) => {
+      const target = e.target instanceof Element ? e.target : null;
+      const previewBtn = target?.closest('.quick-preview-btn');
       if (previewBtn) {
         e.preventDefault(); e.stopPropagation();
-        const book = state.books.find(b => b.id === previewBtn.dataset.id);
+        const book = state.getApprovedBooks().find(b => String(b.id) === String(previewBtn.dataset.id));
         if (book) ReaderModal.open(book, true);
         return;
       }
-      const cartRemoveBtn = e.target.closest('.cart-remove-btn');
+      const cartRemoveBtn = target?.closest('.cart-remove-btn');
       if (cartRemoveBtn) {
         e.preventDefault();
-        state.cart = (state.cart || []).filter(i => i.id !== cartRemoveBtn.dataset.id);
+        state.cart = (state.cart || []).filter(i => String(i.id) !== String(cartRemoveBtn.dataset.id));
         Toast.show('Item removed from cart.', 'info');
         window.dispatchEvent(new Event('hashchange'));
       }
