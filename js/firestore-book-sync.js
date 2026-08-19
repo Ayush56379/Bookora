@@ -1,7 +1,6 @@
 /* Bookora Firestore book sync bridge.
- * The upload API stores the canonical record in the backend/Drive database.
- * This bridge mirrors the successful /api/books/create response into the
- * Firestore `books` collection so the existing public pages can discover it.
+ * Preserves the canonical backend record and safely derives Drive file IDs
+ * from existing PDF/cover URLs when an API response omitted the ID fields.
  */
 (function () {
   'use strict';
@@ -21,13 +20,39 @@
           window.firebase.apps.length &&
           typeof window.firebase.auth === 'function' &&
           typeof window.firebase.firestore === 'function'
-        ) {
-          return true;
-        }
+        ) return true;
       } catch (_) {}
       await sleep(250);
     }
     return false;
+  }
+
+  function driveFileId(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+
+    if (/^[A-Za-z0-9_-]{20,}$/.test(raw)) return raw;
+
+    const patterns = [
+      /[?&]id=([A-Za-z0-9_-]{10,})/i,
+      /\/d\/([A-Za-z0-9_-]{10,})/i,
+      /\/file\/d\/([A-Za-z0-9_-]{10,})/i
+    ];
+
+    for (const pattern of patterns) {
+      const match = raw.match(pattern);
+      if (match && match[1]) return match[1];
+    }
+
+    return '';
+  }
+
+  function firstValue(book, keys) {
+    for (const key of keys) {
+      const value = String(book?.[key] || '').trim();
+      if (value) return value;
+    }
+    return '';
   }
 
   function normalizeBook(book) {
@@ -36,6 +61,17 @@
     const now = new Date().toISOString();
     const createdAt = book.createdAt || book.created_at || now;
     const updatedAt = book.updatedAt || book.updated_at || now;
+
+    const pdfUrl = firstValue(book, ['pdf_url', 'pdfUrl', 'file_url', 'fileUrl', 'pdf_download_url', 'pdfDownloadUrl']);
+    const coverUrl = firstValue(book, ['cover_url', 'coverUrl', 'front_cover_url', 'frontCoverUrl', 'cover_image_url', 'coverImageUrl']);
+
+    const pdfFileId =
+      firstValue(book, ['pdf_file_id', 'pdfFileId', 'driveFileId', 'drive_file_id']) ||
+      driveFileId(pdfUrl);
+
+    const coverFileId =
+      firstValue(book, ['cover_file_id', 'coverFileId']) ||
+      driveFileId(coverUrl);
 
     return {
       id: String(book.id),
@@ -52,15 +88,15 @@
       price: Number(book.price || 0),
       salePrice: book.sale_price ?? book.salePrice ?? null,
       sale_price: book.sale_price ?? book.salePrice ?? null,
-      coverUrl: book.cover_url || book.coverUrl || '',
-      cover_url: book.cover_url || book.coverUrl || '',
-      coverFileId: book.cover_file_id || book.coverFileId || '',
-      cover_file_id: book.cover_file_id || book.coverFileId || '',
-      pdfUrl: book.pdf_url || book.pdfUrl || '',
-      pdf_url: book.pdf_url || book.pdfUrl || '',
-      pdfFileId: book.pdf_file_id || book.pdfFileId || '',
-      pdf_file_id: book.pdf_file_id || book.pdfFileId || '',
-      driveFileId: book.pdf_file_id || book.pdfFileId || '',
+      coverUrl,
+      cover_url: coverUrl,
+      coverFileId,
+      cover_file_id: coverFileId,
+      pdfUrl,
+      pdf_url: pdfUrl,
+      pdfFileId,
+      pdf_file_id: pdfFileId,
+      driveFileId: pdfFileId,
       sourceType: book.source_type || book.sourceType || 'internal',
       source_type: book.source_type || book.sourceType || 'internal',
       creatorId: book.creator_id || book.creatorId || '',
@@ -95,32 +131,81 @@
     if (!normalized) return false;
 
     const ready = await waitForFirebase();
-    if (!ready) {
-      console.warn('Bookora Firestore sync: Firebase did not initialize in time.');
-      return false;
-    }
+    if (!ready) return false;
 
     const auth = window.firebase.auth();
     const currentUser = auth.currentUser;
-    if (!currentUser) {
-      console.warn('Bookora Firestore sync: no Firebase user is signed in.');
-      return false;
-    }
+    if (!currentUser) return false;
 
     const db = window.firebase.firestore();
-
-    // Keep the Firebase UID available for rules/admin tools even though the
-    // backend also stores its own local seller/user ID.
     normalized.firebaseUid = currentUser.uid;
     normalized.creatorFirebaseUid = currentUser.uid;
     normalized.sellerFirebaseUid = currentUser.uid;
 
+    // merge:true is intentional: this only adds/updates the canonical fields
+    // and never deletes unrelated Firestore book data.
     await db.collection('books').doc(normalized.id).set(normalized, { merge: true });
-    console.info('Bookora Firestore sync: book saved:', normalized.id);
+    console.info('Bookora Firestore sync: book saved:', normalized.id, 'pdfFileId:', normalized.pdf_file_id || '(none)');
     return true;
   }
 
-  window.BookoraFirestoreBookSync = { syncBookToFirestore };
+  async function repairExistingDriveIds() {
+    if (!await waitForFirebase()) return;
+
+    try {
+      const auth = window.firebase.auth();
+      const user = auth.currentUser;
+      if (!user) return;
+
+      const db = window.firebase.firestore();
+      const snapshot = await db.collection('books').get();
+      const updates = [];
+
+      snapshot.forEach(doc => {
+        const book = doc.data() || {};
+        const existingPdfId = String(book.pdf_file_id || book.pdfFileId || book.driveFileId || '').trim();
+        const existingCoverId = String(book.cover_file_id || book.coverFileId || '').trim();
+
+        const pdfId = existingPdfId || driveFileId(book.pdf_url || book.pdfUrl || '');
+        const coverId = existingCoverId || driveFileId(book.cover_url || book.coverUrl || '');
+
+        const patch = {};
+        if (!existingPdfId && pdfId) {
+          patch.pdf_file_id = pdfId;
+          patch.pdfFileId = pdfId;
+          patch.driveFileId = pdfId;
+        }
+        if (!existingCoverId && coverId) {
+          patch.cover_file_id = coverId;
+          patch.coverFileId = coverId;
+        }
+
+        if (Object.keys(patch).length) {
+          updates.push(db.collection('books').doc(doc.id).set(patch, { merge: true }));
+        }
+      });
+
+      if (updates.length) await Promise.all(updates);
+      console.info('Bookora Firestore Drive-ID repair complete:', updates.length, 'book(s).');
+    } catch (error) {
+      // Repair is non-blocking. Never break the marketplace if Firestore rules
+      // or a temporary network issue prevent this optional migration.
+      console.warn('Bookora Drive-ID repair skipped:', error?.message || error);
+    }
+  }
+
+  window.BookoraFirestoreBookSync = { syncBookToFirestore, repairExistingDriveIds };
+
+  // Repair old records after Firebase auth is ready. This is additive only:
+  // existing non-empty IDs and all unrelated book fields remain untouched.
+  (async () => {
+    if (!await waitForFirebase()) return;
+    try {
+      window.firebase.auth().onAuthStateChanged(user => {
+        if (user) repairExistingDriveIds();
+      });
+    } catch (_) {}
+  })();
 
   window.fetch = async function (...args) {
     const response = await originalFetch(...args);
