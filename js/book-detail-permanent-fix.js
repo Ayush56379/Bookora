@@ -1,4 +1,4 @@
-// Bookora — stable Book Detail runtime + Apps Script free sample.
+// Bookora — stable Book Detail runtime + Apps Script JSONP free sample.
 import { state } from './state.js';
 import { ReaderModal } from './components/ReaderModal.js';
 import { apiUrl } from './config.js';
@@ -7,9 +7,10 @@ import { Toast } from './components/Toast.js';
 (() => {
   'use strict';
   const MAX_SAMPLE_PAGES = 5;
-  const APPS_SCRIPT_URL = window.BOOKORA_APPS_SCRIPT_URL || '';
+  const APPS_SCRIPT_URL = window.BOOKORA_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbzUu9SstSp1ONdUOLb6hAeCtDzlxrvymtf_y2c5ISacPNRYXaJThewGzqbIO0vzQqYfnw/exec';
   let sampleBusy = false;
   let coverEnhanceQueued = false;
+  let jsonpCounter = 0;
 
   function currentBook() {
     try {
@@ -92,35 +93,46 @@ import { Toast } from './components/Toast.js';
     return id ? `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}` : '';
   }
 
-  async function appsScriptSample(book) {
-    if (!APPS_SCRIPT_URL || !book) return null;
+  function appsScriptSample(book) {
+    if (!APPS_SCRIPT_URL || !book) return Promise.resolve(null);
     const fileId = driveId(book.pdf_file_id || book.pdfFileId || book.file_id || book.fileId || book.pdf_url || book.pdfUrl);
     const pdf = pdfUrl(book);
-    if (!fileId && !pdf) return null;
-    try {
-      // Do NOT set application/json here. That triggers a CORS OPTIONS
-      // preflight which Google Apps Script web apps do not handle reliably.
-      // A plain-text POST is CORS-safelisted and Apps Script still exposes
-      // the exact JSON string through e.postData.contents for doPost().
-      const response = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-        body: JSON.stringify({ action: 'getBookSample', pdf_file_id: fileId, pdf_url: pdf }),
-        credentials: 'omit',
-        redirect: 'follow',
-        cache: 'no-store'
+    if (!fileId && !pdf) return Promise.resolve(null);
+
+    return new Promise(resolve => {
+      const callback = `__bookoraSample_${Date.now()}_${++jsonpCounter}`;
+      const script = document.createElement('script');
+      const timeout = setTimeout(() => {
+        cleanup();
+        resolve(null);
+      }, 15000);
+
+      function cleanup() {
+        clearTimeout(timeout);
+        try { delete window[callback]; } catch (_) { window[callback] = undefined; }
+        script.remove();
+      }
+
+      window[callback] = data => {
+        cleanup();
+        if (data && data.success) resolve(data);
+        else resolve(null);
+      };
+
+      script.onerror = () => {
+        cleanup();
+        resolve(null);
+      };
+
+      const params = new URLSearchParams({
+        callback,
+        action: 'getBookSample',
+        pdf_file_id: fileId,
+        pdf_url: pdf
       });
-      if (!response.ok) throw new Error(`Apps Script HTTP ${response.status}`);
-      const raw = await response.text();
-      let data;
-      try { data = JSON.parse(raw); } catch (_) { throw new Error('Apps Script returned non-JSON response'); }
-      if (!data?.success) throw new Error(data?.error || 'Apps Script sample request failed');
-      if (!data?.pdf_url && !Array.isArray(data?.pages)) throw new Error('Apps Script returned no sample source');
-      return data;
-    } catch (error) {
-      console.warn('Apps Script sample:', error?.message || error);
-      return null;
-    }
+      script.src = `${APPS_SCRIPT_URL}${APPS_SCRIPT_URL.includes('?') ? '&' : '?'}${params.toString()}`;
+      document.head.appendChild(script);
+    });
   }
 
   async function backendSample(book) {
