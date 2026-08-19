@@ -45,34 +45,41 @@ class App {
   constructor() {
     this.root = document.getElementById('app') || document.body;
     this.lastRenderedHash = '';
+    this.lastRenderedPath = '';
     this.routeRunning = false;
     this.init();
     try { BookoraAI.init(); } catch (e) { console.warn('BookoraAI init notice:', e); }
   }
 
   init() {
-    window.addEventListener('hashchange', () => this.route(true));
-    window.addEventListener('load', () => this.route(false));
+    window.addEventListener('hashchange', () => this.route(true, true));
+    window.addEventListener('load', () => this.route(false, false));
 
     state.subscribe((event) => {
-      this.updateHeader();
+      const path = this.currentPath();
 
-      // CRITICAL: the Book Detail page is a stable view. Background Firebase /
-      // Render synchronization must NEVER replace the whole page. Re-rendering
-      // here caused the visible flicker, scroll jumps, duplicated listeners and
-      // the purchase section moving after the initial paint.
-      if (event === 'DATA_SYNCED') {
-        const path = this.currentPath();
-        if (path.startsWith('/book/')) {
+      // NEVER replace the Book Detail DOM while the user is reading/scrolling.
+      // Firebase/Render events can arrive repeatedly in the background. A full
+      // render changes document height and browser scroll anchoring then jumps
+      // the user back toward the top. Detail data is hydrated by its own page
+      // runtimes instead.
+      if (path.startsWith('/book/')) {
+        if (event === 'DATA_SYNCED') {
           window.dispatchEvent(new CustomEvent('bookora:catalog-updated'));
-          return;
         }
-        this.route(true);
+        // Header changes are deliberately deferred on the detail page too;
+        // replacing the header while the wheel is moving can cause a scroll
+        // anchor correction. Navigation away will render the fresh header.
         return;
       }
 
+      this.updateHeader();
+      if (event === 'DATA_SYNCED') {
+        this.route(true, false);
+        return;
+      }
       if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) {
-        this.route(true);
+        this.route(true, false);
       }
     });
 
@@ -93,7 +100,6 @@ class App {
       if (!wishBtn) return;
       e.preventDefault();
       e.stopPropagation();
-
       const bookId = String(wishBtn.dataset.id || '');
       if (!bookId) return;
       if (!state.isAuthenticated) {
@@ -101,7 +107,6 @@ class App {
         window.location.hash = `#/login?returnTo=${encodeURIComponent(window.location.hash || '#/explore')}`;
         return;
       }
-
       wishBtn.disabled = true;
       try {
         const isAdded = await state.toggleWishlist(bookId);
@@ -114,9 +119,7 @@ class App {
       } catch (err) {
         console.error('Wishlist update failed:', err);
         Toast.show('Wishlist could not be updated. Please try again.', 'error');
-      } finally {
-        wishBtn.disabled = false;
-      }
+      } finally { wishBtn.disabled = false; }
     });
 
     document.addEventListener('click', (e) => {
@@ -148,12 +151,17 @@ class App {
     if (c) { c.innerHTML = renderHeader(); initHeaderEvents(); }
   }
 
-  route(force = false) {
+  route(force = false, navigation = false) {
     if (this.routeRunning) return;
 
     const hash = window.location.hash || '#/';
-    // A second load event can occur after the initial synchronous route. Do not
-    // paint the exact same route twice.
+    const path = this.currentPath();
+
+    // A Book Detail view is intentionally immutable during background state
+    // changes. Even a forced state refresh must not replace its DOM.
+    if (path.startsWith('/book/') && this.lastRenderedHash === hash && document.querySelector('#main-content')) return;
+
+    // Do not paint the exact same route twice.
     if (!force && this.lastRenderedHash === hash && document.querySelector('#main-content')) return;
 
     this.routeRunning = true;
@@ -164,18 +172,17 @@ class App {
       document.documentElement.classList.remove('bookora-menu-open');
       document.body.classList.remove('bookora-menu-open');
 
-      // Only navigation changes should reset scroll. Background data updates
-      // on the detail page are intentionally excluded from route().
-      window.scrollTo(0, 0);
+      // Scroll is reset ONLY for real hash navigation. State synchronization
+      // never calls route() for a Book Detail page.
+      if (navigation) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+
       this.root = document.getElementById('app') || document.body;
       const [pathWithSlash, queryString] = hash.split('?');
-      const path = pathWithSlash.replace(/^#/, '') || '/';
       const params = new URLSearchParams(queryString || '');
 
       if (state.settings?.maintenance?.enabled && !state.isAdmin && !path.startsWith('/admin') && path !== '/login') {
         this.root.innerHTML = `<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F8FAFC;padding:2rem;text-align:center;"><h1 style="font-size:2.2rem;font-weight:800;color:#0F172A;">Bookora Maintenance</h1><p style="font-size:1rem;color:#475569;max-width:520px;line-height:1.6;">${state.settings?.maintenance?.message || 'Bookora is currently undergoing scheduled platform enhancements.'}</p><a href="#/login" style="color:var(--accent);font-weight:600;">Admin Sign In →</a></div>`;
-        this.lastRenderedHash = hash;
-        return;
+        this.lastRenderedHash = hash; this.lastRenderedPath = path; return;
       }
 
       const PUBLIC_ROUTES = ['/','/explore','/categories','/best-sellers','/new-releases','/trending','/authors','/pricing','/subscription','/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines','/login','/signup','/register','/forgot-password','/reset-password','/payment/success','/payment/failed'];
@@ -190,18 +197,15 @@ class App {
         }
         if (path.startsWith('/admin') && !state.isAdmin) {
           Toast.show('Access restricted: Admin authorization required.', 'error');
-          window.location.hash = '#/login';
-          return;
+          window.location.hash = '#/login'; return;
         }
         if ((path.startsWith('/seller') || path.startsWith('/creator') || path === '/publish' || path === '/publish/external') && path !== '/seller/apply' && !state.isSeller && !state.isAdmin) {
           Toast.show('Author authorization required to access Creator Studio.', 'warning');
-          window.location.hash = '#/seller/apply';
-          return;
+          window.location.hash = '#/seller/apply'; return;
         }
       }
 
-      let pageHtml = '';
-      let initCallback = null;
+      let pageHtml = ''; let initCallback = null;
       if (path === '/' || path === '') { pageHtml = renderHomePage(); initCallback = () => initHomePageEvents(); }
       else if (path === '/explore') { pageHtml = renderExplorePage(); initCallback = () => initExploreEvents(); }
       else if (path === '/search') pageHtml = renderSearchPage(params.get('q') || '');
@@ -246,13 +250,10 @@ class App {
 
       this.root.innerHTML = `<div id="header-container">${renderHeader()}</div><main id="main-content" style="flex:1;">${pageHtml}</main><div id="footer-container">${renderFooter()}</div>`;
       initHeaderEvents();
-      if (typeof initCallback === 'function') {
-        try { initCallback(); } catch (err) { console.error('Page event initialization error:', err); }
-      }
+      if (typeof initCallback === 'function') { try { initCallback(); } catch (err) { console.error('Page event initialization error:', err); } }
       this.lastRenderedHash = hash;
-    } finally {
-      this.routeRunning = false;
-    }
+      this.lastRenderedPath = path;
+    } finally { this.routeRunning = false; }
   }
 }
 
