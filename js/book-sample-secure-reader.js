@@ -1,5 +1,5 @@
 /* Bookora — dedicated free sample page launcher.
- * The sample is intentionally opened as a separate page, not a modal and not a Drive viewer.
+ * Opens the same-site sample page only. No modal and no Google Drive viewer.
  */
 import { state } from './state.js';
 
@@ -32,13 +32,8 @@ import { state } from './state.js';
     const oldLabel = label?.textContent || 'Read Free Sample';
     if (label) label.textContent = 'Opening sample…';
 
-    const sampleUrl = `./sample.html?book=${encodeURIComponent(book.slug || book.id || slug)}`;
-    window.location.href = sampleUrl;
-
-    setTimeout(() => {
-      busy = false;
-      button.disabled = false;
-      if (label) label.textContent = oldLabel;
-    }, 2500);
+    const key = book.slug || book.id || slug;
+    const title = encodeURIComponent(book.title || 'eBook Sample');
+    window.location.assign(`./sample.html?book=${encodeURIComponent(key)}&title=${title}`);
   }, true);
 })();
