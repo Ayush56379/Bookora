@@ -6,6 +6,8 @@ import { initialUsers } from './data/initialUsers.js';
 import { apiUrl } from './config.js';
 
 const MASTER_ADMIN_EMAIL = 'ayushprajpati6@gmail.com';
+const PUBLIC_CATALOG_CACHE_KEY = 'bookora_public_catalog_v2';
+const PUBLIC_CATALOG_CACHE_TTL = 30 * 60 * 1000;
 
 class BookoraState {
   constructor() { this.subscribers = new Set(); this.init(); }
@@ -45,10 +47,47 @@ class BookoraState {
       }
     }
 
+    // Hydrate the last known public catalog immediately. This makes direct
+    // /#/book/<slug> links resilient to slow auth, Firebase startup, Render
+    // cold starts, and temporary API failures. A fresh network sync still
+    // replaces this cache whenever approved books are available.
+    this.hydrateCatalogCache();
+
     // Public catalog must load independently of Firebase auth. Otherwise a
     // direct /#/book/<slug> visit can render "Not Found" before auth finishes.
     this.syncData();
     this.startFirebaseSession();
+  }
+
+  hydrateCatalogCache() {
+    try {
+      const raw = localStorage.getItem(PUBLIC_CATALOG_CACHE_KEY);
+      if (!raw) return;
+      const cached = JSON.parse(raw);
+      if (!cached || !Array.isArray(cached.books)) return;
+      if (Date.now() - Number(cached.savedAt || 0) > PUBLIC_CATALOG_CACHE_TTL) return;
+
+      const books = cached.books.map(book => this.normalizeBook(book)).filter(Boolean);
+      if (books.length) {
+        this.books = books;
+        // Mark the cache as usable for the first render, while syncData keeps
+        // running in the background to refresh it from the live catalog.
+        this.booksLoaded = true;
+      }
+    } catch (error) {
+      console.warn('Public catalog cache could not be restored:', error);
+      localStorage.removeItem(PUBLIC_CATALOG_CACHE_KEY);
+    }
+  }
+
+  persistCatalogCache(books) {
+    const safeBooks = Array.isArray(books) ? books.map(book => this.normalizeBook(book)).filter(Boolean) : [];
+    if (!safeBooks.length) return;
+    try {
+      localStorage.setItem(PUBLIC_CATALOG_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), books: safeBooks }));
+    } catch (error) {
+      console.warn('Public catalog cache could not be saved:', error);
+    }
   }
 
   async getFirebase() {
@@ -146,8 +185,15 @@ class BookoraState {
     try {
       const { db } = await this.getFirebase();
       const booksSnapshot = await db.collection('books').where('status', '==', 'approved').get();
-      this.books = booksSnapshot.docs.map(doc => ({ id: String(doc.id), ...doc.data() }));
-      publicSyncSucceeded = true;
+      const firestoreBooks = booksSnapshot.docs.map(doc => ({ id: String(doc.id), ...doc.data() })).map(book => this.normalizeBook(book)).filter(Boolean).filter(book => book.status === 'approved');
+      // Never erase a usable catalog because a transient/permission-limited
+      // Firestore query returned zero rows. Empty is not a valid replacement
+      // for a previously loaded public catalog.
+      if (firestoreBooks.length) {
+        this.books = firestoreBooks;
+        this.persistCatalogCache(this.books);
+        publicSyncSucceeded = true;
+      }
 
       try {
         const categorySnapshot = await db.collection('categories').get();
@@ -192,9 +238,16 @@ class BookoraState {
     // Render should never depend exclusively on Firebase. The Render API is
     // the production catalog source too, so use it whenever Firestore is
     // unavailable or returns an empty public catalog.
-    if (!publicSyncSucceeded || !this.books.length) {
+    if (!publicSyncSucceeded) {
       const backendBooks = await this.fetchBooksFromBackend();
-      if (backendBooks.length) this.books = backendBooks;
+      // An empty backend response means "no replacement data", not "delete
+      // the current catalog". This is important during Render cold starts or
+      // when the backend database is temporarily unavailable.
+      if (backendBooks.length) {
+        this.books = backendBooks;
+        this.persistCatalogCache(this.books);
+        publicSyncSucceeded = true;
+      }
     }
 
     this.booksLoaded = true;
@@ -210,6 +263,7 @@ class BookoraState {
     try { const s = await db.collection('orders').get(); this.orders = s.docs.map(doc => ({ id: doc.id, ...doc.data() })); } catch (e) { console.warn('Admin orders sync:', e.message); this.orders = []; }
     try { const s = await db.collection('wallets').get(); this.wallets = s.docs.map(doc => ({ id: doc.id, ...doc.data() })); } catch (e) { console.warn('Admin wallets sync:', e.message); this.wallets = []; }
     try { const s = await db.collection('reviews').get(); this.reviews = s.docs.map(doc => ({ id: doc.id, ...doc.data() })); } catch (e) { console.warn('Admin reviews sync:', e.message); this.reviews = []; }
+    if (this.books.length) this.persistCatalogCache(this.books.filter(book => String(book.status || '').toLowerCase() === 'approved'));
   }
 
   subscribe(callback) { this.subscribers.add(callback); return () => this.subscribers.delete(callback); }
@@ -323,10 +377,10 @@ class BookoraState {
   getExternalBooks() { return this.getApprovedBooks().filter(book => book.source_type === 'external'); }
 
   getBookBySlug(slug) {
-    const wanted = decodeURIComponent(String(slug || '')).trim().replace(/\/$/, '').toLowerCase();
+    const wanted = decodeURIComponent(String(slug || '')).trim().replace(/^\/+|\/+$/g, '').toLowerCase();
     if (!wanted) return null;
     return this.getApprovedBooks().find(book => {
-      const bookSlug = String(book.slug || '').trim().toLowerCase();
+      const bookSlug = String(book.slug || '').trim().replace(/^\/+|\/+$/g, '').toLowerCase();
       const bookId = String(book.id || '').trim().toLowerCase();
       const titleSlug = String(book.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       return bookSlug === wanted || bookId === wanted || titleSlug === wanted;
