@@ -1,11 +1,14 @@
 // Bookora — Limited Free Sample Reader
-// Free samples are capped at five pages. The reader first asks the backend for
-// the canonical book record so deep-linked catalog data cannot hide the PDF.
+// Final reliable sample pipeline: stored pages -> backend sample -> live catalog
+// lookup -> PDF endpoint/Drive PDF -> first five pages. Never declares a sample
+// unavailable until every supported source has been checked.
 import { state } from '../state.js';
 import { apiUrl } from '../config.js';
 import { Toast } from './Toast.js';
 
 const MAX_SAMPLE_PAGES = 5;
+const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
 
 function getSamplePages(book) {
   const pages = book?.sample_pages || book?.samplePages || book?.preview_pages || book?.previewPages;
@@ -23,41 +26,183 @@ function driveId(value) {
 }
 
 function getPdfUrl(book) {
-  const values = [
-    book?.pdf_url, book?.pdfUrl, book?.file_url, book?.fileUrl,
-    book?.pdf_download_url, book?.pdfDownloadUrl, book?.download_url,
-    book?.downloadUrl, book?.pdf, book?.file
+  const fields = [
+    'pdf_url','pdfUrl','file_url','fileUrl','pdf_download_url','pdfDownloadUrl',
+    'download_url','downloadUrl','pdf','file','ebook_url','ebookUrl','document_url',
+    'documentUrl','content_url','contentUrl','source_url','sourceUrl'
   ];
-  for (const value of values) {
-    const raw = String(value || '').trim();
+  for (const key of fields) {
+    const raw = String(book?.[key] || '').trim();
     if (!raw) continue;
     const id = driveId(raw);
     if (id) return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`;
     if (/^https?:\/\//i.test(raw)) return raw;
   }
-  const id = driveId(book?.pdf_file_id || book?.pdfFileId || book?.file_id || book?.fileId);
+  const id = driveId(
+    book?.pdf_file_id || book?.pdfFileId || book?.file_id || book?.fileId ||
+    book?.ebook_file_id || book?.ebookFileId || book?.document_file_id || book?.documentFileId
+  );
   return id ? `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}` : '';
 }
 
-async function fetchCanonicalBook(book) {
-  const id = String(book?.id || '').trim();
-  const slug = String(book?.slug || '').trim();
-  if (!id && !slug) return book;
-  const candidates = [id, slug].filter(Boolean);
-  for (const value of candidates) {
-    try {
-      const response = await fetch(apiUrl(`/api/books/${encodeURIComponent(value)}`), {
-        headers: { Accept: 'application/json' }, credentials: 'omit', cache: 'no-store'
-      });
-      if (!response.ok) continue;
+function findCatalogBook(payload, original) {
+  const list = Array.isArray(payload) ? payload : (Array.isArray(payload?.books) ? payload.books : []);
+  if (!list.length) return null;
+  const id = String(original?.id || '').trim().toLowerCase();
+  const slug = String(original?.slug || '').trim().toLowerCase();
+  const title = String(original?.title || '').trim().toLowerCase();
+  return list.find(item => String(item?.id ?? item?.bookId ?? '').trim().toLowerCase() === id)
+    || list.find(item => String(item?.slug || '').trim().toLowerCase() === slug)
+    || list.find(item => String(item?.title || '').trim().toLowerCase() === title)
+    || null;
+}
+
+async function fetchCatalogBook(book) {
+  // The public /api/books route is the most reliable source because it is
+  // already used by the catalog itself. Do not depend on a single /:id route.
+  try {
+    const response = await fetch(apiUrl('/api/books'), {
+      headers: { Accept: 'application/json' }, credentials: 'omit', cache: 'no-store'
+    });
+    if (response.ok) {
       const data = await response.json();
-      const canonical = data?.book || data?.data || data;
-      if (canonical && typeof canonical === 'object' && (canonical.id || canonical.slug || canonical.pdf_url || canonical.pdf_file_id)) {
-        return { ...book, ...canonical };
-      }
-    } catch (_) {}
+      const match = findCatalogBook(data, book);
+      if (match) return { ...book, ...match };
+    }
+  } catch (error) {
+    console.warn('Bookora catalog lookup failed:', error?.message || error);
   }
   return book;
+}
+
+async function fetchJsonOrPdf(url) {
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { Accept: 'application/json, application/pdf, text/plain' },
+    credentials: 'omit',
+    cache: 'no-store'
+  });
+  if (!response.ok) return null;
+  const type = String(response.headers.get('content-type') || '').toLowerCase();
+  if (type.includes('application/pdf')) return { pdfData: await response.arrayBuffer() };
+  try { return { json: await response.json() }; } catch (_) {}
+  return null;
+}
+
+function pagesFromPayload(data) {
+  const pages = data?.pages || data?.sample_pages || data?.samplePages || data?.preview_pages || data?.previewPages;
+  return Array.isArray(pages) ? pages.slice(0, MAX_SAMPLE_PAGES).filter(Boolean) : [];
+}
+
+async function fetchBackendSample(book) {
+  const id = String(book?.id || '').trim();
+  if (!id) return { pages: [], pdfData: null };
+  const encoded = encodeURIComponent(id);
+  const endpoints = [
+    `/api/books/sample/${encoded}`,
+    `/api/books/${encoded}/sample`,
+    `/api/books/sample?book_id=${encoded}`,
+    `/api/books/${encoded}/preview`,
+    `/api/books/${encoded}/pdf`
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const result = await fetchJsonOrPdf(apiUrl(endpoint));
+      if (!result) continue;
+      const pages = pagesFromPayload(result.json);
+      if (pages.length) return { pages, pdfData: null };
+      const record = result.json?.book || result.json?.data || result.json;
+      if (record && typeof record === 'object') {
+        const merged = { ...book, ...record };
+        const recordPages = getSamplePages(merged);
+        if (recordPages.length) return { pages: recordPages, pdfData: null, book: merged };
+        if (getPdfUrl(merged)) return { pages: [], pdfData: null, book: merged };
+      }
+      if (result.pdfData) return { pages: [], pdfData: result.pdfData };
+    } catch (error) {
+      console.warn(`Sample source failed: ${endpoint}`, error?.message || error);
+    }
+  }
+  return { pages: [], pdfData: null };
+}
+
+async function loadPdfJs() {
+  const pdfjs = await import(PDFJS_URL);
+  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  return pdfjs;
+}
+
+async function extractPdfData(pdfData, maxPages = MAX_SAMPLE_PAGES) {
+  if (!pdfData) return [];
+  const pdfjs = await loadPdfJs();
+  const pdf = await pdfjs.getDocument({ data: pdfData }).promise;
+  return extractPages(pdf, maxPages);
+}
+
+async function extractPages(pdf, maxPages = MAX_SAMPLE_PAGES) {
+  const count = Math.min(maxPages, pdf.numPages);
+  const result = [];
+  for (let pageNo = 1; pageNo <= count; pageNo++) {
+    const page = await pdf.getPage(pageNo);
+    const textContent = await page.getTextContent();
+    const text = textContent.items.map(item => item.str || '').join(' ').replace(/\s+/g, ' ').trim();
+    result.push(text || `Page ${pageNo}`);
+    page.cleanup?.();
+  }
+  return result;
+}
+
+async function extractPdfFromUrl(url, maxPages = MAX_SAMPLE_PAGES) {
+  if (!url) return [];
+  const pdfjs = await loadPdfJs();
+  // Try normal PDF.js loading first. This works when the source allows CORS.
+  try {
+    const pdf = await pdfjs.getDocument({ url, withCredentials: false }).promise;
+    return extractPages(pdf, maxPages);
+  } catch (firstError) {
+    // A Drive/HTTP redirect may block PDF.js range requests. Fetch the binary
+    // ourselves and pass bytes to PDF.js; this also handles servers that do not
+    // support range requests.
+    try {
+      const response = await fetch(url, { credentials: 'omit', cache: 'no-store' });
+      if (!response.ok) throw new Error(`PDF HTTP ${response.status}`);
+      const data = await response.arrayBuffer();
+      const pdf = await pdfjs.getDocument({ data }).promise;
+      return extractPages(pdf, maxPages);
+    } catch (secondError) {
+      console.warn('Bookora PDF extraction failed:', secondError?.message || firstError?.message || secondError);
+      return [];
+    }
+  }
+}
+
+async function resolveSample(book) {
+  let current = { ...book };
+
+  const stored = getSamplePages(current);
+  if (stored.length) return { book: current, pages: stored, source: 'stored' };
+
+  const catalog = await fetchCatalogBook(current);
+  current = { ...current, ...catalog };
+  const catalogPages = getSamplePages(current);
+  if (catalogPages.length) return { book: current, pages: catalogPages, source: 'catalog' };
+
+  const backend = await fetchBackendSample(current);
+  if (backend.book) current = { ...current, ...backend.book };
+  if (backend.pages.length) return { book: current, pages: backend.pages, source: 'backend-pages' };
+  if (backend.pdfData) {
+    const pages = await extractPdfData(backend.pdfData);
+    if (pages.length) return { book: current, pages, source: 'backend-pdf' };
+  }
+
+  const pdfUrl = getPdfUrl(current);
+  if (pdfUrl) {
+    const pages = await extractPdfFromUrl(pdfUrl);
+    if (pages.length) return { book: current, pages, source: 'pdf' };
+  }
+
+  return { book: current, pages: [], source: 'unavailable' };
 }
 
 export const ReaderModal = {
@@ -68,89 +213,43 @@ export const ReaderModal = {
   isSample: false,
   samplePages: [],
   sampleLoading: false,
+  sampleError: '',
 
   async open(book, isSample = false) {
     this.currentBook = book;
     this.isSample = Boolean(isSample);
     this.currentPage = 0;
     this.samplePages = getSamplePages(book);
-    this.sampleLoading = false;
+    this.sampleLoading = Boolean(isSample);
+    this.sampleError = '';
 
     if (this.isSample) {
-      // Deep-link catalog records can intentionally omit the private PDF URL.
-      // Fetch the canonical approved record before deciding that no preview exists.
-      this.sampleLoading = true;
       this.render();
       try {
-        this.currentBook = await fetchCanonicalBook(book);
-        this.samplePages = getSamplePages(this.currentBook);
-
-        // First choice: a server-generated sample endpoint, if the backend has one.
-        for (const endpoint of [
-          `/api/books/sample/${encodeURIComponent(String(this.currentBook.id || ''))}`,
-          `/api/books/${encodeURIComponent(String(this.currentBook.id || ''))}/sample`,
-          `/api/books/sample?book_id=${encodeURIComponent(String(this.currentBook.id || ''))}`
-        ]) {
-          if (this.samplePages.length) break;
-          try {
-            const response = await fetch(apiUrl(endpoint), {
-              method: 'GET', headers: { Accept: 'application/json' },
-              credentials: 'omit', cache: 'no-store'
-            });
-            if (!response.ok) continue;
-            const data = await response.json();
-            const pages = data?.pages || data?.sample_pages || data?.samplePages;
-            if (Array.isArray(pages) && pages.length) {
-              this.samplePages = pages.slice(0, MAX_SAMPLE_PAGES).filter(Boolean);
-              break;
-            }
-          } catch (_) {}
-        }
+        const resolved = await resolveSample(book);
+        this.currentBook = resolved.book;
+        this.samplePages = resolved.pages.slice(0, MAX_SAMPLE_PAGES);
+        if (!this.samplePages.length) this.sampleError = 'Free sample could not be prepared for this eBook.';
       } catch (error) {
-        console.warn('Canonical Bookora book lookup failed:', error);
-      }
-      this.sampleLoading = false;
-
-      // Final fallback: extract only the first five pages from the canonical PDF.
-      if (this.samplePages.length === 0 && getPdfUrl(this.currentBook)) {
-        this.sampleLoading = true;
-        this.render();
-        try {
-          this.samplePages = await this.extractPdfSample(this.currentBook, MAX_SAMPLE_PAGES);
-        } catch (error) {
-          console.warn('Direct sample extraction failed:', error);
-          this.samplePages = [];
-        }
+        console.error('Bookora final sample resolver failed:', error);
+        this.sampleError = 'Free sample could not be prepared right now.';
+      } finally {
         this.sampleLoading = false;
       }
+    } else {
+      this.sampleLoading = false;
     }
 
     this.render();
   },
 
   close() {
-    const modal = document.getElementById('bookora-reader-modal');
-    if (modal) modal.remove();
+    document.getElementById('bookora-reader-modal')?.remove();
   },
 
   async extractPdfSample(book, maxPages = MAX_SAMPLE_PAGES) {
     const url = getPdfUrl(book);
-    if (!url) return [];
-
-    const pdfjs = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
-    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
-
-    const pdf = await pdfjs.getDocument({ url, withCredentials: false }).promise;
-    const count = Math.min(maxPages, pdf.numPages);
-    const result = [];
-    for (let pageNo = 1; pageNo <= count; pageNo++) {
-      const page = await pdf.getPage(pageNo);
-      const textContent = await page.getTextContent();
-      const text = textContent.items.map(item => item.str || '').join(' ').trim();
-      result.push(text || `Page ${pageNo}`);
-      page.cleanup?.();
-    }
-    return result;
+    return url ? extractPdfFromUrl(url, maxPages) : [];
   },
 
   setTheme(theme) {
@@ -166,8 +265,7 @@ export const ReaderModal = {
   },
 
   nextPage() {
-    const pages = this.samplePages;
-    if (this.currentPage < pages.length - 1) {
+    if (this.currentPage < this.samplePages.length - 1) {
       this.currentPage++;
       this.updatePage();
     } else if (this.isSample) {
@@ -176,22 +274,23 @@ export const ReaderModal = {
   },
 
   prevPage() {
-    if (this.currentPage > 0) {
-      this.currentPage--;
-      this.updatePage();
-    }
+    if (this.currentPage > 0) { this.currentPage--; this.updatePage(); }
   },
 
   updatePage() {
     const pages = this.samplePages;
-    const content = pages[this.currentPage] || (this.sampleLoading ? 'Preparing your free sample…' : 'Free sample is not available for this eBook yet.');
+    const content = pages[this.currentPage] || (this.sampleLoading ? 'Preparing your free sample…' : (this.sampleError || 'Free sample is not available for this eBook yet.'));
     const body = document.getElementById('reader-content-body');
     const indicator = document.getElementById('reader-page-indicator');
     const progressBar = document.getElementById('reader-progress-fill');
     if (body) body.innerHTML = this.formatContent(content);
-    if (indicator) indicator.textContent = pages.length ? `Sample page ${this.currentPage + 1} of ${pages.length}` : 'Sample unavailable';
+    if (indicator) indicator.textContent = pages.length ? `Sample page ${this.currentPage + 1} of ${pages.length}` : (this.sampleLoading ? 'Preparing sample…' : 'Sample unavailable');
     if (progressBar) progressBar.style.width = `${pages.length ? Math.round(((this.currentPage + 1) / pages.length) * 100) : 0}%`;
-    if (!this.isSample && state.hasPurchased(this.currentBook.id)) state.updateReadingProgress(this.currentBook.id, this.currentPage + 1, pages.length);
+    if (!this.isSample && this.currentBook?.id && state.hasPurchased(this.currentBook.id)) state.updateReadingProgress(this.currentBook.id, this.currentPage + 1, pages.length);
+    const next = document.getElementById('reader-next-btn');
+    const prev = document.getElementById('reader-prev-btn');
+    if (next) next.disabled = this.sampleLoading || pages.length <= 1 || this.currentPage >= pages.length - 1;
+    if (prev) prev.disabled = this.currentPage === 0;
   },
 
   formatContent(text) {
@@ -201,22 +300,27 @@ export const ReaderModal = {
 
   render() {
     this.close();
-    const book = this.currentBook;
+    const book = this.currentBook || {};
     const pages = this.samplePages;
     const totalPages = pages.length;
-    const initialContent = this.sampleLoading ? 'Preparing your free sample…' : (pages[0] || `This free sample is limited to the first ${MAX_SAMPLE_PAGES} pages. The complete eBook remains locked until purchase.`);
+    const initialContent = this.sampleLoading
+      ? 'Preparing your free sample…'
+      : (pages[0] || this.sampleError || `This free sample is limited to the first ${MAX_SAMPLE_PAGES} pages.`);
     const overlay = document.createElement('div');
     overlay.id = 'bookora-reader-modal';
     overlay.className = 'reader-overlay';
     overlay.innerHTML = `
       <div id="reader-box" class="reader-container reader-theme-${this.currentTheme}">
         <div class="reader-header">
-          <div style="display:flex;align-items:center;gap:.85rem;min-width:0;"><button id="reader-close-btn" class="btn btn-ghost btn-sm" style="padding:4px;border-radius:var(--radius-full);" aria-label="Close reader"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button><div style="min-width:0;"><div style="font-weight:700;font-size:.95rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${String(book.title || 'eBook')}</div><div style="font-size:.75rem;opacity:.7;">${this.isSample ? '📖 Free Sample Preview' : '✨ Full Licensed Edition'} • ${String(book.author || '')}</div></div></div>
+          <div style="display:flex;align-items:center;gap:.85rem;min-width:0;">
+            <button id="reader-close-btn" class="btn btn-ghost btn-sm" style="padding:4px;border-radius:var(--radius-full);" aria-label="Close reader"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            <div style="min-width:0;"><div style="font-weight:700;font-size:.95rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${String(book.title || 'eBook')}</div><div style="font-size:.75rem;opacity:.7;">${this.isSample ? '📖 Free Sample Preview' : '✨ Full Licensed Edition'} • ${String(book.author || '')}</div></div>
+          </div>
           <div style="display:flex;align-items:center;gap:.5rem;"><div style="display:flex;align-items:center;border:1px solid rgba(148,163,184,.3);border-radius:var(--radius-sm);padding:2px;"><button id="font-dec-btn" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:.75rem;">A-</button><button id="font-inc-btn" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:.85rem;font-weight:700;">A+</button></div><div style="display:flex;gap:4px;"><button class="theme-btn" data-theme="light" style="width:24px;height:24px;border-radius:99px;background:#fff;border:1px solid #CBD5E1;" title="Light Theme"></button><button class="theme-btn" data-theme="sepia" style="width:24px;height:24px;border-radius:99px;background:#FAF5EB;border:1px solid #D6D3D1;" title="Sepia Theme"></button><button class="theme-btn" data-theme="dark" style="width:24px;height:24px;border-radius:99px;background:#0F172A;border:1px solid #475569;" title="Night Theme"></button></div></div>
         </div>
         <div style="width:100%;height:3px;background:rgba(148,163,184,.15);"><div id="reader-progress-fill" style="width:${totalPages ? Math.round((1 / totalPages) * 100) : 0}%;height:100%;background:var(--accent);transition:width .3s ease;"></div></div>
         <div id="reader-content-body" class="reader-body" style="font-size:${this.fontSize}px;">${this.formatContent(initialContent)}</div>
-        <div class="reader-footer"><button id="reader-prev-btn" class="btn btn-secondary btn-sm" ${this.currentPage === 0 ? 'disabled' : ''}>Previous</button><span id="reader-page-indicator" style="font-size:.85rem;font-weight:600;opacity:.8;">${totalPages ? `Sample page 1 of ${totalPages}` : (this.sampleLoading ? 'Preparing sample…' : 'Sample preview')}</span><button id="reader-next-btn" class="btn btn-primary btn-sm" ${totalPages <= 1 || this.sampleLoading ? 'disabled' : ''}>Next</button></div>
+        <div class="reader-footer"><button id="reader-prev-btn" class="btn btn-secondary btn-sm" disabled>Previous</button><span id="reader-page-indicator" style="font-size:.85rem;font-weight:600;opacity:.8;">${totalPages ? `Sample page 1 of ${totalPages}` : (this.sampleLoading ? 'Preparing sample…' : 'Sample preview')}</span><button id="reader-next-btn" class="btn btn-primary btn-sm" ${totalPages <= 1 || this.sampleLoading ? 'disabled' : ''}>Next</button></div>
       </div>`;
     document.body.appendChild(overlay);
     document.getElementById('reader-close-btn')?.addEventListener('click', () => this.close());
