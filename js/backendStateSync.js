@@ -1,6 +1,7 @@
 // Live public data bridge: Render backend -> Bookora state
-// Public catalog is sourced from the production backend so uploaded/approved
-// books are consistent across homepage, explore, search and curated pages.
+// Public catalog is sourced from the production backend when it has data.
+// A temporary empty backend response must never erase a working Firebase /
+// cached public catalog.
 import { API_BASE_URL } from './config.js';
 import { state } from './state.js';
 
@@ -34,12 +35,15 @@ export async function syncLiveBackendData() {
         })
       ]);
 
-      // The backend is the source of truth for the public catalog. Even an
-      // admin visiting the public homepage must see approved backend books.
-      // Keep the admin-only pending/rejected list untouched while on admin UI.
+      // The backend is preferred only when it actually returns approved books.
+      // Never replace a non-empty Firebase/cache catalog with [] during a
+      // Render cold start, database outage, or temporary empty response.
       if (booksRes.ok && (!state.isAdmin || isPublicCatalogRoute())) {
         const books = await booksRes.json();
-        if (Array.isArray(books)) state.books = books;
+        if (Array.isArray(books) && books.length) {
+          state.books = books;
+          state.persistCatalogCache?.(books);
+        }
       }
 
       if (categoriesRes.ok) {
@@ -58,6 +62,8 @@ export async function syncLiveBackendData() {
       return true;
     } catch (error) {
       console.warn('Live backend public sync unavailable:', error);
+      // Existing Firebase/cache data remains untouched on failure.
+      state.notify('DATA_SYNCED');
       return false;
     } finally {
       syncInFlight = null;
@@ -72,8 +78,8 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // Firebase login currently triggers a Firestore sync as well. Re-sync the
-// public catalog afterwards so Firestore can never overwrite the production
-// backend catalog with stale/empty book data.
+// public catalog afterwards so a non-empty backend catalog can refresh stale
+// cached data without ever allowing an empty response to erase it.
 state.subscribe(event => {
   if (event === 'USER_LOGGED_IN') {
     setTimeout(() => syncLiveBackendData(), 50);
