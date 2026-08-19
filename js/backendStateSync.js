@@ -6,6 +6,14 @@ import { state } from './state.js';
 
 let syncInFlight = null;
 
+function isPublicCatalogRoute() {
+  const hash = window.location.hash || '#/';
+  const path = (hash.split('?')[0] || '#/').replace(/^#/, '') || '/';
+  return path === '/' || path === '' ||
+    ['/explore', '/categories', '/best-sellers', '/new-releases', '/trending', '/authors', '/search'].includes(path) ||
+    path.startsWith('/category/') || path.startsWith('/book/') || path.startsWith('/author/');
+}
+
 export async function syncLiveBackendData() {
   if (syncInFlight) return syncInFlight;
 
@@ -26,9 +34,10 @@ export async function syncLiveBackendData() {
         })
       ]);
 
-      // Never replace the admin's full pending/rejected book list with the
-      // public approved-only catalog.
-      if (booksRes.ok && !state.isAdmin) {
+      // The backend is the source of truth for the public catalog. Even an
+      // admin visiting the public homepage must see approved backend books.
+      // Keep the admin-only pending/rejected list untouched while on admin UI.
+      if (booksRes.ok && (!state.isAdmin || isPublicCatalogRoute())) {
         const books = await booksRes.json();
         if (Array.isArray(books)) state.books = books;
       }
@@ -68,5 +77,13 @@ window.addEventListener('DOMContentLoaded', () => {
 state.subscribe(event => {
   if (event === 'USER_LOGGED_IN') {
     setTimeout(() => syncLiveBackendData(), 50);
+  }
+});
+
+// When an admin approves a book and then returns to the public homepage,
+// refresh the backend catalog immediately instead of relying on a full reload.
+window.addEventListener('hashchange', () => {
+  if (isPublicCatalogRoute()) {
+    setTimeout(() => syncLiveBackendData(), 0);
   }
 });
