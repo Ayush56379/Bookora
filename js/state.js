@@ -3,6 +3,7 @@
 
 import { initialCategories } from './data/initialCategories.js';
 import { initialUsers } from './data/initialUsers.js';
+import { apiUrl } from './config.js';
 
 const MASTER_ADMIN_EMAIL = 'ayushprajpati6@gmail.com';
 
@@ -12,6 +13,8 @@ class BookoraState {
   init() {
     this.token = '';
     this.books = [];
+    this.booksLoaded = false;
+    this.booksLoading = false;
     this.categories = initialCategories || [];
     this.users = [];
     this.orders = [];
@@ -41,6 +44,10 @@ class BookoraState {
         this.clearLocalSession();
       }
     }
+
+    // Public catalog must load independently of Firebase auth. Otherwise a
+    // direct /#/book/<slug> visit can render "Not Found" before auth finishes.
+    this.syncData();
     this.startFirebaseSession();
   }
 
@@ -57,6 +64,8 @@ class BookoraState {
         if (!firebaseUser) {
           if (!this.currentUser) { this.isAuthenticated = false; this.isAdmin = false; this.isSeller = false; }
           this.notify('AUTH_STATE_CHANGED', null);
+          // Keep public catalog available for logged-out visitors.
+          if (!this.booksLoaded) this.syncData();
           return;
         }
         try { await this.loadAuthenticatedUser(firebaseUser); }
@@ -112,11 +121,33 @@ class BookoraState {
     this.syncData();
   }
 
+  async fetchBooksFromBackend() {
+    try {
+      const response = await fetch(apiUrl('/api/books'), {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        credentials: 'omit',
+        cache: 'no-store'
+      });
+      if (!response.ok) throw new Error(`Backend catalog HTTP ${response.status}`);
+      const payload = await response.json();
+      const list = Array.isArray(payload) ? payload : (Array.isArray(payload?.books) ? payload.books : []);
+      return list.map(book => this.normalizeBook(book)).filter(Boolean).filter(book => book.status === 'approved');
+    } catch (error) {
+      console.warn('Backend catalog fallback failed:', error.message);
+      return [];
+    }
+  }
+
   async syncData() {
+    if (this.booksLoading) return;
+    this.booksLoading = true;
+    let publicSyncSucceeded = false;
     try {
       const { db } = await this.getFirebase();
       const booksSnapshot = await db.collection('books').where('status', '==', 'approved').get();
       this.books = booksSnapshot.docs.map(doc => ({ id: String(doc.id), ...doc.data() }));
+      publicSyncSucceeded = true;
 
       try {
         const categorySnapshot = await db.collection('categories').get();
@@ -154,17 +185,27 @@ class BookoraState {
       }
 
       if (this.isAdmin) await this.syncAdminData(db);
-      this.notify('DATA_SYNCED');
     } catch (error) {
       console.error('Firestore sync error:', error);
-      this.notify('DATA_SYNC_ERROR', error);
     }
+
+    // Render should never depend exclusively on Firebase. The Render API is
+    // the production catalog source too, so use it whenever Firestore is
+    // unavailable or returns an empty public catalog.
+    if (!publicSyncSucceeded || !this.books.length) {
+      const backendBooks = await this.fetchBooksFromBackend();
+      if (backendBooks.length) this.books = backendBooks;
+    }
+
+    this.booksLoaded = true;
+    this.booksLoading = false;
+    this.notify('DATA_SYNCED');
   }
 
   async syncAdminData(db) {
     if (!this.isAdmin) return;
     try { const s = await db.collection('users').get(); this.users = s.docs.map(doc => ({ id: doc.id, ...doc.data() })); } catch (e) { console.warn('Admin users sync:', e.message); this.users = []; }
-    try { const s = await db.collection('books').get(); this.books = s.docs.map(doc => ({ id: String(doc.id), ...doc.data() })); } catch (e) { console.warn('Admin books sync:', e.message); }
+    try { const s = await db.collection('books').get(); this.books = s.docs.map(doc => ({ id: String(doc.id), ...doc.data() })); } catch (e) { console.warn('Admin books sync:', e.message); this.books = []; }
     try { const s = await db.collection('sellers').get(); this.sellers = s.docs.map(doc => ({ id: doc.id, ...doc.data() })); } catch (e) { console.warn('Admin sellers sync:', e.message); this.sellers = []; }
     try { const s = await db.collection('orders').get(); this.orders = s.docs.map(doc => ({ id: doc.id, ...doc.data() })); } catch (e) { console.warn('Admin orders sync:', e.message); this.orders = []; }
     try { const s = await db.collection('wallets').get(); this.wallets = s.docs.map(doc => ({ id: doc.id, ...doc.data() })); } catch (e) { console.warn('Admin wallets sync:', e.message); this.wallets = []; }
@@ -236,9 +277,6 @@ class BookoraState {
   isInWishlist(bookId) { return this.wishlist.has(String(bookId)); }
   hasPurchased(bookId) { return this.library.has(String(bookId)); }
 
-  // ----------------------------------------------------------
-  // PUBLIC BOOK HELPERS — normalized so every approved eBook is visible.
-  // ----------------------------------------------------------
   normalizeBook(book) {
     if (!book || typeof book !== 'object') return null;
     const b = { ...book };
@@ -249,6 +287,7 @@ class BookoraState {
     b.title = b.title || 'Untitled eBook';
     b.author = b.author || b.seller_name || b.sellerName || 'Bookora Creator';
     b.description = b.description || '';
+    b.slug = b.slug || b.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     b.cover_url = b.cover_url || b.coverUrl || b.cover_image_url || b.coverImageUrl || '';
     b.cover_file_id = b.cover_file_id || b.coverFileId || '';
     b.created_at = b.created_at || b.createdAt || b.updated_at || b.updatedAt || '';
@@ -284,8 +323,14 @@ class BookoraState {
   getExternalBooks() { return this.getApprovedBooks().filter(book => book.source_type === 'external'); }
 
   getBookBySlug(slug) {
-    const wanted = String(slug || '');
-    return this.getApprovedBooks().find(book => String(book.slug || '') === wanted || String(book.id) === wanted) || null;
+    const wanted = decodeURIComponent(String(slug || '')).trim().replace(/\/$/, '').toLowerCase();
+    if (!wanted) return null;
+    return this.getApprovedBooks().find(book => {
+      const bookSlug = String(book.slug || '').trim().toLowerCase();
+      const bookId = String(book.id || '').trim().toLowerCase();
+      const titleSlug = String(book.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return bookSlug === wanted || bookId === wanted || titleSlug === wanted;
+    }) || null;
   }
 
   getCategoryBySlug(slug) { return this.categories.find(category => category.slug === slug); }
