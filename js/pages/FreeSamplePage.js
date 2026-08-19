@@ -48,8 +48,8 @@ export function renderFreeSamplePage(book) {
           </div>
         </div>
         <div class="bs-scroll" id="bookora-sample-scroll">
-          <header class="bs-title"><h1>${esc(title)}</h1><p>Preview selected pages from the opening, middle and ending of this eBook.</p></header>
-          <section id="bookora-sample-stack" class="bs-pages"><div class="bs-loading">Preparing sample pages…</div></section>
+          <header class="bs-title"><h1>${esc(title)}</h1><p>Preview 6 selected pages from the opening, middle and ending of this eBook.</p></header>
+          <section id="bookora-sample-stack" class="bs-pages"><div class="bs-loading">Preparing 6 sample pages…</div></section>
           <div class="bs-buybar"><span class="bs-buytext">Enjoy the preview? Read the complete eBook.</span><a class="bs-buy" href="#/checkout/${slug}" id="bookora-sample-buy">Buy Full eBook →</a></div>
         </div>
       </div>
@@ -64,47 +64,35 @@ export function closeFreeSamplePage() {
 }
 
 async function fetchSamplePdf(book) {
-  const candidates = [];
-  const add = value => {
-    if (value === undefined || value === null) return;
-    const v = String(value).trim();
-    if (v && !candidates.includes(v)) candidates.push(v);
-  };
-
-  add(book?.id);
-  add(book?.slug);
-
+  const candidates = [book?.id, book?.slug].filter(Boolean).map(String).filter((v,i,a)=>a.indexOf(v)===i);
   let lastError = null;
 
+  // Preferred path: backend generates a six-page PDF.
   for (const key of candidates) {
     try {
-      const response = await fetch(`${API}/api/books/${encodeURIComponent(key)}/sample?mode=selected`, {
-        cache: 'no-store',
-        headers: { Accept: 'application/pdf' }
-      });
+      const response = await fetch(`${API}/api/books/${encodeURIComponent(key)}/sample?mode=selected`, { cache:'no-store', headers:{Accept:'application/pdf'} });
       if (response.ok) return response;
-
-      let message = `Sample could not be generated (${response.status}).`;
-      try {
-        const data = await response.json();
-        if (data?.error) message = data.error;
-      } catch (_) {}
-      lastError = new Error(message);
-
-      // A slug/id mismatch is common when older books were created before slugs were standardized.
-      // Continue with the next identifier instead of showing an immediate error.
+      lastError = new Error(`Sample endpoint returned ${response.status}.`);
       if (response.status !== 404) break;
-    } catch (error) {
-      lastError = error;
-    }
+    } catch (error) { lastError = error; }
   }
 
-  // Final recovery: ask the public approved-books endpoint and find the exact book by id/title/slug.
+  // Recovery path: use the approved book's own PDF URL and select exactly six pages in the browser.
+  const directUrl = book?.pdf_url || book?.pdfUrl || book?.pdf || book?.file_url || book?.fileUrl || '';
+  if (directUrl && /^https?:\/\//i.test(String(directUrl))) {
+    try {
+      const response = await fetch(String(directUrl), { cache:'no-store', headers:{Accept:'application/pdf'} });
+      if (response.ok) return response;
+      lastError = new Error(`Book PDF returned ${response.status}.`);
+    } catch (error) { lastError = error; }
+  }
+
+  // Last recovery: refresh approved books and find the exact book, then try its PDF URL or sample endpoint.
   try {
-    const listResponse = await fetch(`${API}/api/books`, { cache: 'no-store', headers: { Accept: 'application/json' } });
+    const listResponse = await fetch(`${API}/api/books`, { cache:'no-store', headers:{Accept:'application/json'} });
     if (listResponse.ok) {
-      const books = await listResponse.json();
-      const list = Array.isArray(books) ? books : (Array.isArray(books?.books) ? books.books : []);
+      const raw = await listResponse.json();
+      const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.books) ? raw.books : []);
       const wantedId = String(book?.id || '').trim().toLowerCase();
       const wantedSlug = String(book?.slug || '').trim().toLowerCase();
       const wantedTitle = String(book?.title || '').trim().toLowerCase();
@@ -114,27 +102,28 @@ async function fetchSamplePdf(book) {
         const title = String(item?.title || '').trim().toLowerCase();
         return (wantedId && id === wantedId) || (wantedSlug && slug === wantedSlug) || (wantedTitle && title === wantedTitle);
       });
-
       if (match) {
-        const keys = [match.id, match.slug].filter(Boolean);
-        for (const key of keys) {
-          const response = await fetch(`${API}/api/books/${encodeURIComponent(key)}/sample?mode=selected`, {
-            cache: 'no-store',
-            headers: { Accept: 'application/pdf' }
-          });
+        const url = match.pdf_url || match.pdfUrl || match.pdf || match.file_url || match.fileUrl || '';
+        if (url && /^https?:\/\//i.test(String(url))) {
+          const response = await fetch(String(url), { cache:'no-store', headers:{Accept:'application/pdf'} });
           if (response.ok) return response;
-          try {
-            const data = await response.json();
-            if (data?.error) lastError = new Error(data.error);
-          } catch (_) {}
+        }
+        for (const key of [match.id, match.slug].filter(Boolean)) {
+          const response = await fetch(`${API}/api/books/${encodeURIComponent(key)}/sample?mode=selected`, { cache:'no-store', headers:{Accept:'application/pdf'} });
+          if (response.ok) return response;
         }
       }
     }
-  } catch (error) {
-    lastError = error;
-  }
+  } catch (error) { lastError = error; }
 
-  throw lastError || new Error('Sample could not be opened.');
+  throw lastError || new Error('Sample PDF is unavailable.');
+}
+
+function getSixPageIndexes(total) {
+  if (total <= 0) return [];
+  if (total <= 6) return Array.from({length: total}, (_, i) => i);
+  const wanted = [0, 1, Math.floor((total - 1) / 2), Math.floor(total / 2), total - 2, total - 1];
+  return [...new Set(wanted)].slice(0, 6);
 }
 
 export async function initFreeSamplePage(book) {
@@ -147,45 +136,41 @@ export async function initFreeSamplePage(book) {
   close?.addEventListener('click', closeFreeSamplePage);
   back?.addEventListener('click', closeFreeSamplePage);
   overlay.addEventListener('click', e => { if (e.target === overlay) closeFreeSamplePage(); });
-
   const onKey = e => { if (e.key === 'Escape') closeFreeSamplePage(); };
-  document.addEventListener('keydown', onKey, { once: true });
+  document.addEventListener('keydown', onKey, { once:true });
 
   try {
     const response = await fetchSamplePdf(book);
     const type = (response.headers.get('content-type') || '').toLowerCase();
-    if (!type.includes('application/pdf')) throw new Error('Sample service returned an invalid file.');
+    if (!type.includes('application/pdf')) throw new Error('Invalid PDF response.');
 
     const bytes = new Uint8Array(await response.arrayBuffer());
     const pdfjs = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
-    const pdf = await pdfjs.getDocument({ data: bytes }).promise;
-    if (!pdf.numPages) throw new Error('The sample contains no readable pages.');
+    const pdf = await pdfjs.getDocument({data:bytes}).promise;
+    const indexes = getSixPageIndexes(pdf.numPages);
+    if (!indexes.length) throw new Error('The PDF contains no readable pages.');
 
     stack.innerHTML = '';
     const width = Math.min(780, stack.clientWidth || 780);
     const ratio = Math.min(window.devicePixelRatio || 1, 2);
     const fragment = document.createDocumentFragment();
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const base = page.getViewport({ scale: 1 });
-      const viewport = page.getViewport({ scale: width / base.width });
+    for (let position = 0; position < indexes.length; position++) {
+      const pageIndex = indexes[position];
+      const page = await pdf.getPage(pageIndex + 1);
+      const base = page.getViewport({scale:1});
+      const viewport = page.getViewport({scale:width / base.width});
       const canvas = document.createElement('canvas');
       canvas.width = Math.floor(viewport.width * ratio);
       canvas.height = Math.floor(viewport.height * ratio);
       canvas.style.width = `${viewport.width}px`;
       canvas.style.height = `${viewport.height}px`;
-
-      await page.render({
-        canvasContext: canvas.getContext('2d', { alpha: false }),
-        viewport,
-        transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : null
-      }).promise;
+      await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport,transform:ratio!==1?[ratio,0,0,ratio,0,0]:null}).promise;
 
       const img = document.createElement('img');
-      img.src = canvas.toDataURL('image/jpeg', 0.90);
-      img.alt = `${titleFor(book)} sample page ${i}`;
+      img.src = canvas.toDataURL('image/jpeg', .90);
+      img.alt = `${titleFor(book)} sample page ${pageIndex + 1}`;
       img.draggable = false;
       img.decoding = 'async';
 
@@ -193,7 +178,7 @@ export async function initFreeSamplePage(book) {
       card.className = 'bs-page-card';
       const number = document.createElement('div');
       number.className = 'bs-page-number';
-      number.textContent = `Sample page ${i} of ${pdf.numPages}`;
+      number.textContent = `Sample page ${position + 1} of ${indexes.length}`;
       card.append(img, number);
       fragment.appendChild(card);
 
@@ -207,11 +192,13 @@ export async function initFreeSamplePage(book) {
     pdf.destroy?.();
   } catch (error) {
     console.error('Free sample failed:', error);
-    stack.innerHTML = `<div class="bs-error"><b>Sample could not be opened</b><p>${esc(error?.message || 'Please try again.')}</p><div class="bs-actions"><button type="button" class="bs-btn bs-secondary" id="bs-error-close">Close</button></div></div>`;
-    document.getElementById('bs-error-close')?.addEventListener('click', closeFreeSamplePage);
+    // Do not leave the reader in a broken-looking state. Give one clear retry action.
+    stack.innerHTML = `<div class="bs-error"><b>Sample is temporarily unavailable</b><p>Please try opening the free sample again.</p><div class="bs-actions"><button type="button" class="bs-btn bs-secondary" id="bs-error-retry">Try Again</button></div></div>`;
+    document.getElementById('bs-error-retry')?.addEventListener('click', () => {
+      stack.innerHTML = '<div class="bs-loading">Preparing 6 sample pages…</div>';
+      initFreeSamplePage(book);
+    }, {once:true});
   }
 }
 
-function titleFor(book) {
-  return String(book?.title || 'eBook Sample');
-}
+function titleFor(book) { return String(book?.title || 'eBook Sample'); }
