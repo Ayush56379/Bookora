@@ -1,7 +1,7 @@
 // Bookora frontend API configuration
 // All production data, uploads, AI and payments go through the Render backend.
-
-export const API_BASE_URL = 'https://bookora-backend-x08l.onrender.com';
+// Canonical production service: x081 (the previous x08l hostname was stale).
+export const API_BASE_URL = 'https://bookora-backend-x081.onrender.com';
 
 const endpointMap = {
   '/api/auth/me': '/api/auth/me',
@@ -29,17 +29,9 @@ export async function apiFetch(endpoint, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
-
-  if (statefulAuthToken(options)) {
-    headers.set('Authorization', `Bearer ${statefulAuthToken(options)}`);
-  }
-
-  if (method !== 'GET' && method !== 'HEAD' && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-
-  const url = `${API_BASE_URL}${path}`;
-  return fetch(url, { ...options, method, headers });
+  if (statefulAuthToken(options)) headers.set('Authorization', `Bearer ${statefulAuthToken(options)}`);
+  if (method !== 'GET' && method !== 'HEAD' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  return fetch(`${API_BASE_URL}${path}`, { ...options, method, headers });
 }
 
 function statefulAuthToken(options) {
@@ -47,6 +39,4 @@ function statefulAuthToken(options) {
   return h.Authorization || h.authorization || '';
 }
 
-export function apiUrl(path = '') {
-  return `${API_BASE_URL}${path}`;
-}
+export function apiUrl(path = '') { return `${API_BASE_URL}${path}`; }
