@@ -151,7 +151,7 @@ async function startCheckout(button) {
     });
     const Cashfree = await loadSdk();
     const mode = String(created.environment || '').toUpperCase() === 'PRODUCTION' ? 'production' : 'sandbox';
-    await Cashfree({ mode }).checkout({ paymentSessionId: created.payment_session_id, redirectTarget: '_self' });
+    await Cashfree({ mode }).checkout({ paymentSessionId: created.payment_session_id, redirectTarget: '_top' });
   } catch (error) {
     console.error('Bookora secure checkout:', error);
     Toast.show(error.message || 'Payment could not be started.', 'error');
