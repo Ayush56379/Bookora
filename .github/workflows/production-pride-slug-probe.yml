@@ -1,0 +1,53 @@
+name: Production Pride slug probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/production-pride-slug-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validator
+        run: python -m pip install pypdf
+      - name: Probe production sample by slug
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import json,base64,io,traceback
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError
+          from pypdf import PdfReader
+          base='https://bookora-backend-x08l.onrender.com'; result={'ok':False}
+          try:
+            req=Request(base+'/api/books/pride-and-prejudice/sample?mode=selected',headers={'Accept':'application/json','User-Agent':'Bookora-production-probe/1.0'})
+            try:
+              with urlopen(req,timeout=60) as r: st=dict(r.headers); status=r.status; body=r.read()
+            except HTTPError as e: status=e.code; st=dict(e.headers); body=e.read()
+            result.update(sample_status=status,sample_content_type=st.get('Content-Type',''),sample_headers={k:v for k,v in st.items() if k.lower() in ('content-type','content-length','access-control-allow-origin','cache-control','x-bookora-sample-pages')})
+            if status!=200: raise RuntimeError('SAMPLE_HTTP_'+str(status)+':'+body[:2000].decode('utf-8','replace'))
+            p=json.loads(body.decode()); prev=p.get('preview') or {}; raw=base64.b64decode(prev.get('data',''),validate=True); reader=PdfReader(io.BytesIO(raw),strict=False)
+            result.update(title='Pride and Prejudice',book_id=p.get('bookId'),response_book_id=p.get('bookId'),preview_type=prev.get('type'),preview_mime=prev.get('mimeType'),preview_bytes=len(raw),preview_page_count=len(reader.pages),declared_page_count=p.get('pageCount'),preview_pages=p.get('previewPages'),limited=p.get('limited'))
+            if not p.get('bookId'): raise RuntimeError('REAL_BOOK_ID_MISSING_FROM_PREVIEW_RESPONSE')
+            if not raw.startswith(b'%PDF') or len(reader.pages)<=0: raise RuntimeError('INVALID_PREVIEW_PDF')
+            if int(p.get('pageCount') or 0)!=len(reader.pages): raise RuntimeError('PAGE_COUNT_MISMATCH')
+            result['ok']=True
+          except Exception as e: result['error']=str(e); result['traceback']=traceback.format_exc(limit=4)
+          with open('production-pride-slug-probe-result.json','w') as f: json.dump(result,f,indent=2,sort_keys=True)
+          print(json.dumps(result,indent=2))
+          PY
+      - name: Publish probe result
+        if: always()
+        run: |
+          if [ ! -f production-pride-slug-probe-result.json ]; then echo '{"ok":false,"error":"probe did not produce a result"}' > production-pride-slug-probe-result.json; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add production-pride-slug-probe-result.json
+          git diff --cached --quiet || (git commit -m 'Record production Pride slug probe result' && git push)
