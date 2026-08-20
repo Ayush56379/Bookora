@@ -1,0 +1,57 @@
+name: Post fix Pride wait probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/post-fix-pride-wait-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PDF validator
+        run: python -m pip install pypdf
+      - name: Wait for live Render and verify preview
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import json,base64,io,time,traceback
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError
+          from pypdf import PdfReader
+          url='https://bookora-backend-x08l.onrender.com/api/books/pride-and-prejudice/sample?mode=selected'; result={'ok':False,'attempts':0}
+          try:
+            for attempt in range(1,11):
+              result['attempts']=attempt
+              req=Request(url,headers={'Accept':'application/json','User-Agent':'Bookora-post-fix-wait-probe/1.0'})
+              try:
+                with urlopen(req,timeout=90) as r: status=r.status; headers=dict(r.headers); body=r.read()
+              except HTTPError as e: status=e.code; headers=dict(e.headers); body=e.read()
+              result.update(last_status=status,last_content_type=headers.get('Content-Type',''))
+              if status==200:
+                p=json.loads(body.decode()); prev=p.get('preview') or {}; data=base64.b64decode(prev.get('data',''),validate=True); reader=PdfReader(io.BytesIO(data),strict=False)
+                result.update(api_url=url,title='Pride and Prejudice',book_id=p.get('bookId'),preview_type=prev.get('type'),preview_mime=prev.get('mimeType'),preview_bytes=len(data),preview_page_count=len(reader.pages),declared_page_count=p.get('pageCount'),preview_pages=p.get('previewPages'),limited=p.get('limited'),sample_headers={k:v for k,v in headers.items() if k.lower() in ('content-type','content-length','access-control-allow-origin','cache-control','x-bookora-sample-pages')})
+                if not p.get('bookId'): raise RuntimeError('REAL_BOOK_ID_MISSING')
+                if not data.startswith(b'%PDF') or len(reader.pages)<=0: raise RuntimeError('INVALID_PREVIEW_PDF')
+                if int(p.get('pageCount') or 0)!=len(reader.pages): raise RuntimeError('PAGE_COUNT_MISMATCH')
+                result['ok']=True; break
+              if attempt<10: time.sleep(15)
+            if not result.get('ok') and 'error' not in result: result['error']='SAMPLE_DID_NOT_RETURN_200_AFTER_10_ATTEMPTS'
+          except Exception as e: result['error']=str(e); result['traceback']=traceback.format_exc(limit=4)
+          with open('post-fix-pride-wait-result.json','w') as f: json.dump(result,f,indent=2,sort_keys=True)
+          print(json.dumps(result,indent=2))
+          PY
+      - name: Publish result
+        if: always()
+        run: |
+          if [ ! -f post-fix-pride-wait-result.json ]; then echo '{"ok":false,"error":"probe did not produce a result"}' > post-fix-pride-wait-result.json; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add post-fix-pride-wait-result.json
+          git diff --cached --quiet || (git commit -m 'Record post fix Pride wait result' && git push)
