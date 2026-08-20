@@ -2,6 +2,57 @@
 import { state } from '../state.js';
 import { Toast } from './Toast.js';
 
+const MODE_KEY = 'bookora_active_mode';
+const VALID_MODES = new Set(['buyer', 'seller', 'admin']);
+let restoringMode = false;
+
+function canUseMode(mode) {
+  if (mode === 'admin') return !!state.isAdmin;
+  if (mode === 'seller') return !!state.isSeller;
+  return true;
+}
+
+function getSavedMode() {
+  try {
+    const mode = localStorage.getItem(MODE_KEY);
+    return VALID_MODES.has(mode) ? mode : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function restoreSavedMode() {
+  if (restoringMode || !state.isAuthenticated) return;
+  const saved = getSavedMode();
+  if (!saved || !canUseMode(saved) || state.activeMode === saved) return;
+
+  restoringMode = true;
+  try {
+    state.setActiveMode(saved);
+  } finally {
+    restoringMode = false;
+  }
+}
+
+// Firebase auth/data sync can recalculate activeMode from the user's role.
+// For an admin, the last explicit Buyer/Seller/Admin selection must win.
+state.subscribe((event) => {
+  if (event === 'USER_LOGGED_IN' || event === 'DATA_SYNCED' || event === 'AUTH_STATE_CHANGED') {
+    setTimeout(restoreSavedMode, 0);
+  }
+  if (event === 'MODE_CHANGED') {
+    try {
+      const mode = state.activeMode;
+      if (VALID_MODES.has(mode) && canUseMode(mode)) {
+        localStorage.setItem(MODE_KEY, mode);
+      }
+    } catch (_) {}
+  }
+});
+
+window.addEventListener('hashchange', () => setTimeout(restoreSavedMode, 0));
+window.addEventListener('pageshow', () => setTimeout(restoreSavedMode, 0));
+
 export function renderModeSwitcher() {
   const user = state.currentUser;
   const isAuth = state.isAuthenticated;
@@ -42,6 +93,11 @@ export function initModeSwitcherEvents() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const targetMode = btn.dataset.mode;
+      if (!VALID_MODES.has(targetMode) || !canUseMode(targetMode)) return;
+
+      // Persist the user's explicit selection before navigation. This prevents
+      // Firebase's next auth/data sync from immediately switching it back.
+      try { localStorage.setItem(MODE_KEY, targetMode); } catch (_) {}
       state.setActiveMode(targetMode);
       Toast.show(`Switched to ${targetMode.toUpperCase()} Mode`, 'info');
       
@@ -54,4 +110,7 @@ export function initModeSwitcherEvents() {
       }
     });
   });
+
+  // In case the header was rendered while Firebase was still syncing.
+  setTimeout(restoreSavedMode, 0);
 }
