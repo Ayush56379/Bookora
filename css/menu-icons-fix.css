@@ -1,0 +1,50 @@
+.bookora-icon-item,
+.bookora-mobile-icon-item {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+}
+
+.bookora-menu-icon {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.bookora-menu-icon svg {
+  display: block;
+}
+
+.bookora-mobile-icon-item {
+  min-height: 44px;
+}
+
+.bookora-mobile-icon-item .bookora-menu-icon {
+  width: 23px;
+  min-width: 23px;
+  height: 23px;
+}
+
+.bookora-profile-icon {
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.header-avatar-fallback {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #EEF2FF;
+  color: #2563EB;
+}
+
+.header-avatar-fallback.fallback-visible {
+  display: inline-flex !important;
+}
