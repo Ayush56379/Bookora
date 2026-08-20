@@ -153,21 +153,23 @@ async function startRealCashfree(button) {
   button.textContent = 'Creating secure payment...';
 
   try {
+    const couponCode = (document.getElementById('coupon-input')?.value || '').trim().toUpperCase();
     const created = await backend('/api/cashfree/create-order', {
       method: 'POST',
       body: JSON.stringify({
         book_id: currentBook.id,
+        coupon_code: couponCode,
         phone: state.currentUser?.phone || state.currentUser?.phoneNumber || ''
       })
     });
     if (!created.payment_session_id) throw new Error('Cashfree payment session was not returned.');
 
+    // Render/backend chooses SANDBOX vs PRODUCTION from the admin payment setting.
+    // Never hardcode the environment in the browser.
     const Cashfree = await loadCashfreeSdk();
-    const cashfree = Cashfree({ mode: String(created.environment).toLowerCase() === 'production' ? 'production' : 'sandbox' });
-    await cashfree.checkout({
-      paymentSessionId: created.payment_session_id,
-      redirectTarget: '_self'
-    });
+    const environment = String(created.environment || '').toUpperCase();
+    const cashfree = Cashfree({ mode: environment === 'PRODUCTION' ? 'production' : 'sandbox' });
+    await cashfree.checkout({ paymentSessionId: created.payment_session_id, redirectTarget: '_self' });
   } catch (error) {
     console.error('Cashfree checkout:', error);
     Toast.show(error.message || 'Cashfree payment could not be started.', 'error');
@@ -176,8 +178,6 @@ async function startRealCashfree(button) {
   }
 }
 
-// Capture phase intentionally runs before CheckoutPage/CashfreeModal's old demo
-// handlers. The customer is sent directly to the real Cashfree hosted checkout.
 document.addEventListener('click', event => {
   const element = event.target instanceof Element ? event.target : null;
   if (!element) return;
@@ -198,7 +198,6 @@ document.addEventListener('click', event => {
     return;
   }
 
-  // Backward compatibility if the legacy Cashfree modal is opened somewhere.
   const legacyButton = element.closest('#cf-pay-btn');
   if (legacyButton) {
     event.preventDefault();
