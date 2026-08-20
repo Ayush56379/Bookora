@@ -1,0 +1,44 @@
+/* Mobile Buyer / Seller / Admin mode switcher */
+.mobile-mode-switcher-section {
+  display: none;
+}
+
+@media (max-width: 930px) {
+  .mobile-mode-switcher-section {
+    display: block;
+    margin: 0 0 1rem;
+    padding: 0 0 1rem;
+    border-bottom: 1px solid var(--border-subtle, #E2E8F0);
+  }
+
+  .mobile-mode-switcher-title {
+    margin-bottom: 8px;
+    color: #64748B;
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+  }
+
+  .mobile-mode-switcher-control .mode-switcher {
+    display: block !important;
+    width: 100%;
+  }
+
+  .mobile-mode-switcher-control .mode-switcher-trigger {
+    width: 100% !important;
+    min-height: 46px !important;
+    justify-content: space-between !important;
+    padding: 10px 13px !important;
+    border-radius: 12px !important;
+    background: #F8FAFC !important;
+    font-size: .85rem !important;
+  }
+
+  .mobile-mode-switcher-control .mode-switcher-menu {
+    position: static !important;
+    width: 100% !important;
+    margin-top: 7px !important;
+    box-sizing: border-box !important;
+    box-shadow: 0 8px 24px rgba(15,23,42,.10) !important;
+  }
+}
