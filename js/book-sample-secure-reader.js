@@ -42,9 +42,7 @@ import { renderFreeSamplePage, initFreeSamplePage, closeFreeSamplePage } from '.
     const label = button.querySelector('span');
     if (label) label.textContent = 'Opening sample…';
 
-    // Keep the user on the current Book Detail page.
-    // The sample is an overlay, so there is no route change or page reload.
-    document.getElementById('bookora-free-sample-page')?.remove();
+    closeFreeSamplePage();
     document.body.insertAdjacentHTML('beforeend', renderFreeSamplePage(book));
     document.body.classList.add('bookora-sample-open');
     document.addEventListener('keydown', onKeyDown);
@@ -55,6 +53,7 @@ import { renderFreeSamplePage, initFreeSamplePage, closeFreeSamplePage } from '.
       busy = false;
       button.disabled = false;
       if (label) label.textContent = 'Read Free Sample';
+      if (!document.getElementById('bookora-free-sample-page')) document.removeEventListener('keydown', onKeyDown);
     }
   }, true);
 })();
