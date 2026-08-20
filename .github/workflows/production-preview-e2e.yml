@@ -10,15 +10,17 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
+      - name: Install PDF validator
+        run: python -m pip install pypdf
       - name: Query production catalog and verify Pride and Prejudice sample
         shell: bash
         run: |
           set -euo pipefail
-          BASE='https://bookora-backend-x08l.onrender.com'
           python - <<'PY'
-          import json, os, subprocess, sys, base64, io
+          import json, sys, base64, io
           from urllib.request import Request, urlopen
           from urllib.error import HTTPError
+          from urllib.parse import quote
           from pypdf import PdfReader
 
           base='https://bookora-backend-x08l.onrender.com'
@@ -34,13 +36,8 @@ jobs:
           print('CATALOG_STATUS=', status)
           print('CATALOG_CONTENT_TYPE=', headers.get('Content-Type',''))
           if status != 200:
-              print(raw[:2000].decode('utf-8','replace'))
-              sys.exit(10)
-          try:
-              catalog=json.loads(raw.decode('utf-8'))
-          except Exception as e:
-              print('CATALOG_JSON_ERROR=', repr(e)); sys.exit(11)
-
+              print(raw[:2000].decode('utf-8','replace')); sys.exit(10)
+          catalog=json.loads(raw.decode('utf-8'))
           def books_from(value):
               if isinstance(value,list): return value
               if isinstance(value,dict):
@@ -50,9 +47,7 @@ jobs:
                           if found: return found
               return []
           books=books_from(catalog)
-          matches=[b for b in books if isinstance(b,dict) and str(b.get('title','')).strip().casefold()=='pride and prejudice']
-          if not matches:
-              matches=[b for b in books if isinstance(b,dict) and 'pride and prejudice' in str(b.get('title','')).strip().casefold()]
+          matches=[b for b in books if isinstance(b,dict) and 'pride and prejudice' in str(b.get('title','')).strip().casefold()]
           print('PRIDE_MATCH_COUNT=', len(matches))
           if not matches:
               print('CATALOG_SAMPLE=', json.dumps(catalog)[:4000]); sys.exit(12)
@@ -65,22 +60,17 @@ jobs:
           print('BOOK_SOURCE_TYPE=', book.get('source_type'))
           print('BOOK_PDF_REF=', bool(book.get('pdf_file_id') or book.get('pdfFileId') or book.get('driveFileId') or book.get('file_id') or book.get('fileId') or book.get('pdf_url') or book.get('pdfUrl')))
           print('BOOK_PREVIEW_CONFIG=', json.dumps({k:book.get(k) for k in ('preview_pages','previewPages','sample_page_numbers','samplePageNumbers') if k in book}))
-          if not book_id: sys.exit(13)
-          if str(book.get('status','')).strip().casefold()!='approved': sys.exit(14)
+          if not book_id or str(book.get('status','')).strip().casefold()!='approved': sys.exit(14)
 
-          status, headers, raw = get('/api/books/'+__import__('urllib.parse').parse.quote(book_id, safe='')+'/sample?mode=selected')
+          status, headers, raw = get('/api/books/'+quote(book_id, safe='')+'/sample?mode=selected')
           print('SAMPLE_STATUS=', status)
           print('SAMPLE_CONTENT_TYPE=', headers.get('Content-Type',''))
           print('SAMPLE_HEADERS=', json.dumps({k:v for k,v in headers.items() if k.lower() in ('content-type','content-length','access-control-allow-origin','cache-control','x-bookora-sample-pages')}))
           if status != 200:
               print('SAMPLE_BODY=', raw[:4000].decode('utf-8','replace')); sys.exit(20)
-          try:
-              payload=json.loads(raw.decode('utf-8'))
-          except Exception as e:
-              print('SAMPLE_JSON_ERROR=', repr(e)); sys.exit(21)
-          if not payload.get('success'): sys.exit(22)
+          payload=json.loads(raw.decode('utf-8'))
           preview=payload.get('preview') or {}
-          if preview.get('type')!='pdf' or preview.get('mimeType')!='application/pdf': sys.exit(23)
+          if not payload.get('success') or preview.get('type')!='pdf' or preview.get('mimeType')!='application/pdf': sys.exit(23)
           data=base64.b64decode(str(preview.get('data') or ''), validate=True)
           print('PREVIEW_BYTES=', len(data))
           if not data.startswith(b'%PDF'): sys.exit(24)
@@ -91,7 +81,6 @@ jobs:
           print('PREVIEW_PAGE_COUNT=', page_count)
           print('DECLARED_PAGE_COUNT=', declared)
           print('PREVIEW_PAGES=', json.dumps(pages))
-          if page_count<=0 or declared!=page_count or len(pages)!=page_count: sys.exit(25)
-          if payload.get('bookId') != book_id: sys.exit(26)
+          if page_count<=0 or declared!=page_count or len(pages)!=page_count or payload.get('bookId') != book_id: sys.exit(25)
           print('PRODUCTION_PREVIEW_E2E=PASS')
           PY
