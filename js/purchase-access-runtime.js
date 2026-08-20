@@ -13,7 +13,6 @@ let sessionPromise = null;
 
 async function ensureBackendSession(force = false) {
   if (!force && state.token) return state.token;
-
   if (!force) {
     const cached = localStorage.getItem('bookora_auth_token') || '';
     if (cached) {
@@ -21,7 +20,6 @@ async function ensureBackendSession(force = false) {
       return cached;
     }
   }
-
   if (sessionPromise) return sessionPromise;
   sessionPromise = (async () => {
     try {
@@ -52,7 +50,6 @@ async function backend(path, options = {}) {
     const headers = { Accept: 'application/json', ...(options.headers || {}), Authorization: `Bearer ${sessionToken}` };
     return fetch(`${API}${path}`, { ...options, headers, cache: 'no-store' });
   };
-
   let response = await request(token);
   if (response.status === 401) {
     token = await ensureBackendSession(true);
@@ -120,8 +117,6 @@ async function downloadPurchasedPdf(book) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60 * 1000);
 }
 
-// Keep the existing sample reader unchanged. For a purchased book, use the
-// protected PDF endpoint instead of exposing a Drive URL or demo text.
 const originalReaderOpen = ReaderModal.open.bind(ReaderModal);
 ReaderModal.open = async function(book, isSample = false) {
   if (isSample) return originalReaderOpen(book, true);
@@ -141,7 +136,7 @@ window.BookoraPurchaseAccess = {
   fetchPurchasedPdf
 };
 
-async function verifyPaymentSuccess() {
+async function verifyPaymentSuccess(action = '') {
   const hash = window.location.hash || '';
   if (!hash.startsWith('#/payment/success')) return;
   const params = new URLSearchParams(hash.split('?')[1] || '');
@@ -185,15 +180,21 @@ async function verifyPaymentSuccess() {
 
     const readButton = document.getElementById('success-read-btn');
     const downloadButton = document.getElementById('success-download-btn');
-    if (readButton && book) {
-      readButton.disabled = false;
-      readButton.style.opacity = '1';
-      readButton.onclick = () => openPurchasedPdf(book).catch(error => Toast.show(error.message, 'error'));
+    if (readButton) {
+      readButton.disabled = !book;
+      readButton.style.opacity = book ? '1' : '.55';
+      readButton.onclick = book ? () => openPurchasedPdf(book).catch(error => Toast.show(error.message, 'error')) : null;
     }
-    if (downloadButton && book) {
-      downloadButton.disabled = false;
-      downloadButton.style.opacity = '1';
-      downloadButton.onclick = () => downloadPurchasedPdf(book).then(() => Toast.show(`Downloaded "${book.title}" as a licensed PDF.`, 'success')).catch(error => Toast.show(error.message, 'error'));
+    if (downloadButton) {
+      downloadButton.disabled = !book;
+      downloadButton.style.opacity = book ? '1' : '.55';
+      downloadButton.onclick = book ? () => downloadPurchasedPdf(book).then(() => Toast.show(`Downloaded "${book.title}" as a licensed PDF.`, 'success')).catch(error => Toast.show(error.message, 'error')) : null;
+    }
+
+    if (book && action === 'read') await openPurchasedPdf(book);
+    if (book && action === 'download') {
+      await downloadPurchasedPdf(book);
+      Toast.show(`Downloaded "${book.title}" as a licensed PDF.`, 'success');
     }
   } catch (error) {
     console.error('Payment verification:', error);
@@ -201,31 +202,23 @@ async function verifyPaymentSuccess() {
   }
 }
 
-function bindGlobalPurchaseEvents() {
-  const target = event => event.target instanceof Element ? event.target : null;
-  document.addEventListener('click', async event => {
-    const element = target(event);
-    if (!element) return;
-    const read = element.closest('#success-read-btn');
-    const download = element.closest('#success-download-btn');
-    if (!read && !download) return;
-    if (read.dataset.bound === '1' || download?.dataset.bound === '1') return;
-    const params = new URLSearchParams((window.location.hash.split('?')[1] || ''));
-    const orderId = params.get('order_id');
-    if (!orderId) return;
-    event.preventDefault();
-    try {
-      await verifyPaymentSuccess();
-    } catch (_) {}
-  });
-}
+// If the user clicks before the asynchronous verification finishes, verify first
+// and then perform the exact requested action so one click is enough.
+document.addEventListener('click', async event => {
+  const element = event.target instanceof Element ? event.target : null;
+  if (!element) return;
+  const read = element.closest('#success-read-btn');
+  const download = element.closest('#success-download-btn');
+  if (!read && !download) return;
+  if (!window.location.hash.startsWith('#/payment/success')) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  await verifyPaymentSuccess(read ? 'read' : 'download');
+}, true);
 
 state.subscribe(event => {
-  if (event === 'USER_LOGGED_IN') {
-    setTimeout(() => syncPurchasedLibrary().catch(() => {}), 150);
-  }
+  if (event === 'USER_LOGGED_IN') setTimeout(() => syncPurchasedLibrary().catch(() => {}), 150);
 });
 
 window.addEventListener('hashchange', () => setTimeout(verifyPaymentSuccess, 50));
 window.addEventListener('load', () => setTimeout(verifyPaymentSuccess, 250));
-bindGlobalPurchaseEvents();
