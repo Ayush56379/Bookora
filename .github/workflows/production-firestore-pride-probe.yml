@@ -1,0 +1,75 @@
+name: Production Firestore Pride probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/production-firestore-pride-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validator
+        run: python -m pip install pypdf
+      - name: Query production Firestore and sample API
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import json,base64,io,traceback
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError
+          from urllib.parse import quote
+          from pypdf import PdfReader
+          result={'ok':False}; project='bookora-676bf'; base='https://bookora-backend-x08l.onrender.com'
+          def get(url):
+            req=Request(url,headers={'Accept':'application/json','User-Agent':'Bookora-production-probe/1.0'})
+            try:
+              with urlopen(req,timeout=60) as r:return r.status,dict(r.headers),r.read()
+            except HTTPError as e:return e.code,dict(e.headers),e.read()
+          def val(v):
+            if not isinstance(v,dict):return v
+            if 'stringValue' in v:return v['stringValue']
+            if 'integerValue' in v:return int(v['integerValue'])
+            if 'doubleValue' in v:return v['doubleValue']
+            if 'booleanValue' in v:return v['booleanValue']
+            if 'arrayValue' in v:return [val(x) for x in v.get('arrayValue',{}).get('values',[])]
+            if 'mapValue' in v:return {k:val(x) for k,x in v.get('mapValue',{}).get('fields',{}).items()}
+            return None
+          try:
+            url=f'https://firestore.googleapis.com/v1/projects/{project}/databases/(default)/documents/books?pageSize=1000'
+            st,h,b=get(url); result.update(firestore_status=st,firestore_content_type=h.get('Content-Type',''))
+            if st!=200:raise RuntimeError('FIRESTORE_HTTP_'+str(st)+':'+b[:1500].decode('utf-8','replace'))
+            data=json.loads(b.decode()); docs=data.get('documents',[]); result['firestore_doc_count']=len(docs)
+            matches=[]
+            for d in docs:
+              fields={k:val(v) for k,v in d.get('fields',{}).items()}; title=str(fields.get('title',''))
+              if 'pride' in title.lower() and 'prejudice' in title.lower():matches.append((d,fields))
+            result['match_count']=len(matches)
+            if not matches:raise RuntimeError('PRIDE_NOT_FOUND_IN_FIRESTORE_BOOKS')
+            d,fields=matches[0]; bid=d.get('name','').rsplit('/',1)[-1]
+            result.update(book_id=bid,title=fields.get('title'),status=fields.get('status'),slug=fields.get('slug'),pdf_reference_present=bool(fields.get('pdf_file_id') or fields.get('pdfFileId') or fields.get('file_id') or fields.get('fileId') or fields.get('pdf_url') or fields.get('pdfUrl')),preview_config={k:fields.get(k) for k in ('preview_pages','previewPages','sample_page_numbers','samplePageNumbers') if k in fields})
+            st,h,b=get(base+'/api/books/'+quote(bid,safe='')+'/sample?mode=selected'); result.update(sample_status=st,sample_content_type=h.get('Content-Type',''),sample_headers={k:v for k,v in h.items() if k.lower() in ('content-type','content-length','access-control-allow-origin','cache-control','x-bookora-sample-pages')})
+            if st!=200:raise RuntimeError('SAMPLE_HTTP_'+str(st)+':'+b[:2000].decode('utf-8','replace'))
+            p=json.loads(b.decode()); prev=p.get('preview') or {}; raw=base64.b64decode(prev.get('data',''),validate=True); reader=PdfReader(io.BytesIO(raw),strict=False)
+            result.update(preview_type=prev.get('type'),preview_mime=prev.get('mimeType'),preview_bytes=len(raw),preview_page_count=len(reader.pages),declared_page_count=p.get('pageCount'),preview_pages=p.get('previewPages'),limited=p.get('limited'),response_book_id=p.get('bookId'))
+            if not raw.startswith(b'%PDF') or len(reader.pages)<=0:raise RuntimeError('INVALID_PREVIEW_PDF')
+            if p.get('bookId')!=bid:raise RuntimeError('BOOK_ID_MISMATCH')
+            result['ok']=True
+          except Exception as e:result['error']=str(e);result['traceback']=traceback.format_exc(limit=4)
+          with open('production-firestore-pride-probe-result.json','w') as f:json.dump(result,f,indent=2,sort_keys=True)
+          print(json.dumps(result,indent=2))
+          PY
+      - name: Publish result
+        if: always()
+        run: |
+          if [ ! -f production-firestore-pride-probe-result.json ]; then echo '{"ok":false,"error":"probe did not produce a result"}' > production-firestore-pride-probe-result.json; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add production-firestore-pride-probe-result.json
+          git diff --cached --quiet || (git commit -m 'Record production Firestore Pride probe result' && git push)
