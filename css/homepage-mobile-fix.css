@@ -1,0 +1,98 @@
+/* Bookora homepage mobile layout fix */
+
+@media (max-width: 600px) {
+  /* Live statistics: keep the four metrics in a compact 2x2 layout. */
+  .homepage section:has(.stat-item) {
+    padding: 26px 0 28px !important;
+  }
+
+  .homepage section:has(.stat-item) .container > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 24px 12px !important;
+    align-items:start !important;
+  }
+
+  .homepage section:has(.stat-item) .stat-item {
+    min-width:0 !important;
+    padding: 0 4px !important;
+  }
+
+  .homepage section:has(.stat-item) .stat-number {
+    font-size: 2.15rem !important;
+    line-height: 1 !important;
+  }
+
+  .homepage section:has(.stat-item) .stat-item > div:last-child {
+    font-size: .78rem !important;
+    line-height: 1.3 !important;
+    margin-top: 7px !important;
+  }
+
+  /* Keep the catalog compact and clearly separated from the statistics. */
+  .bookora-home-catalog-section {
+    padding: 28px 0 40px !important;
+  }
+
+  .bookora-catalog-header {
+    gap: 14px !important;
+    margin-bottom: 20px !important;
+  }
+
+  .bookora-catalog-header h2 {
+    font-size: 1.7rem !important;
+    line-height: 1.1 !important;
+    margin: 7px 0 5px !important;
+  }
+
+  .bookora-catalog-header p {
+    font-size: .82rem !important;
+    line-height: 1.45 !important;
+  }
+
+  #bookora-home-catalog-filter {
+    height: 44px !important;
+    border-radius: 12px !important;
+    font-size: .9rem !important;
+  }
+
+  .bookora-catalog-grid {
+    gap: 10px !important;
+  }
+
+  /* Floating AI must not dominate the mobile viewport or cover headings. */
+  #bookora-ai-root #bookora-ai-trigger-btn {
+    right: 10px !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    padding: 9px 12px !important;
+    gap: 6px !important;
+    border-radius: 999px !important;
+    font-size: 11px !important;
+    box-shadow: 0 7px 20px rgba(37,99,235,.24), 0 2px 7px rgba(15,23,42,.10) !important;
+  }
+
+  #bookora-ai-root #bookora-ai-trigger-btn .ai-sparkle-icon {
+    width: 20px !important;
+    height: 20px !important;
+    flex-basis: 20px !important;
+  }
+
+  #bookora-ai-root #bookora-ai-trigger-btn .ai-sparkle-icon svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .homepage section:has(.stat-item) .container > div {
+    gap: 20px 8px !important;
+  }
+
+  .homepage section:has(.stat-item) .stat-number {
+    font-size: 2rem !important;
+  }
+
+  #bookora-ai-root #bookora-ai-trigger-btn {
+    right: 8px !important;
+    padding: 8px 10px !important;
+  }
+}
