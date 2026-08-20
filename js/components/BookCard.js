@@ -26,7 +26,6 @@ export function getCoverUrl(book) {
   if (!value) return '';
   const raw = value.trim();
 
-  // Google Drive file ID -> high-resolution thumbnail.
   if (/^[a-zA-Z0-9_-]{20,}$/.test(raw)) {
     return `https://drive.google.com/thumbnail?id=${encodeURIComponent(raw)}&sz=w1600`;
   }
@@ -77,10 +76,6 @@ export function renderBookCard(book) {
         <button type="button" class="book-wishlist-btn ${isWish ? 'active' : ''}" data-id="${escapeHtml(id)}" title="${isWish ? 'Remove from Wishlist' : 'Add to Wishlist'}" aria-label="${isWish ? 'Remove from Wishlist' : 'Add to Wishlist'}">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="${isWish ? '#E11D48' : 'none'}" stroke="currentColor" stroke-width="2.2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
         </button>
-        <div class="book-quick-actions">
-          <button type="button" class="btn btn-secondary btn-sm quick-preview-btn" data-id="${escapeHtml(id)}">Preview</button>
-          <a href="${detailHref}" class="btn btn-primary btn-sm">Details →</a>
-        </div>
       </div>
       <div class="book-card-info">
         <div class="book-card-meta-row"><span class="badge ${isInternal ? 'badge-bookora' : 'badge-external'}">${isInternal ? 'BOOKORA' : 'EXTERNAL'}</span><span class="book-pages">${book.pages ? `${escapeHtml(book.pages)} pages` : escapeHtml(book.source_domain || 'Web')}</span></div>
@@ -124,9 +119,6 @@ if (!document.getElementById('bookora-book-card-premium-styles')) {
     .book-card-premium .book-wishlist-btn{position:absolute;z-index:8;top:.6rem;right:.6rem;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.75);border-radius:50%;background:rgba(255,255,255,.96);color:#334155;box-shadow:0 3px 10px rgba(15,23,42,.14);cursor:pointer;transition:transform .15s ease,background .15s ease,color .15s ease;}
     .book-card-premium .book-wishlist-btn:hover{transform:scale(1.06);}
     .book-card-premium .book-wishlist-btn.active{color:#E11D48;}
-    .book-card-premium .book-quick-actions{position:absolute;z-index:7;left:.65rem;right:.65rem;bottom:.65rem;display:flex;gap:.4rem;opacity:0;transform:translateY(6px);transition:all .2s ease;}
-    .book-card-premium:hover .book-quick-actions,.book-card-premium:focus-within .book-quick-actions{opacity:1;transform:none;}
-    .book-card-premium .book-quick-actions .btn{flex:1;min-width:0;font-size:.72rem;padding:.38rem .45rem;box-shadow:0 4px 12px rgba(15,23,42,.16);}
     .book-card-info{display:flex;flex-direction:column;min-width:0;padding:.75rem .85rem .75rem;}
     .book-card-meta-row{display:flex;align-items:center;justify-content:space-between;gap:.4rem;margin-bottom:.35rem;min-width:0;}
     .book-pages{font-size:.68rem;color:var(--text-muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -139,7 +131,7 @@ if (!document.getElementById('bookora-book-card-premium-styles')) {
     .book-card-price{font-weight:800;font-size:1rem;color:var(--text-primary);}
     .book-card-old-price{font-size:.65rem;color:var(--text-muted);text-decoration:line-through;}
     .book-buy-btn{flex:0 0 auto;font-size:.72rem!important;padding:.38rem .65rem!important;}
-    @media(max-width:700px){.book-cover-premium{aspect-ratio:2/3;}.book-card-info{padding:.7rem .75rem;}.book-card-premium .book-quick-actions{opacity:1;transform:none;}}
+    @media(max-width:700px){.book-cover-premium{aspect-ratio:2/3;}.book-card-info{padding:.7rem .75rem;}}
     @media(max-width:420px){.book-cover-premium{aspect-ratio:2/3;}}
   `;
   document.head.appendChild(style);
