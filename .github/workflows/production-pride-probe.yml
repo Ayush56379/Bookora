@@ -14,53 +14,49 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install validator
+        run: python -m pip install pypdf
       - name: Probe production API
         shell: bash
         run: |
+          set +e
           python - <<'PY'
           import json, base64, io, traceback
           from urllib.request import Request, urlopen
           from urllib.error import HTTPError
           from urllib.parse import quote
           from pypdf import PdfReader
-          import subprocess
-          subprocess.run(['python','-m','pip','install','pypdf'],check=True)
-          result={'ok':False}
-          base='https://bookora-backend-x08l.onrender.com'
+          result={'ok':False}; base='https://bookora-backend-x08l.onrender.com'
           def get(path):
             req=Request(base+path,headers={'Accept':'application/json','User-Agent':'Bookora-production-probe/1.0'})
             try:
               with urlopen(req,timeout=45) as r:return r.status,dict(r.headers),r.read()
             except HTTPError as e:return e.code,dict(e.headers),e.read()
           try:
-            st,h,b=get('/api/books?q='+quote('Pride'))
-            result.update(catalog_status=st,catalog_content_type=h.get('Content-Type',''))
-            data=json.loads(b.decode())
-            books=data if isinstance(data,list) else data.get('books',data.get('data',[])) if isinstance(data,dict) else []
-            result['catalog_count']=len(books)
-            result['catalog_titles']=[x.get('title') for x in books if isinstance(x,dict)]
+            st,h,b=get('/api/books?q='+quote('Pride')); result.update(catalog_status=st,catalog_content_type=h.get('Content-Type',''))
+            if st!=200: raise RuntimeError('CATALOG_HTTP_'+str(st)+':'+b[:1000].decode('utf-8','replace'))
+            data=json.loads(b.decode()); books=data if isinstance(data,list) else data.get('books',data.get('data',[])) if isinstance(data,dict) else []
+            result['catalog_count']=len(books); result['catalog_titles']=[x.get('title') for x in books if isinstance(x,dict)]
             matches=[x for x in books if isinstance(x,dict) and 'pride' in str(x.get('title','')).lower() and 'prejudice' in str(x.get('title','')).lower()]
-            result['matches']=matches
+            result['match_count']=len(matches)
             if not matches: raise RuntimeError('PRIDE_NOT_FOUND_IN_PRODUCTION_CATALOG')
-            book=next((x for x in matches if str(x.get('status','')).lower()=='approved'),matches[0])
-            bid=str(book.get('id') or book.get('bookId') or book.get('book_id') or '')
+            book=next((x for x in matches if str(x.get('status','')).lower()=='approved'),matches[0]); bid=str(book.get('id') or book.get('bookId') or book.get('book_id') or '')
             result.update(book_id=bid,title=book.get('title'),status=book.get('status'),pdf_reference_present=bool(book.get('pdf_file_id') or book.get('pdfFileId') or book.get('driveFileId') or book.get('file_id') or book.get('fileId') or book.get('pdf_url') or book.get('pdfUrl')),preview_config={k:book.get(k) for k in ('preview_pages','previewPages','sample_page_numbers','samplePageNumbers') if k in book})
-            if not bid:raise RuntimeError('BOOK_ID_MISSING')
-            st,h,b=get('/api/books/'+quote(bid,safe='')+'/sample?mode=selected')
-            result.update(sample_status=st,sample_content_type=h.get('Content-Type',''),sample_headers={k:v for k,v in h.items() if k.lower() in ('content-type','content-length','access-control-allow-origin','cache-control','x-bookora-sample-pages')})
-            if st!=200:raise RuntimeError('SAMPLE_HTTP_'+str(st)+':'+b[:1000].decode('utf-8','replace'))
+            if not bid: raise RuntimeError('BOOK_ID_MISSING')
+            st,h,b=get('/api/books/'+quote(bid,safe='')+'/sample?mode=selected'); result.update(sample_status=st,sample_content_type=h.get('Content-Type',''),sample_headers={k:v for k,v in h.items() if k.lower() in ('content-type','content-length','access-control-allow-origin','cache-control','x-bookora-sample-pages')})
+            if st!=200: raise RuntimeError('SAMPLE_HTTP_'+str(st)+':'+b[:1000].decode('utf-8','replace'))
             p=json.loads(b.decode()); prev=p.get('preview') or {}; raw=base64.b64decode(prev.get('data',''),validate=True); reader=PdfReader(io.BytesIO(raw),strict=False)
             result.update(preview_type=prev.get('type'),preview_mime=prev.get('mimeType'),preview_bytes=len(raw),preview_page_count=len(reader.pages),declared_page_count=p.get('pageCount'),preview_pages=p.get('previewPages'),limited=p.get('limited'),response_book_id=p.get('bookId'))
-            if not raw.startswith(b'%PDF') or len(reader.pages)<=0:raise RuntimeError('INVALID_PREVIEW_PDF')
+            if not raw.startswith(b'%PDF') or len(reader.pages)<=0: raise RuntimeError('INVALID_PREVIEW_PDF')
             result['ok']=True
-          except Exception as e:
-            result['error']=str(e);result['traceback']=traceback.format_exc(limit=4)
-          with open('production-pride-probe-result.json','w') as f:json.dump(result,f,indent=2,sort_keys=True)
+          except Exception as e: result['error']=str(e); result['traceback']=traceback.format_exc(limit=4)
+          with open('production-pride-probe-result.json','w') as f: json.dump(result,f,indent=2,sort_keys=True)
           print(json.dumps(result,indent=2))
           PY
       - name: Publish probe result
         if: always()
         run: |
+          if [ ! -f production-pride-probe-result.json ]; then echo '{"ok":false,"error":"probe did not produce a result"}' > production-pride-probe-result.json; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add production-pride-probe-result.json
