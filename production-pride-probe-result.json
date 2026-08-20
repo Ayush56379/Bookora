@@ -1,0 +1,10 @@
+{
+  "catalog_content_type": "application/json",
+  "catalog_count": 0,
+  "catalog_status": 200,
+  "catalog_titles": [],
+  "error": "PRIDE_NOT_FOUND_IN_PRODUCTION_CATALOG",
+  "match_count": 0,
+  "ok": false,
+  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 19, in <module>\nRuntimeError: PRIDE_NOT_FOUND_IN_PRODUCTION_CATALOG\n"
+}
