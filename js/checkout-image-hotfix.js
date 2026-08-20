@@ -10,36 +10,33 @@ function getCheckoutBook() {
   const hash = window.location.hash || '';
   const match = hash.match(/^#\/checkout\/([^?]+)/);
   if (!match) return null;
-  try {
-    return state.getBookBySlug(decodeURIComponent(match[1]));
-  } catch (_) {
-    return null;
-  }
+  try { return state.getBookBySlug(decodeURIComponent(match[1])); }
+  catch (_) { return null; }
 }
 
 function coverUrl(book) {
-  return String(
-    book?.cover_url || book?.coverUrl || book?.cover_image_url || book?.coverImageUrl || ''
-  ).trim();
+  return String(book?.cover_url || book?.coverUrl || book?.cover_image_url || book?.coverImageUrl || '').trim();
 }
 
 function applyCheckoutFix() {
   const page = document.querySelector('.checkout-page');
   if (!page) return;
-
   const book = getCheckoutBook();
   if (!book) return;
 
-  // Make the exact checkout book available to the real payment runtime.
+  // Keep the exact catalog object available to the real payment runtime.
   window.__bookoraCheckoutBook = book;
 
   const cover = coverUrl(book);
-  const snippet = page.querySelector('.checkout-book-cover');
-  if (snippet && cover && snippet.dataset.coverApplied !== '1') {
-    snippet.innerHTML = `<img src="${escapeAttr(cover)}" alt="${escapeAttr(book.title)} cover" style="width:100%;height:100%;object-fit:cover;border-radius:6px;display:block;" loading="eager" referrerpolicy="no-referrer" />`;
-    snippet.style.background = '#F8FAFC';
-    snippet.dataset.coverApplied = '1';
-  }
+  // Current CheckoutPage uses the 52x70 placeholder div. Support both the
+  // explicit hotfix class and the existing inline-style placeholder.
+  const snippet = page.querySelector('.checkout-book-cover') || page.querySelector('div[style*="width: 52px"][style*="height: 70px"]');
+  if (!snippet || !cover || snippet.dataset.coverApplied === '1') return;
+
+  snippet.classList.add('checkout-book-cover');
+  snippet.innerHTML = `<img src="${escapeAttr(cover)}" alt="${escapeAttr(book.title)} cover" style="width:100%;height:100%;object-fit:cover;border-radius:6px;display:block;" loading="eager" referrerpolicy="no-referrer" />`;
+  snippet.style.background = '#F8FAFC';
+  snippet.dataset.coverApplied = '1';
 }
 
 function install() {
