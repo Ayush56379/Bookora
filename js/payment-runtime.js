@@ -1,15 +1,23 @@
 // Bookora real Cashfree + server-settings bridge.
-// Secrets never enter this file; Cashfree credentials stay on Render.
+// Cashfree credentials stay on Render; the browser only receives a payment session.
 import { state } from './state.js';
 import { Toast } from './components/Toast.js';
 
 const API = (window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com').replace(/\/$/, '');
 
 async function backend(path, options = {}) {
+  if (!state.token && window.BookoraPurchaseAccess?.ensureBackendSession) {
+    await window.BookoraPurchaseAccess.ensureBackendSession(false);
+  }
   const headers = { Accept: 'application/json', ...(options.headers || {}) };
   if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
-  const res = await fetch(`${API}${path}`, { ...options, headers });
+  let res = await fetch(`${API}${path}`, { ...options, headers, cache: 'no-store' });
+  if (res.status === 401 && window.BookoraPurchaseAccess?.ensureBackendSession) {
+    await window.BookoraPurchaseAccess.ensureBackendSession(true);
+    if (state.token) headers.Authorization = `Bearer ${state.token}`;
+    res = await fetch(`${API}${path}`, { ...options, headers, cache: 'no-store' });
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Backend request failed');
   return data;
@@ -106,15 +114,11 @@ async function saveAdminSettings(button) {
     Toast.show('Seller + Platform commission must equal 100%.', 'error');
     return;
   }
-
   button.disabled = true;
   const oldText = button.textContent;
   button.textContent = 'Saving...';
   try {
-    const result = await backend('/api/admin/settings', {
-      method: 'POST',
-      body: JSON.stringify({ settings: next })
-    });
+    const result = await backend('/api/admin/settings', { method: 'POST', body: JSON.stringify({ settings: next }) });
     state.settings = result.settings || next;
     state.notify('SETTINGS_UPDATED', state.settings);
     document.documentElement.style.setProperty('--accent', next.branding.primary_accent);
@@ -129,30 +133,32 @@ async function saveAdminSettings(button) {
   }
 }
 
-async function startRealCashfree(button) {
-  const modal = document.getElementById('cashfree-payment-modal');
-  const book = state.books.find(b => String(b.id) === String(state.getBookBySlug(location.hash.split('/').pop()?.split('?')[0] || '')?.id))
-    || window.__bookoraCheckoutBook;
+function resolveCheckoutBook() {
+  const hash = window.location.hash || '';
+  const match = hash.match(/#\/checkout\/([^?]+)/);
+  if (match) return state.getBookBySlug(decodeURIComponent(match[1]));
+  return window.__bookoraCheckoutBook || null;
+}
 
-  // CashfreeModal exposes the current book on its module object, but this bridge
-  // also resolves it from the checkout route when possible.
-  let currentBook = book;
-  if (!currentBook) {
-    const hash = window.location.hash || '';
-    const match = hash.match(/#\/checkout\/([^?]+)/);
-    if (match) currentBook = state.getBookBySlug(decodeURIComponent(match[1]));
-  }
+async function startRealCashfree(button) {
+  const currentBook = resolveCheckoutBook();
   if (!currentBook) {
     Toast.show('Book information could not be found. Please reopen checkout.', 'error');
     return;
   }
 
+  window.__bookoraCheckoutBook = currentBook;
   button.disabled = true;
+  const oldText = button.textContent;
   button.textContent = 'Creating secure payment...';
+
   try {
     const created = await backend('/api/cashfree/create-order', {
       method: 'POST',
-      body: JSON.stringify({ book_id: currentBook.id })
+      body: JSON.stringify({
+        book_id: currentBook.id,
+        phone: state.currentUser?.phone || state.currentUser?.phoneNumber || ''
+      })
     });
     if (!created.payment_session_id) throw new Error('Cashfree payment session was not returned.');
 
@@ -163,34 +169,20 @@ async function startRealCashfree(button) {
       redirectTarget: '_self'
     });
   } catch (error) {
-    console.error(error);
+    console.error('Cashfree checkout:', error);
     Toast.show(error.message || 'Cashfree payment could not be started.', 'error');
     button.disabled = false;
-    button.innerHTML = '<span>Pay securely with Cashfree</span>';
+    button.textContent = oldText || 'Proceed to Cashfree Pay';
   }
 }
 
-async function verifyReturnedPayment() {
-  const hash = window.location.hash || '';
-  if (!hash.startsWith('#/payment/success')) return;
-  const query = hash.split('?')[1] || '';
-  const orderId = new URLSearchParams(query).get('order_id');
-  if (!orderId) return;
-
-  try {
-    const result = await backend(`/api/cashfree/verify-order?order_id=${encodeURIComponent(orderId)}`);
-    if (!result.paid) {
-      Toast.show('Payment is not confirmed yet. Please wait and refresh.', 'warning');
-    }
-  } catch (error) {
-    console.warn('Payment verification:', error);
-  }
-}
-
-// Capture-phase hooks run before the legacy demo handlers in AdminSettingsPage and
-// CashfreeModal, so the old fake save/payment actions cannot execute.
+// Capture phase intentionally runs before CheckoutPage/CashfreeModal's old demo
+// handlers. The customer is sent directly to the real Cashfree hosted checkout.
 document.addEventListener('click', event => {
-  const settingsButton = event.target.closest('#save-all-settings-btn');
+  const element = event.target instanceof Element ? event.target : null;
+  if (!element) return;
+
+  const settingsButton = element.closest('#save-all-settings-btn');
   if (settingsButton && state.isAdmin) {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -198,13 +190,19 @@ document.addEventListener('click', event => {
     return;
   }
 
-  const payButton = event.target.closest('#cf-pay-btn');
-  if (payButton && document.getElementById('cashfree-payment-modal')) {
+  const checkoutButton = element.closest('#trigger-cashfree-btn');
+  if (checkoutButton) {
     event.preventDefault();
     event.stopImmediatePropagation();
-    startRealCashfree(payButton);
+    startRealCashfree(checkoutButton);
+    return;
+  }
+
+  // Backward compatibility if the legacy Cashfree modal is opened somewhere.
+  const legacyButton = element.closest('#cf-pay-btn');
+  if (legacyButton) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    startRealCashfree(legacyButton);
   }
 }, true);
-
-window.addEventListener('hashchange', verifyReturnedPayment);
-window.addEventListener('load', verifyReturnedPayment);
