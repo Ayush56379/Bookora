@@ -1,0 +1,7 @@
+{
+  "error": "FIRESTORE_HTTP_403:{\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Missing or insufficient permissions.\",\n    \"status\": \"PERMISSION_DENIED\"\n  }\n}\n",
+  "firestore_content_type": "application/json; charset=UTF-8",
+  "firestore_status": 403,
+  "ok": false,
+  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 24, in <module>\nRuntimeError: FIRESTORE_HTTP_403:{\n  \"error\": {\n    \"code\": 403,\n    \"message\": \"Missing or insufficient permissions.\",\n    \"status\": \"PERMISSION_DENIED\"\n  }\n}\n\n"
+}
