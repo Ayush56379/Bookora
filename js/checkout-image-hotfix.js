@@ -64,8 +64,6 @@ function applyCheckoutFix() {
   const sources = coverSources(book);
   if (!sources.length) return;
 
-  // Remove the old single-URL image inserted by the previous hotfix and
-  // install a resilient image that tries the exact same sources as Book Detail.
   let image = snippet.querySelector('.checkout-real-cover');
   if (!image) {
     snippet.innerHTML = '';
@@ -77,7 +75,13 @@ function applyCheckoutFix() {
     image.decoding = 'async';
     image.referrerPolicy = 'no-referrer';
     image.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:6px;display:block;';
+    image.dataset.coverLoaderBound = '1';
     snippet.appendChild(image);
+  } else if (image.dataset.coverLoaderBound === '1') {
+    // Already installed; MutationObserver may call us again after the image is added.
+    return;
+  } else {
+    image.dataset.coverLoaderBound = '1';
   }
 
   let index = Number(image.dataset.sourceIndex || 0);
