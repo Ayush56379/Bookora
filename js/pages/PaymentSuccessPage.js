@@ -24,41 +24,98 @@ function getBookForOrder(order) {
   const slug = params().get('book_slug') || '';
   return slug ? state.getBookBySlug(slug) : null;
 }
-async function waitForFirebaseUser(timeoutMs = 10000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try { if (window.firebase?.auth?.()?.currentUser) return true; } catch (_) {}
-    await sleep(200);
+
+async function waitForFirebaseUser(timeoutMs = 15000) {
+  try {
+    const auth = window.firebase?.auth?.();
+    if (!auth) return null;
+    if (auth.currentUser) return auth.currentUser;
+    return await new Promise(resolve => {
+      let done = false;
+      const finish = user => {
+        if (done) return;
+        done = true;
+        try { unsubscribe?.(); } catch (_) {}
+        resolve(user || null);
+      };
+      const unsubscribe = auth.onAuthStateChanged(finish);
+      setTimeout(() => finish(auth.currentUser || null), timeoutMs);
+    });
+  } catch (_) {
+    return null;
   }
-  return false;
 }
+
+// Do not depend on another asynchronously-loaded module to create the backend
+// session. The payment-success route can execute before payment-auth-session-fix.js
+// because ES modules are evaluated asynchronously. Exchange the Firebase ID token
+// here as a self-contained fallback/primary path, eliminating that race completely.
 async function ensureBackendSession(force = false) {
   if (!force && state.token) return true;
-  await waitForFirebaseUser();
-  const helper = window.BookoraPurchaseAccess?.ensureBackendSession;
-  if (helper) {
-    try { await helper(force); } catch (e) { console.warn('Bookora session restore:', e); }
+
+  const firebaseUser = await waitForFirebaseUser();
+  if (!firebaseUser) return false;
+
+  try {
+    const firebaseIdToken = await firebaseUser.getIdToken(!!force);
+    const api = String(window.BOOKORA_API_URL || apiUrl('')).replace(/\/$/, '');
+    const response = await fetch(`${api}/api/auth/firebase`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${firebaseIdToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ role: state.currentUser?.role || 'buyer' }),
+      cache: 'no-store'
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.token) throw new Error(data.error || 'Secure session creation failed.');
+
+    state.token = data.token;
+    state.isAuthenticated = true;
+    if (data.user) state.currentUser = { ...(state.currentUser || {}), ...data.user };
+    try { localStorage.setItem('bookora_auth_token', data.token); } catch (_) {}
+    return true;
+  } catch (error) {
+    console.warn('Bookora payment session exchange failed:', error);
+    return false;
   }
-  return !!state.token;
 }
+
 async function verifyOrder(orderId) {
   let lastError = null;
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    await ensureBackendSession(attempt > 0);
-    if (!state.token) { lastError = new Error('Please wait while your account session is restored.'); await sleep(500); continue; }
+    const ready = await ensureBackendSession(attempt > 0);
+    if (!ready || !state.token) {
+      lastError = new Error('Please wait while your account session is restored.');
+      await sleep(500);
+      continue;
+    }
     try {
       const response = await fetch(apiUrl(`/api/cashfree/verify-order?order_id=${encodeURIComponent(orderId)}`), {
-        method: 'GET', headers: { Accept: 'application/json', Authorization: `Bearer ${state.token}` }, cache: 'no-store'
+        method: 'GET',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${state.token}` },
+        cache: 'no-store'
       });
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.success) return data;
       lastError = new Error(data.error || `Payment verification failed (${response.status}).`);
-      if (response.status !== 401) break;
-    } catch (e) { lastError = e; }
+      if (response.status === 401) {
+        state.token = '';
+        try { localStorage.removeItem('bookora_auth_token'); } catch (_) {}
+        await sleep(300);
+        continue;
+      }
+      break;
+    } catch (e) {
+      lastError = e;
+    }
     await sleep(400);
   }
   throw lastError || new Error('Unable to verify payment status.');
 }
+
 function render(markup) { const el = document.getElementById('main-content'); if (el) el.innerHTML = markup; }
 function loadingMarkup() {
   return `<div class="payment-success-page" style="background:var(--bg-secondary);min-height:85vh;padding:4rem 0;display:flex;align-items:center"><div class="container" style="max-width:680px"><div style="background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:3rem 2.5rem;text-align:center;box-shadow:var(--shadow-lg)"><div style="font-size:42px;margin-bottom:16px">◷</div><h1 style="font-family:var(--font-display);font-size:2rem;font-weight:800">Verifying Payment</h1><p style="color:var(--text-secondary)">Please wait while we securely confirm your payment.</p></div></div></div>`;
@@ -95,7 +152,6 @@ export function initPaymentSuccessEvents() {
   (async () => {
     try {
       const result = await verifyOrder(orderId);
-      // Ignore any stale response from a previous bootstrap.
       if (paymentFlows.get(orderId) !== flow || flow.state === 'PAID') return;
 
       const stateValue = String(result.payment_state || '').toUpperCase();
@@ -124,7 +180,6 @@ export function initPaymentSuccessEvents() {
         initPaymentSuccessEvents();
       }, { once: true });
     } catch (error) {
-      // A PAID result already rendered always wins over a late auth/network error.
       if (paymentFlows.get(orderId) !== flow || flow.state === 'PAID') return;
       console.error('Payment verification:', error);
       flow.state = 'PENDING';
