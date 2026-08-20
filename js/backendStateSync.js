@@ -6,6 +6,7 @@ import { API_BASE_URL } from './config.js';
 import { state } from './state.js';
 
 let syncInFlight = null;
+let settingsSyncInFlight = null;
 
 function isPublicCatalogRoute() {
   const hash = window.location.hash || '#/';
@@ -13,6 +14,45 @@ function isPublicCatalogRoute() {
   return path === '/' || path === '' ||
     ['/explore', '/categories', '/best-sellers', '/new-releases', '/trending', '/authors', '/search'].includes(path) ||
     path.startsWith('/category/') || path.startsWith('/book/') || path.startsWith('/author/');
+}
+
+// Firestore settings/public is the authoritative admin configuration store.
+// Render's local filesystem is only a runtime mirror and may be recreated on
+// restart/deploy. Push the signed-in admin's Firestore settings to the backend
+// so payment/commission/runtime code always uses the latest saved values.
+export async function syncBackendSettings() {
+  if (!state.isAdmin || settingsSyncInFlight) return false;
+
+  settingsSyncInFlight = (async () => {
+    try {
+      const { auth } = await state.getFirebase();
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) return false;
+      const idToken = await firebaseUser.getIdToken(true);
+      const response = await fetch(`${API_BASE_URL}/api/settings/sync`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: '{}',
+        cache: 'no-store'
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`Settings sync HTTP ${response.status}: ${text.slice(0, 300)}`);
+      }
+      return true;
+    } catch (error) {
+      console.warn('Backend settings persistence sync unavailable:', error);
+      return false;
+    } finally {
+      settingsSyncInFlight = null;
+    }
+  })();
+
+  return settingsSyncInFlight;
 }
 
 export async function syncLiveBackendData() {
@@ -35,9 +75,6 @@ export async function syncLiveBackendData() {
         })
       ]);
 
-      // The backend is preferred only when it actually returns approved books.
-      // Never replace a non-empty Firebase/cache catalog with [] during a
-      // Render cold start, database outage, or temporary empty response.
       if (booksRes.ok && (!state.isAdmin || isPublicCatalogRoute())) {
         const books = await booksRes.json();
         if (Array.isArray(books) && books.length) {
@@ -62,7 +99,6 @@ export async function syncLiveBackendData() {
       return true;
     } catch (error) {
       console.warn('Live backend public sync unavailable:', error);
-      // Existing Firebase/cache data remains untouched on failure.
       state.notify('DATA_SYNCED');
       return false;
     } finally {
@@ -74,22 +110,30 @@ export async function syncLiveBackendData() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => syncLiveBackendData(), 0);
+  setTimeout(() => {
+    syncLiveBackendData();
+    setTimeout(() => syncBackendSettings(), 300);
+  }, 0);
 });
 
-// Firebase login currently triggers a Firestore sync as well. Re-sync the
-// public catalog afterwards so a non-empty backend catalog can refresh stale
-// cached data without ever allowing an empty response to erase it.
 state.subscribe(event => {
   if (event === 'USER_LOGGED_IN') {
-    setTimeout(() => syncLiveBackendData(), 50);
+    setTimeout(() => {
+      syncLiveBackendData();
+      setTimeout(() => syncBackendSettings(), 100);
+    }, 50);
+  }
+
+  // AdminSettingsPage already saves to Firestore and emits this event. Mirror
+  // the exact Firestore document to Render immediately after every Save.
+  if (event === 'SETTINGS_UPDATED') {
+    setTimeout(() => syncBackendSettings(), 0);
   }
 });
 
-// When an admin approves a book and then returns to the public homepage,
-// refresh the backend catalog immediately instead of relying on a full reload.
 window.addEventListener('hashchange', () => {
   if (isPublicCatalogRoute()) {
     setTimeout(() => syncLiveBackendData(), 0);
   }
+  if (state.isAdmin) setTimeout(() => syncBackendSettings(), 100);
 });
