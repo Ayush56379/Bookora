@@ -16,65 +16,83 @@ function cachedProfile() {
   }
 }
 
-function hydrateFromFirebaseUser(firebaseUser) {
-  if (!firebaseUser) return false;
+function applyUser(user) {
+  if (!user || !user.uid) return false;
+  const email = String(user.email || '').trim();
+  const isMasterAdmin = email.toLowerCase() === 'ayushprajpati6@gmail.com';
 
-  const cached = cachedProfile();
-  const sameUser = !cached.uid || String(cached.uid) === String(firebaseUser.uid);
-  const email = firebaseUser.email || (sameUser ? cached.email : '') || '';
-  const isMasterAdmin = String(email).toLowerCase() === 'ayushprajpati6@gmail.com';
-  const user = {
-    ...(sameUser ? cached : {}),
-    uid: firebaseUser.uid,
+  state.currentUser = {
+    ...user,
     email,
-    name: (sameUser ? cached.name : '') || firebaseUser.displayName || email.split('@')[0] || 'Bookora User',
-    photoURL: (sameUser ? cached.photoURL : '') || firebaseUser.photoURL || '',
-    avatar: (sameUser ? cached.avatar : '') || firebaseUser.photoURL || '',
-    role: isMasterAdmin ? 'admin' : ((sameUser ? cached.role : '') || 'buyer'),
-    status: (sameUser ? cached.status : '') || 'active',
-    seller_status: (sameUser ? cached.seller_status : '') || 'none',
+    name: user.name || email.split('@')[0] || 'Bookora User',
+    photoURL: user.photoURL || user.avatar || '',
+    avatar: user.avatar || user.photoURL || '',
+    role: isMasterAdmin ? 'admin' : (user.role || 'buyer'),
+    status: user.status || 'active',
+    seller_status: user.seller_status || 'none',
     isMasterAdmin
   };
-
-  state.currentUser = user;
   state.isAuthenticated = true;
-  state.isAdmin = isMasterAdmin || user.role === 'admin' || user.isMasterAdmin === true;
-  state.isSeller = state.isAdmin || user.seller_status === 'approved' || user.role === 'creator' || user.role === 'seller';
+  state.isAdmin = isMasterAdmin || state.currentUser.role === 'admin' || state.currentUser.isMasterAdmin === true;
+  state.isSeller = state.isAdmin || state.currentUser.seller_status === 'approved' || state.currentUser.role === 'creator' || state.currentUser.role === 'seller';
   state.activeMode = state.isAdmin ? 'admin' : state.isSeller ? 'seller' : 'buyer';
 
   try {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(user));
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(state.currentUser));
     localStorage.setItem('bookora_active_mode', state.activeMode);
   } catch (_) {}
-
   return true;
+}
+
+function hydrateFromFirebaseUser(firebaseUser) {
+  if (!firebaseUser) return false;
+  const cached = cachedProfile();
+  const sameUser = !cached.uid || String(cached.uid) === String(firebaseUser.uid);
+  return applyUser({
+    ...(sameUser ? cached : {}),
+    uid: firebaseUser.uid,
+    email: firebaseUser.email || (sameUser ? cached.email : '') || '',
+    name: (sameUser ? cached.name : '') || firebaseUser.displayName || '',
+    photoURL: (sameUser ? cached.photoURL : '') || firebaseUser.photoURL || '',
+    avatar: (sameUser ? cached.avatar : '') || firebaseUser.photoURL || ''
+  });
+}
+
+function hydrateFromCachedProfile() {
+  const cached = cachedProfile();
+  // Logout removes this key, so a remaining valid profile represents the
+  // existing Bookora session when Firebase is restoring slowly/unavailable.
+  return cached.uid ? applyUser(cached) : false;
 }
 
 function hydrateNow() {
   try {
     const auth = window.firebase?.auth?.();
-    const user = auth?.currentUser;
-    return hydrateFromFirebaseUser(user);
-  } catch (_) {
-    return false;
-  }
+    if (auth?.currentUser && hydrateFromFirebaseUser(auth.currentUser)) return true;
+  } catch (_) {}
+  return hydrateFromCachedProfile();
 }
 
 function install() {
   try {
     const auth = window.firebase?.auth?.();
-    if (!auth) return false;
+    if (!auth) {
+      hydrateFromCachedProfile();
+      return false;
+    }
 
     // Important: hydrate synchronously before the SPA handles wishlist links.
-    hydrateFromFirebaseUser(auth.currentUser);
+    hydrateNow();
 
     auth.onAuthStateChanged(firebaseUser => {
       if (firebaseUser) hydrateFromFirebaseUser(firebaseUser);
+      else if (!state.currentUser) hydrateFromCachedProfile();
     });
 
     return true;
   } catch (error) {
     console.warn('[Bookora Auth Bridge] Firebase session bridge waiting:', error);
+    hydrateFromCachedProfile();
     return false;
   }
 }
@@ -89,7 +107,7 @@ document.addEventListener('click', event => {
 }, true);
 
 // This listener is intentionally installed before app.js through index.html,
-// so protected-route checks see the real Firebase session first.
+// so protected-route checks see the real Firebase/session state first.
 window.addEventListener('hashchange', hydrateNow, { passive: true });
 
 if (!install()) {
