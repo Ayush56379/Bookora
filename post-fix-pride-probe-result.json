@@ -1,0 +1,13 @@
+{
+  "api_url": "https://bookora-backend-x08l.onrender.com/api/books/pride-and-prejudice/sample?mode=selected",
+  "error": "SAMPLE_HTTP_404:{\"success\": false, \"error\": \"BOOK_NOT_FOUND\", \"message\": \"Book not found.\"}",
+  "ok": false,
+  "sample_content_type": "application/json",
+  "sample_headers": {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Content-Type": "application/json",
+    "access-control-allow-origin": "https://ayush56379.github.io"
+  },
+  "sample_status": 404,
+  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 12, in <module>\nRuntimeError: SAMPLE_HTTP_404:{\"success\": false, \"error\": \"BOOK_NOT_FOUND\", \"message\": \"Book not found.\"}\n"
+}
