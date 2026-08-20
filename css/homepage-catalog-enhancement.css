@@ -1,0 +1,126 @@
+/* Bookora homepage catalog + KDP-style cover presentation */
+.bookora-home-catalog-section{
+  padding:56px 0 64px;
+  background:#fff;
+  border-top:1px solid var(--border-subtle);
+}
+.bookora-catalog-header{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:24px;
+  margin-bottom:28px;
+}
+.bookora-catalog-header h2{
+  margin:8px 0 6px;
+  font-family:var(--font-display);
+  font-size:2.25rem;
+  font-weight:800;
+  letter-spacing:-.035em;
+  color:var(--text-primary);
+}
+.bookora-catalog-header p{
+  margin:0;
+  color:var(--text-secondary);
+  font-size:.94rem;
+  line-height:1.55;
+  max-width:650px;
+}
+.bookora-catalog-filter-wrap{
+  display:grid;
+  grid-template-columns:auto minmax(180px,220px);
+  align-items:center;
+  gap:6px 10px;
+  flex:0 0 auto;
+}
+.bookora-catalog-filter-wrap label{
+  font-size:.72rem;
+  font-weight:800;
+  color:var(--text-muted);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+#bookora-home-catalog-filter{
+  width:220px;
+  height:44px;
+  padding:0 38px 0 13px;
+  border:1px solid #dbe3ef;
+  border-radius:11px;
+  background:#fff;
+  color:#0f172a;
+  font-weight:700;
+  outline:none;
+  box-shadow:0 2px 8px rgba(15,23,42,.04);
+}
+.bookora-catalog-count{
+  grid-column:2;
+  font-size:.72rem;
+  color:var(--text-muted);
+  text-align:right;
+}
+.bookora-catalog-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:20px;
+  align-items:start;
+}
+.bookora-catalog-grid .book-card-premium{
+  width:100%;
+}
+.bookora-catalog-empty{
+  grid-column:1/-1;
+  min-height:180px;
+  border:1px dashed #cbd5e1;
+  border-radius:16px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  color:var(--text-secondary);
+  background:#f8fafc;
+}
+.bookora-catalog-empty strong{color:var(--text-primary);font-size:1rem}
+
+/* Real cover art must remain clean. Do not draw metadata/title over an uploaded cover. */
+.book-card-premium .book-cover-image~.book-cover-fallback + .book-cover-shade,
+.book-card-premium .book-cover-image~.book-cover-fallback ~ .book-cover-content{display:none!important}
+.book-card-premium .book-cover-image~.book-cover-shade{background:transparent!important}
+.book-card-premium .book-cover-image~.book-cover-spine{display:none!important}
+.book-card-premium .book-cover-image{
+  object-fit:cover!important;
+  object-position:center center!important;
+  transform:none!important;
+}
+
+/* KDP-like cover ratio: portrait, consistent across every catalog card. */
+.book-card-premium .book-cover-premium{
+  aspect-ratio:2 / 3!important;
+  width:100%!important;
+  height:auto!important;
+  min-height:0!important;
+  max-height:none!important;
+  border-radius:0!important;
+}
+.book-card-premium .book-card-info{min-height:170px}
+
+@media(max-width:930px){
+  .bookora-home-catalog-section{padding:44px 0 52px}
+  .bookora-catalog-header{align-items:stretch;flex-direction:column;gap:18px}
+  .bookora-catalog-filter-wrap{width:100%;grid-template-columns:1fr auto}
+  #bookora-home-catalog-filter{width:100%;grid-column:1/-1}
+  .bookora-catalog-count{grid-column:2}
+  .bookora-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+}
+@media(max-width:600px){
+  .bookora-home-catalog-section{padding:38px 0 44px}
+  .bookora-catalog-header h2{font-size:1.8rem}
+  .bookora-catalog-header p{font-size:.84rem}
+  .bookora-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .book-card-premium .book-card-info{min-height:150px;padding:.65rem .7rem}
+  .book-card-premium .book-cover-premium{aspect-ratio:2/3!important}
+}
+@media(max-width:380px){
+  .bookora-catalog-grid{grid-template-columns:1fr;gap:12px}
+  .book-card-premium .book-cover-premium{aspect-ratio:2/3!important}
+}
