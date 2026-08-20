@@ -21,6 +21,44 @@ function bookFromCheckout() {
   try { return state.getBookBySlug(decodeURIComponent(match[1])); } catch (_) { return null; }
 }
 
+function normalizePhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(-10);
+  return digits.length === 10 ? digits : '';
+}
+
+function ensureCheckoutPhoneField() {
+  if (!location.hash.startsWith('#/checkout/')) return;
+  const email = document.getElementById('checkout-email');
+  if (!email || document.getElementById('checkout-phone-wrap')) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'checkout-phone-wrap';
+  wrapper.style.cssText = 'margin-bottom:1.25rem;';
+  const initialPhone = normalizePhone(
+    state.currentUser?.phone || state.currentUser?.phoneNumber || state.currentUser?.mobile || ''
+  );
+  wrapper.innerHTML = `
+    <label for="checkout-phone" style="display:block;font-size:.825rem;font-weight:600;color:var(--text-secondary);margin-bottom:.4rem;">
+      Mobile Number <span style="color:#DC2626;">*</span>
+    </label>
+    <input type="tel" id="checkout-phone" inputmode="numeric" autocomplete="tel" maxlength="10"
+      value="${initialPhone}"
+      placeholder="Enter 10-digit mobile number"
+      aria-describedby="checkout-phone-help"
+      style="width:100%;padding:.65rem .85rem;border-radius:var(--radius-md);border:1px solid var(--border-medium);font-size:.9rem;box-sizing:border-box;" />
+    <div id="checkout-phone-help" style="font-size:.75rem;color:var(--text-muted);margin-top:.35rem;">
+      This number will be used for your Cashfree payment and order confirmation.
+    </div>
+  `;
+  email.parentElement?.insertAdjacentElement('afterend', wrapper);
+}
+
+function getCheckoutPhone() {
+  ensureCheckoutPhoneField();
+  return normalizePhone(document.getElementById('checkout-phone')?.value || '');
+}
+
 function setCheckoutTotals(data) {
   const subtotal = document.getElementById('checkout-subtotal-price');
   const discount = document.getElementById('discount-amount');
@@ -73,7 +111,20 @@ async function applyCoupon(button) {
 async function startCheckout(button) {
   const book = bookFromCheckout();
   if (!book) { Toast.show('Book information could not be found. Please reopen checkout.', 'error'); return; }
+  ensureCheckoutPhoneField();
   if (!state.token) { Toast.show('Please sign in to continue.', 'info'); return; }
+
+  const phone = getCheckoutPhone();
+  if (!phone) {
+    const input = document.getElementById('checkout-phone');
+    input?.focus();
+    if (input) input.style.borderColor = '#DC2626';
+    Toast.show('Please enter a valid 10-digit mobile number.', 'error');
+    return;
+  }
+  const phoneInput = document.getElementById('checkout-phone');
+  if (phoneInput) phoneInput.style.borderColor = 'var(--border-medium)';
+
   button.disabled = true;
   const old = button.textContent;
   button.textContent = 'Creating secure payment...';
@@ -84,7 +135,7 @@ async function startCheckout(button) {
       body: JSON.stringify({
         book_id: book.id,
         coupon_code: coupon,
-        phone: state.currentUser?.phone || state.currentUser?.phoneNumber || ''
+        phone
       })
     });
     if (!created.payment_session_id) throw new Error('Cashfree payment session was not returned.');
@@ -108,6 +159,20 @@ async function startCheckout(button) {
     button.textContent = old;
   }
 }
+
+// The checkout page is rendered dynamically by the SPA. Keep the phone field
+// attached whenever the checkout route appears, including after hash changes.
+function installCheckoutPhoneObserver() {
+  const run = () => ensureCheckoutPhoneField();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true });
+  else run();
+  window.addEventListener('hashchange', run, { passive: true });
+  if (document.body) {
+    const observer = new MutationObserver(run);
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+}
+installCheckoutPhoneObserver();
 
 // Capture phase + stopImmediatePropagation prevents the older payment-runtime
 // handler from creating a second/fake session.
