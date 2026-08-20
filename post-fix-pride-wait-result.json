@@ -1,0 +1,40 @@
+{
+  "api_url": "https://bookora-backend-x08l.onrender.com/api/books/pride-and-prejudice/sample?mode=selected",
+  "attempts": 1,
+  "book_id": "book-613c5bb7a6cd",
+  "declared_page_count": 6,
+  "last_content_type": "application/json",
+  "last_status": 200,
+  "limited": true,
+  "ok": true,
+  "preview_bytes": 25034905,
+  "preview_mime": "application/pdf",
+  "preview_page_count": 6,
+  "preview_pages": [
+    {
+      "page": 1
+    },
+    {
+      "page": 2
+    },
+    {
+      "page": 3
+    },
+    {
+      "page": 4
+    },
+    {
+      "page": 5
+    },
+    {
+      "page": 6
+    }
+  ],
+  "preview_type": "pdf",
+  "sample_headers": {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Content-Type": "application/json",
+    "access-control-allow-origin": "https://ayush56379.github.io"
+  },
+  "title": "Pride and Prejudice"
+}
