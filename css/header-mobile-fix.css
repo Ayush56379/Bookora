@@ -1,0 +1,129 @@
+/* Bookora mobile header layout fix — keep desktop navigation out of the mobile header */
+@media (max-width: 930px) {
+  #main-header .desktop-nav {
+    display: none !important;
+  }
+
+  #main-header > .container {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  #main-header > .container > a:first-child {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
+  }
+
+  #main-header > .container > a:first-child > div:last-child {
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #main-header > .container > a:first-child > div:last-child > div {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  #main-header > .container > div:last-child {
+    flex: 0 0 auto !important;
+    min-width: max-content !important;
+    margin-left: auto !important;
+  }
+
+  #main-header #header-mode-switcher,
+  #main-header > .container > div:last-child > a[href="#/wishlist"] {
+    display: none !important;
+  }
+}
+
+@media (max-width: 600px) {
+  #main-header > .container {
+    height: 64px !important;
+    padding: 0 10px !important;
+    gap: 6px !important;
+  }
+
+  #main-header > .container > a:first-child {
+    gap: 8px !important;
+  }
+
+  #main-header > .container > a:first-child > div:first-child {
+    width: 36px !important;
+    height: 36px !important;
+    flex: 0 0 36px !important;
+    border-radius: 10px !important;
+  }
+
+  #main-header > .container > a:first-child > div:first-child svg {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  #main-header > .container > a:first-child > div:last-child > div:first-child {
+    font-size: 1.08rem !important;
+  }
+
+  #main-header > .container > a:first-child > div:last-child > div:last-child {
+    font-size: .51rem !important;
+    letter-spacing: .055em !important;
+  }
+
+  #main-header > .container > div:last-child {
+    gap: 5px !important;
+  }
+
+  #main-header #user-menu-btn {
+    min-height: 38px !important;
+    width: 38px !important;
+    height: 38px !important;
+    padding: 3px !important;
+    border-radius: 10px !important;
+    justify-content: center !important;
+  }
+
+  #main-header #user-menu-btn img {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  #main-header #user-menu-btn > span:not(.badge),
+  #main-header #user-menu-btn .badge {
+    display: none !important;
+  }
+
+  #main-header .mobile-nav-toggle {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 0 0 36px !important;
+    width: 36px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    border: 1px solid #e2e8f0 !important;
+    background: #fff !important;
+    border-radius: 10px !important;
+    color: #0f172a !important;
+  }
+}
+
+@media (max-width: 380px) {
+  #main-header > .container {
+    padding: 0 7px !important;
+    gap: 5px !important;
+  }
+
+  #main-header > .container > a:first-child > div:first-child {
+    width: 34px !important;
+    height: 34px !important;
+    flex-basis: 34px !important;
+  }
+
+  #main-header > .container > a:first-child > div:last-child > div:last-child {
+    display: none !important;
+  }
+}
