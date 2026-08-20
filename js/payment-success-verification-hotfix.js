@@ -10,15 +10,13 @@ function startVerification() {
   const main = document.getElementById('main-content');
   if (!main) return;
   const orderId = new URLSearchParams((window.location.hash || '').split('?')[1] || '').get('order_id') || '';
-  if (!orderId) return;
-  if (main.dataset.paymentVerificationOrder === orderId) return;
+  if (!orderId || main.dataset.paymentVerificationOrder === orderId) return;
   main.dataset.paymentVerificationOrder = orderId;
   try { initPaymentSuccessEvents(); } catch (error) { console.error('Payment verification bootstrap failed:', error); }
 }
 
 function scheduleStart() {
   setTimeout(startVerification, 0);
-  setTimeout(startVerification, 100);
 }
 
 window.addEventListener('load', scheduleStart);
