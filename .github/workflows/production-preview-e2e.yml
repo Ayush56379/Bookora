@@ -1,0 +1,97 @@
+name: Production preview E2E
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/production-preview-e2e.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query production catalog and verify Pride and Prejudice sample
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://bookora-backend-x08l.onrender.com'
+          python - <<'PY'
+          import json, os, subprocess, sys, base64, io
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          from pypdf import PdfReader
+
+          base='https://bookora-backend-x08l.onrender.com'
+          def get(path):
+              req=Request(base+path, headers={'Accept':'application/json','User-Agent':'Bookora-production-e2e/1.0'})
+              try:
+                  with urlopen(req, timeout=45) as r:
+                      return r.status, dict(r.headers), r.read()
+              except HTTPError as e:
+                  return e.code, dict(e.headers), e.read()
+
+          status, headers, raw = get('/api/books')
+          print('CATALOG_STATUS=', status)
+          print('CATALOG_CONTENT_TYPE=', headers.get('Content-Type',''))
+          if status != 200:
+              print(raw[:2000].decode('utf-8','replace'))
+              sys.exit(10)
+          try:
+              catalog=json.loads(raw.decode('utf-8'))
+          except Exception as e:
+              print('CATALOG_JSON_ERROR=', repr(e)); sys.exit(11)
+
+          def books_from(value):
+              if isinstance(value,list): return value
+              if isinstance(value,dict):
+                  for k in ('books','data','results','items'):
+                      if k in value:
+                          found=books_from(value[k])
+                          if found: return found
+              return []
+          books=books_from(catalog)
+          matches=[b for b in books if isinstance(b,dict) and str(b.get('title','')).strip().casefold()=='pride and prejudice']
+          if not matches:
+              matches=[b for b in books if isinstance(b,dict) and 'pride and prejudice' in str(b.get('title','')).strip().casefold()]
+          print('PRIDE_MATCH_COUNT=', len(matches))
+          if not matches:
+              print('CATALOG_SAMPLE=', json.dumps(catalog)[:4000]); sys.exit(12)
+          approved=[b for b in matches if str(b.get('status','')).strip().casefold()=='approved']
+          book=approved[0] if approved else matches[0]
+          book_id=str(book.get('id') or book.get('bookId') or book.get('book_id') or '').strip()
+          print('BOOK_TITLE=', book.get('title'))
+          print('BOOK_ID=', book_id)
+          print('BOOK_STATUS=', book.get('status'))
+          print('BOOK_SOURCE_TYPE=', book.get('source_type'))
+          print('BOOK_PDF_REF=', bool(book.get('pdf_file_id') or book.get('pdfFileId') or book.get('driveFileId') or book.get('file_id') or book.get('fileId') or book.get('pdf_url') or book.get('pdfUrl')))
+          print('BOOK_PREVIEW_CONFIG=', json.dumps({k:book.get(k) for k in ('preview_pages','previewPages','sample_page_numbers','samplePageNumbers') if k in book}))
+          if not book_id: sys.exit(13)
+          if str(book.get('status','')).strip().casefold()!='approved': sys.exit(14)
+
+          status, headers, raw = get('/api/books/'+__import__('urllib.parse').parse.quote(book_id, safe='')+'/sample?mode=selected')
+          print('SAMPLE_STATUS=', status)
+          print('SAMPLE_CONTENT_TYPE=', headers.get('Content-Type',''))
+          print('SAMPLE_HEADERS=', json.dumps({k:v for k,v in headers.items() if k.lower() in ('content-type','content-length','access-control-allow-origin','cache-control','x-bookora-sample-pages')}))
+          if status != 200:
+              print('SAMPLE_BODY=', raw[:4000].decode('utf-8','replace')); sys.exit(20)
+          try:
+              payload=json.loads(raw.decode('utf-8'))
+          except Exception as e:
+              print('SAMPLE_JSON_ERROR=', repr(e)); sys.exit(21)
+          if not payload.get('success'): sys.exit(22)
+          preview=payload.get('preview') or {}
+          if preview.get('type')!='pdf' or preview.get('mimeType')!='application/pdf': sys.exit(23)
+          data=base64.b64decode(str(preview.get('data') or ''), validate=True)
+          print('PREVIEW_BYTES=', len(data))
+          if not data.startswith(b'%PDF'): sys.exit(24)
+          reader=PdfReader(io.BytesIO(data), strict=False)
+          page_count=len(reader.pages)
+          declared=int(payload.get('pageCount') or 0)
+          pages=payload.get('previewPages') or []
+          print('PREVIEW_PAGE_COUNT=', page_count)
+          print('DECLARED_PAGE_COUNT=', declared)
+          print('PREVIEW_PAGES=', json.dumps(pages))
+          if page_count<=0 or declared!=page_count or len(pages)!=page_count: sys.exit(25)
+          if payload.get('bookId') != book_id: sys.exit(26)
+          print('PRODUCTION_PREVIEW_E2E=PASS')
+          PY
