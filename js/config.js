@@ -1,7 +1,6 @@
 // Bookora frontend API configuration
 // All production data, uploads, AI and payments go through the Render backend.
-// Canonical production service: x081 (the previous x08l hostname was stale).
-export const API_BASE_URL = 'https://bookora-backend-x081.onrender.com';
+export const API_BASE_URL = 'https://bookora-backend-x08l.onrender.com';
 
 const endpointMap = {
   '/api/auth/me': '/api/auth/me',
