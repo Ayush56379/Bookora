@@ -1,8 +1,9 @@
 {
   "catalog_content_type": "application/json",
   "catalog_status": 200,
-  "error": "PRIDE_NOT_FOUND",
+  "catalog_titles": [],
+  "error": "PRIDE_NOT_FOUND_IN_Q_SEARCH",
   "match_count": 0,
   "ok": false,
-  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 32, in <module>\nRuntimeError: PRIDE_NOT_FOUND\n"
+  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 22, in <module>\nRuntimeError: PRIDE_NOT_FOUND_IN_Q_SEARCH\n"
 }
