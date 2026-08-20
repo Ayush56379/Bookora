@@ -1,0 +1,180 @@
+/* Bookora — complete mobile/tablet responsive layer
+   Loaded last so every SPA route gets the same responsive rules. */
+
+html, body { max-width:100%; overflow-x:hidden; }
+body { -webkit-text-size-adjust:100%; text-rendering:optimizeLegibility; }
+img, svg, video, canvas { max-width:100%; }
+button, input, select, textarea { max-width:100%; }
+
+@media (max-width: 930px) {
+  #app, #main-content, main, .page, .page-container, .container, .section, .content-container {
+    max-width:100% !important;
+  }
+
+  #main-content { overflow-x:clip; }
+
+  /* Generic layout primitives */
+  .grid, .grid-cols-2, .grid-cols-3, .grid-cols-4, .grid-cols-5,
+  [class*="grid-cols-"] { grid-template-columns:1fr !important; }
+  .flex-row { flex-direction:column !important; }
+  .two-column, .two-col, .split-layout, .split-grid, .detail-layout,
+  .book-detail-layout, .checkout-layout, .dashboard-layout, .settings-layout {
+    grid-template-columns:1fr !important;
+  }
+
+  /* Prevent fixed desktop widths from creating horizontal scroll */
+  [style*="width: 1200px"], [style*="width:1200px"],
+  [style*="width: 1000px"], [style*="width:1000px"],
+  [style*="width: 900px"], [style*="width:900px"],
+  [style*="min-width: 900px"], [style*="min-width:900px"],
+  [style*="min-width: 800px"], [style*="min-width:800px"] {
+    width:100% !important; min-width:0 !important; max-width:100% !important;
+  }
+
+  /* Tables: remain usable instead of breaking the page */
+  table { width:100% !important; min-width:0 !important; }
+  .table-wrap, .table-responsive, .overflow-x-auto { max-width:100% !important; overflow-x:auto !important; -webkit-overflow-scrolling:touch; }
+  table th, table td { white-space:normal !important; word-break:break-word; }
+
+  /* Header */
+  #main-header { width:100% !important; }
+  #main-header > .container { max-width:none !important; }
+  #main-header .desktop-nav { display:none !important; }
+  #main-header #header-mode-switcher,
+  #main-header > .container > div:last-child > a[href="#/wishlist"] { display:none !important; }
+
+  /* Mobile drawer */
+  #mobile-nav-drawer { width:min(88vw,360px) !important; max-width:360px !important; box-sizing:border-box !important; }
+  #mobile-nav-drawer .nav-link { width:100% !important; box-sizing:border-box !important; }
+
+  /* Main containers */
+  main { padding-left:16px !important; padding-right:16px !important; }
+  .container { padding-left:16px !important; padding-right:16px !important; }
+  section { max-width:100% !important; }
+
+  /* Hero */
+  .hero, .hero-section, .home-hero, .landing-hero {
+    min-height:auto !important; padding:52px 16px 40px !important;
+  }
+  .hero h1, .hero-section h1, .home-hero h1, .landing-hero h1 {
+    font-size:clamp(2rem,9vw,3.4rem) !important;
+    line-height:1.05 !important; letter-spacing:-.045em !important;
+  }
+  .hero p, .hero-section p { max-width:100% !important; }
+
+  /* Cards / catalog */
+  .book-grid, .books-grid, .product-grid, .catalog-grid, .ebook-grid,
+  .card-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:14px !important; }
+  .book-card, .product-card, .ebook-card, .card { min-width:0 !important; max-width:100% !important; }
+  .book-card img, .product-card img, .ebook-card img { max-height:280px !important; object-fit:cover; }
+
+  /* Forms */
+  form { max-width:100% !important; }
+  input, select, textarea { width:100% !important; box-sizing:border-box !important; }
+  .form-row, .form-grid, .input-row { grid-template-columns:1fr !important; display:grid !important; gap:12px !important; }
+  .btn, button, .btn-primary, .btn-secondary { max-width:100%; }
+
+  /* Auth / pricing / checkout */
+  .auth-container, .auth-card, .login-card, .signup-card,
+  .pricing-grid, .plans-grid, .checkout-card, .checkout-container {
+    width:100% !important; max-width:100% !important;
+  }
+  .pricing-grid, .plans-grid { grid-template-columns:1fr !important; }
+  .checkout-layout { gap:18px !important; }
+
+  /* Dashboard */
+  .dashboard-grid, .stats-grid, .metric-grid, .admin-grid, .seller-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+  .dashboard-card, .stat-card, .metric-card { min-width:0 !important; }
+
+  /* Book details */
+  .book-detail, .book-detail-page, .book-detail-content { max-width:100% !important; }
+  .book-detail-cover, .book-cover-panel { max-width:320px !important; margin:0 auto !important; }
+  .book-detail-actions { display:flex !important; flex-wrap:wrap !important; gap:10px !important; }
+  .book-detail-actions .btn { flex:1 1 180px !important; }
+
+  /* Search bars */
+  .search-bar, .search-box, .search-container { width:100% !important; max-width:100% !important; }
+  .search-bar form, .search-box form { display:flex !important; flex-wrap:nowrap !important; }
+
+  /* Fixed/floating controls */
+  #bookora-ai-button, .bookora-ai-button, .ai-float-button,
+  .floating-ai, .chat-float { max-width:calc(100vw - 24px) !important; }
+
+  /* Modal / drawer content */
+  .modal, .modal-dialog, .modal-content, .dialog, .drawer-content {
+    width:calc(100vw - 24px) !important; max-width:calc(100vw - 24px) !important;
+    max-height:90vh !important; overflow:auto !important;
+  }
+}
+
+@media (max-width: 600px) {
+  main { padding-left:12px !important; padding-right:12px !important; }
+  .container { padding-left:12px !important; padding-right:12px !important; }
+
+  /* Two-column cards become one only where cards are content-heavy */
+  .book-grid, .books-grid, .product-grid, .catalog-grid, .ebook-grid, .card-grid {
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:10px !important;
+  }
+
+  .dashboard-grid, .stats-grid, .metric-grid, .admin-grid, .seller-grid {
+    grid-template-columns:1fr !important; gap:12px !important;
+  }
+
+  .page-header, .section-header, .content-header {
+    display:flex !important; flex-direction:column !important; align-items:flex-start !important;
+    gap:10px !important;
+  }
+  .page-header > *, .section-header > * { max-width:100% !important; }
+
+  h1 { font-size:clamp(1.8rem,8vw,2.6rem) !important; line-height:1.08 !important; }
+  h2 { font-size:clamp(1.4rem,6vw,2rem) !important; }
+  h3 { font-size:1.15rem !important; }
+
+  .btn, button { min-height:42px; }
+  .btn-lg { width:100% !important; }
+
+  .book-card img, .product-card img, .ebook-card img { max-height:230px !important; }
+  .book-card .book-card-body, .product-card .card-body { padding:10px !important; }
+
+  .search-bar form, .search-box form { gap:8px !important; }
+  .search-bar button, .search-box button { flex:0 0 auto !important; }
+
+  /* Hide secondary desktop-only metadata; keep actions usable */
+  .desktop-only, .hide-mobile { display:none !important; }
+  .mobile-only { display:block !important; }
+
+  /* Footer stacks cleanly */
+  footer .footer-grid, footer .grid { grid-template-columns:1fr 1fr !important; gap:20px !important; }
+}
+
+@media (max-width: 420px) {
+  #main-header > .container { padding-left:7px !important; padding-right:7px !important; }
+  main, .container { padding-left:10px !important; padding-right:10px !important; }
+
+  .book-grid, .books-grid, .product-grid, .catalog-grid, .ebook-grid, .card-grid {
+    gap:8px !important;
+  }
+
+  .book-card img, .product-card img, .ebook-card img { max-height:205px !important; }
+  .book-card .book-card-body, .product-card .card-body { padding:8px !important; }
+
+  .modal, .modal-dialog, .modal-content, .dialog {
+    width:calc(100vw - 16px) !important; max-width:calc(100vw - 16px) !important;
+  }
+
+  footer .footer-grid, footer .grid { grid-template-columns:1fr !important; }
+}
+
+@media (max-width: 360px) {
+  .book-grid, .books-grid, .product-grid, .catalog-grid, .ebook-grid, .card-grid {
+    grid-template-columns:1fr !important;
+  }
+}
+
+/* Safe-area support for modern phones */
+@supports (padding: max(0px)) {
+  #main-header > .container { padding-left:max(7px, env(safe-area-inset-left)) !important; padding-right:max(7px, env(safe-area-inset-right)) !important; }
+  body { padding-bottom:env(safe-area-inset-bottom); }
+}
