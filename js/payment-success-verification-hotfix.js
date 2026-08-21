@@ -1,9 +1,6 @@
-// Payment-success verification compatibility bootstrap.
-// The page module owns the actual state machine. This file only starts it once
-// after the SPA has rendered; it intentionally does NOT use MutationObserver,
-// because DOM mutations caused by the payment result must never start a second
-// verification request that can overwrite the result.
-import { initPaymentSuccessEvents } from './pages/PaymentSuccessPage.js?v=20260821-3';
+// Payment-success verification bootstrap.
+// PaymentSuccessPage.js is the single owner of payment result state.
+import { initPaymentSuccessEvents } from './pages/PaymentSuccessPage.js?v=20260821-4';
 
 let startedOrderId = '';
 let scheduled = false;
