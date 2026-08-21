@@ -143,7 +143,12 @@ async function runFlow(orderId, immediate = false) {
   }
 }
 
-export function renderPaymentSuccessPage() { return loadingMarkup(); }
+export function renderPaymentSuccessPage() {
+  // app.js historically rendered this route without an init callback. Keep
+  // the module self-starting so payment verification cannot silently stop.
+  window.setTimeout(() => initPaymentSuccessEvents(), 0);
+  return loadingMarkup();
+}
 
 export function initPaymentSuccessEvents() {
   const orderId = getOrderId();
