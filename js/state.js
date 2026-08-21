@@ -85,7 +85,10 @@ class BookoraState {
     let profile = {};
     let source = '';
 
-    // Existing cached session may already contain the correct generated Bookora ID.
+    // Firebase/Firestore is the canonical browser identity source. Do not call
+    // the legacy Render /api/auth/firebase resolver because that endpoint can
+    // return 403 for a valid Firebase user. Library ownership is verified
+    // directly against Firestore.
     try {
       const cached = this.currentUser || JSON.parse(localStorage.getItem('bookora_user_profile') || '{}');
       if (cached && String(cached.firebaseUid || cached.uid || '') === String(firebaseUser.uid) && cached.bookoraUserId) {
@@ -94,7 +97,6 @@ class BookoraState {
       }
     } catch (_) {}
 
-    // Support both users/{firebaseUid} and generated users/{bookoraUserId} layouts.
     if (!profile.bookoraUserId) {
       try {
         const snapshot = await db.collection('users').doc(firebaseUser.uid).get();
@@ -106,9 +108,9 @@ class BookoraState {
     }
 
     if (!profile.bookoraUserId) {
-      for (const field of ['firebaseUid', 'uid']) {
+      for (const field of ['firebaseUid', 'firebase_uid', 'uid', 'auth_uid', 'authUid']) {
         try {
-          const snapshot = await db.collection('users').where(field, '==', firebaseUser.uid).limit(1).get();
+          const snapshot = await db.collection('users').where(field, '==', firebaseUser.uid).limit(3).get();
           if (!snapshot.empty) {
             profile = { ...(snapshot.docs[0].data() || {}), id: snapshot.docs[0].id };
             source = `users/${field}`;
@@ -129,25 +131,21 @@ class BookoraState {
       } catch (error) { console.warn('[Auth] Email user lookup failed:', error.message); }
     }
 
-    // Secure backend identity exchange is only a resolver fallback; entitlement
-    // loading remains Firestore-direct in LibraryPage.
+    // Legacy records can use generated Bookora IDs as their user document ID.
+    // Accept such an ID only when it is backed by an active library entitlement.
     if (!profile.bookoraUserId) {
       try {
-        const idToken = await firebaseUser.getIdToken(false);
-        const response = await fetch(apiUrl('/api/auth/firebase'), {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ firebaseUid: firebaseUser.uid, email: email || '', role: 'buyer' }),
-          cache: 'no-store'
-        });
-        const data = await response.json().catch(() => ({}));
-        const backendUser = data?.user || data?.profile || null;
-        if (response.ok && backendUser) {
-          profile = { ...profile, ...backendUser };
-          source = 'backend-firebase-exchange';
-          if (data.token) this.token = data.token;
+        const candidates = [profile.id, firebaseUser.uid].filter(Boolean).map(String);
+        for (const candidate of candidates) {
+          const snapshot = await db.collection('library').where('userId', '==', candidate).limit(10).get();
+          const active = snapshot.docs.find(doc => String(doc.data()?.accessStatus || 'active').toLowerCase() === 'active');
+          if (active) {
+            profile.bookoraUserId = candidate;
+            source = 'library-entitlement';
+            break;
+          }
         }
-      } catch (error) { console.warn('[Auth] Backend identity fallback failed:', error.message); }
+      } catch (error) { console.warn('[Auth] Library identity bridge skipped:', error.message); }
     }
 
     const bookoraUserId = String(profile.bookoraUserId || profile.userId || profile.user_id || profile.id || profile.bookora_user_id || '').trim();
