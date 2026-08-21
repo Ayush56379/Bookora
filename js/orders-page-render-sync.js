@@ -1,4 +1,4 @@
-/* Re-render Order History after the asynchronous Firestore loader fills state.orders. */
+/* Order History render synchronization and retry control. */
 import { state } from './state.js';
 
 let scheduled = false;
@@ -14,7 +14,15 @@ function refreshIfOrdersPage() {
 }
 
 state.subscribe(event => {
-  if (event === 'ORDERS_SYNCED') refreshIfOrdersPage();
+  if (event === 'ORDERS_SYNCED' || event === 'ORDERS_LOAD_ERROR') refreshIfOrdersPage();
 });
 
 window.addEventListener('bookora-orders-updated', refreshIfOrdersPage);
+window.addEventListener('bookora-orders-error', refreshIfOrdersPage);
+
+document.addEventListener('click', event => {
+  const target = event.target instanceof Element ? event.target.closest('.orders-retry-btn') : null;
+  if (!target) return;
+  event.preventDefault();
+  if (window.BookoraOrders?.refresh) window.BookoraOrders.refresh();
+});
