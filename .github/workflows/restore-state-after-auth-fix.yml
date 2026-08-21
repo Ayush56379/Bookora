@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Restore state.js from parent auth commit
+      - name: Restore state.js from known-good auth commit
         run: |
           git checkout 41fc4e1a105fb3022d106136a3bdeb2ec9cbeee1 -- js/state.js
           git config user.name 'github-actions[bot]'
