@@ -7,20 +7,12 @@
 
   const originalFetch = window.fetch.bind(window);
 
-  function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
   async function waitForFirebase(maxAttempts = 30) {
     for (let i = 0; i < maxAttempts; i += 1) {
       try {
-        if (
-          window.firebase &&
-          window.firebase.apps &&
-          window.firebase.apps.length &&
-          typeof window.firebase.auth === 'function' &&
-          typeof window.firebase.firestore === 'function'
-        ) return true;
+        if (window.firebase && window.firebase.apps && window.firebase.apps.length && typeof window.firebase.auth === 'function' && typeof window.firebase.firestore === 'function') return true;
       } catch (_) {}
       await sleep(250);
     }
@@ -31,10 +23,9 @@
     const raw = String(value || '').trim();
     if (!raw) return '';
     if (/^[A-Za-z0-9_-]{20,}$/.test(raw)) return raw;
-    const patterns = [/[?&]id=([A-Za-z0-9_-]{10,})/i, /\/d\/([A-Za-z0-9_-]{10,})/i, /\/file\/d\/([A-Za-z0-9_-]{10,})/i];
-    for (const pattern of patterns) {
+    for (const pattern of [/[?&]id=([A-Za-z0-9_-]{10,})/i, /\/d\/([A-Za-z0-9_-]{10,})/i, /\/file\/d\/([A-Za-z0-9_-]{10,})/i]) {
       const match = raw.match(pattern);
-      if (match && match[1]) return match[1];
+      if (match?.[1]) return match[1];
     }
     return '';
   }
@@ -57,29 +48,19 @@
     const pdfFileId = firstValue(book, ['pdf_file_id', 'pdfFileId', 'driveFileId', 'drive_file_id']) || driveFileId(pdfUrl);
     const coverFileId = firstValue(book, ['cover_file_id', 'coverFileId']) || driveFileId(coverUrl);
     return {
-      id: String(book.id), slug: book.slug || '', title: book.title || '', subtitle: book.subtitle || '', description: book.description || '',
-      author: book.author || '', category: book.category || 'Other', tags: Array.isArray(book.tags) ? book.tags : [], pages: Number(book.pages || 0),
-      format: book.format || 'PDF', language: book.language || 'English', price: Number(book.price || 0), salePrice: book.sale_price ?? book.salePrice ?? null,
-      sale_price: book.sale_price ?? book.salePrice ?? null, coverUrl, cover_url: coverUrl, coverFileId, cover_file_id: coverFileId,
-      pdfUrl, pdf_url: pdfUrl, pdfFileId, pdf_file_id: pdfFileId, driveFileId: pdfFileId,
-      sourceType: book.source_type || book.sourceType || 'internal', source_type: book.source_type || book.sourceType || 'internal',
-      creatorId: book.creator_id || book.creatorId || '', creator_id: book.creator_id || book.creatorId || '', sellerId: book.seller_id || book.sellerId || '',
-      seller_id: book.seller_id || book.sellerId || '', sellerName: book.seller_name || book.sellerName || book.author || '', seller_name: book.seller_name || book.sellerName || book.author || '',
-      status: String(book.status || 'pending').toLowerCase(), isFeatured: Boolean(book.is_featured ?? book.isFeatured), is_featured: Boolean(book.is_featured ?? book.isFeatured),
-      isTrending: Boolean(book.is_trending ?? book.isTrending), is_trending: Boolean(book.is_trending ?? book.isTrending), isBestseller: Boolean(book.is_bestseller ?? book.isBestseller),
-      is_bestseller: Boolean(book.is_bestseller ?? book.isBestseller), isNew: book.is_new ?? book.isNew ?? true, is_new: book.is_new ?? book.isNew ?? true,
-      rating: Number(book.rating || 0), reviewCount: Number(book.review_count ?? book.reviewCount ?? 0), review_count: Number(book.review_count ?? book.reviewCount ?? 0),
-      createdAt, created_at: createdAt, updatedAt, updated_at: updatedAt, backendSynced: true, backendBookId: String(book.id)
+      id: String(book.id), slug: book.slug || '', title: book.title || '', subtitle: book.subtitle || '', description: book.description || '', author: book.author || '', category: book.category || 'Other', tags: Array.isArray(book.tags) ? book.tags : [], pages: Number(book.pages || 0), format: book.format || 'PDF', language: book.language || 'English', price: Number(book.price || 0), salePrice: book.sale_price ?? book.salePrice ?? null, sale_price: book.sale_price ?? book.salePrice ?? null,
+      coverUrl, cover_url: coverUrl, coverFileId, cover_file_id: coverFileId, pdfUrl, pdf_url: pdfUrl, pdfFileId, pdf_file_id: pdfFileId, driveFileId: pdfFileId,
+      sourceType: book.source_type || book.sourceType || 'internal', source_type: book.source_type || book.sourceType || 'internal', creatorId: book.creator_id || book.creatorId || '', creator_id: book.creator_id || book.creatorId || '', sellerId: book.seller_id || book.sellerId || '', seller_id: book.seller_id || book.sellerId || '', sellerName: book.seller_name || book.sellerName || book.author || '', seller_name: book.seller_name || book.sellerName || book.author || '', status: String(book.status || 'pending').toLowerCase(),
+      isFeatured: Boolean(book.is_featured ?? book.isFeatured), is_featured: Boolean(book.is_featured ?? book.isFeatured), isTrending: Boolean(book.is_trending ?? book.isTrending), is_trending: Boolean(book.is_trending ?? book.isTrending), isBestseller: Boolean(book.is_bestseller ?? book.isBestseller), is_bestseller: Boolean(book.is_bestseller ?? book.isBestseller), isNew: book.is_new ?? book.isNew ?? true, is_new: book.is_new ?? book.isNew ?? true,
+      rating: Number(book.rating || 0), reviewCount: Number(book.review_count ?? book.reviewCount ?? 0), review_count: Number(book.review_count ?? book.reviewCount ?? 0), createdAt, created_at: createdAt, updatedAt, updated_at: updatedAt, backendSynced: true, backendBookId: String(book.id)
     };
   }
 
   async function syncBookToFirestore(book) {
     const normalized = normalizeBook(book);
     if (!normalized) return false;
-    const ready = await waitForFirebase();
-    if (!ready) return false;
-    const auth = window.firebase.auth();
-    const currentUser = auth.currentUser;
+    if (!await waitForFirebase()) return false;
+    const currentUser = window.firebase.auth().currentUser;
     if (!currentUser) return false;
     const db = window.firebase.firestore();
     normalized.firebaseUid = currentUser.uid;
@@ -93,8 +74,7 @@
   async function repairExistingDriveIds() {
     if (!await waitForFirebase()) return;
     try {
-      const auth = window.firebase.auth();
-      const user = auth.currentUser;
+      const user = window.firebase.auth().currentUser;
       if (!user) return;
       const db = window.firebase.firestore();
       const snapshot = await db.collection('books').get();
@@ -112,18 +92,14 @@
       });
       if (updates.length) await Promise.all(updates);
       console.info('Bookora Firestore Drive-ID repair complete:', updates.length, 'book(s).');
-    } catch (error) {
-      console.warn('Bookora Drive-ID repair skipped:', error?.message || error);
-    }
+    } catch (error) { console.warn('Bookora Drive-ID repair skipped:', error?.message || error); }
   }
 
   window.BookoraFirestoreBookSync = { syncBookToFirestore, repairExistingDriveIds };
 
   (async () => {
     if (!await waitForFirebase()) return;
-    try {
-      window.firebase.auth().onAuthStateChanged(user => { if (user) repairExistingDriveIds(); });
-    } catch (_) {}
+    try { window.firebase.auth().onAuthStateChanged(user => { if (user) repairExistingDriveIds(); }); } catch (_) {}
   })();
 
   window.fetch = async function (...args) {
@@ -134,16 +110,14 @@
       if (String(url).includes('/api/books/create') && response.ok) {
         const clone = response.clone();
         clone.json().then(async payload => {
-          if (!payload || !payload.success || !payload.book) return;
-          try { await syncBookToFirestore(payload.book); }
-          catch (error) { console.error('Bookora Firestore sync failed:', error); }
+          if (!payload?.success || !payload?.book) return;
+          try { await syncBookToFirestore(payload.book); } catch (error) { console.error('Bookora Firestore sync failed:', error); }
         }).catch(error => console.warn('Bookora Firestore response parse failed:', error));
       }
     } catch (error) { console.warn('Bookora Firestore fetch bridge error:', error); }
     return response;
   };
 
-  // Load the verified legacy-user library identity resolver once Firebase is ready.
-  // It is intentionally independent of the backend auth/session endpoint.
   import('./library-identity-hotfix.js?v=20260821-2').catch(error => console.warn('[Library Identity Hotfix] load failed:', error));
+  import('./legacy-auth-exchange-hotfix.js?v=20260821-1').catch(error => console.warn('[Auth Hotfix] load failed:', error));
 })();
