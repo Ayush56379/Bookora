@@ -1,39 +1,35 @@
-/* Bookora Orders permanent data bridge.
- * Orders are owned by the Bookora application user id (usr-xxxx), while
- * Firebase Auth uses a different uid. Resolve the application id first and
- * query Firestore orders by that id. Keep Firebase/email fallbacks for older
- * records. Never use a broad orders read because that would expose other
- * buyers' transactions.
+/* Bookora Order History - authoritative Firestore loader.
+ * Orders are mirrored with the Bookora application user id (usr-xxxx), while
+ * Firebase Auth uses a different uid. Resolve the application user from the
+ * backend Firebase session first, then query Firestore orders by that id.
  */
 import { state } from './state.js';
 
-let running = false;
-let unsubscribeAuth = null;
+let loading = false;
+let refreshTimer = null;
 
-function firebaseAuthUser() {
+function getFirebaseUser() {
   try { return window.firebase?.auth?.()?.currentUser || null; } catch (_) { return null; }
 }
 
 function normalize(raw, id) {
   const d = raw || {};
-  const amount = d.finalAmount ?? d.amount ?? d.orderAmount ?? d.order_amount ?? d.totalAmount ?? 0;
-  const paymentStatus = String(d.paymentStatus || d.payment_status || d.orderStatus || d.order_status || d.status || 'PENDING').toUpperCase();
+  const paymentStatus = String(d.paymentStatus || d.payment_status || '').toUpperCase();
+  const orderStatus = String(d.orderStatus || d.order_status || '').toUpperCase();
   const fulfillmentStatus = String(d.fulfillmentStatus || d.fulfillment_status || '').toUpperCase();
-  const bookTitle = d.productTitle || d.product_title || d.bookTitle || d.book_title || d.title || 'eBook Purchase';
-  const date = d.paidAt || d.paid_at || d.paymentTime || d.payment_time || d.createdAt || d.created_at || d.updatedAt || d.updated_at || null;
-  const transaction = d.cashfreePaymentId || d.cashfree_payment_id || d.bankReference || d.bank_reference || d.cashfreeOrderId || d.cashfree_order_id || d.transaction_id || '';
-  const finalStatus = fulfillmentStatus === 'FULFILLED' && paymentStatus === 'PAID' ? 'COMPLETED' : paymentStatus;
+  const status = paymentStatus === 'PAID' && ['FULFILLED','COMPLETED'].includes(fulfillmentStatus || orderStatus)
+    ? 'COMPLETED' : (paymentStatus || orderStatus || 'PENDING');
   return {
-    id: String(id || d.bookoraOrderId || d.bookora_order_id || d.orderId || d.order_id || ''),
+    id: String(id || d.bookoraOrderId || d.bookora_order_id || d.orderId || ''),
     book_id: String(d.productId || d.product_id || d.bookId || d.book_id || ''),
-    book_title: String(bookTitle),
-    amount: Number(amount) || 0,
-    date,
-    transaction_id: String(transaction),
-    status: finalStatus,
-    paymentStatus,
-    orderStatus: String(d.orderStatus || d.order_status || finalStatus).toUpperCase(),
-    fulfillmentStatus,
+    book_title: String(d.productTitle || d.product_title || d.bookTitle || d.book_title || 'eBook Purchase'),
+    amount: Number(d.finalAmount ?? d.amount ?? d.orderAmount ?? 0) || 0,
+    date: d.paidAt || d.paid_at || d.createdAt || d.created_at || d.updatedAt || d.updated_at || null,
+    transaction_id: String(d.cashfreePaymentId || d.cashfree_payment_id || d.bankReference || d.bank_reference || ''),
+    status,
+    paymentStatus: paymentStatus || 'PENDING',
+    orderStatus: orderStatus || status,
+    fulfillmentStatus: fulfillmentStatus || '',
     cashfreeOrderId: String(d.cashfreeOrderId || d.cashfree_order_id || ''),
     cashfreePaymentId: String(d.cashfreePaymentId || d.cashfree_payment_id || ''),
     currency: d.currency || 'INR',
@@ -46,155 +42,129 @@ function normalize(raw, id) {
   };
 }
 
-function setOrders(found) {
-  const orders = [...found.values()].filter(order => order.id);
-  orders.sort((a, b) => {
-    const at = new Date(a.date || 0).getTime() || 0;
-    const bt = new Date(b.date || 0).getTime() || 0;
-    return bt - at;
-  });
+function publish(found) {
+  const orders = [...found.values()].filter(o => o.id);
+  orders.sort((a,b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
   state.orders = orders;
+  state.ordersLoading = false;
+  state.ordersLoaded = true;
   state.notify('ORDERS_SYNCED', orders);
+  window.dispatchEvent(new CustomEvent('bookora-orders-updated', { detail: orders }));
 }
 
-function addCandidate(list, value) {
-  if (value != null && String(value).trim()) list.push(String(value).trim());
-}
-
-async function resolveBookoraUserIds(db, authUser) {
-  const candidates = [];
-  const stateUser = state.currentUser || {};
-
-  // Cached/session profile can already contain the application identity.
-  addCandidate(candidates, stateUser.id);
-  addCandidate(candidates, stateUser.userId);
-  addCandidate(candidates, stateUser.bookoraUserId);
-  addCandidate(candidates, stateUser.bookora_user_id);
-
-  const inspectProfile = (profile, docId = '') => {
-    const p = profile || {};
-    addCandidate(candidates, p.id);
-    addCandidate(candidates, p.userId);
-    addCandidate(candidates, p.bookoraUserId);
-    addCandidate(candidates, p.bookora_user_id);
-    addCandidate(candidates, p.applicationUserId);
-    addCandidate(candidates, p.application_user_id);
-    // Only use the document id if the document explicitly represents this
-    // Firebase user. A Firebase uid itself must never be treated as usr-xxxx.
-    if (p.firebaseUid === authUser.uid || p.firebase_uid === authUser.uid || p.authUid === authUser.uid || p.auth_uid === authUser.uid) {
-      addCandidate(candidates, docId);
-    }
-  };
-
-  // Normal Firebase layout: users/{firebaseUid}.
+async function getBackendUser(firebaseUser) {
+  const api = String(window.BOOKORA_API_URL || '').replace(/\/$/, '');
+  if (!api || !firebaseUser) return null;
   try {
-    const byUid = await db.collection('users').doc(authUser.uid).get({ source: 'server' });
-    if (byUid.exists) inspectProfile(byUid.data(), byUid.id);
+    const token = await firebaseUser.getIdToken(false);
+    const response = await fetch(`${api}/api/auth/firebase`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: state.currentUser?.role || 'buyer' }),
+      cache: 'no-store'
+    });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => ({}));
+    return payload?.user || null;
   } catch (error) {
-    console.warn('[Bookora Orders] users/{uid} lookup skipped:', error.message);
+    console.warn('[Bookora Orders] backend identity lookup failed:', error?.message || error);
+    return null;
   }
-
-  // Some Bookora user records store the Firebase identity in a field instead
-  // of using it as the document id. Support all known variants.
-  for (const field of ['uid', 'firebaseUid', 'firebase_uid', 'authUid', 'auth_uid']) {
-    try {
-      const snap = await db.collection('users').where(field, '==', authUser.uid).limit(10).get({ source: 'server' });
-      snap.forEach(doc => inspectProfile(doc.data(), doc.id));
-    } catch (error) {
-      console.warn(`[Bookora Orders] users.${field} lookup skipped:`, error.message);
-    }
-  }
-
-  if (authUser.email) {
-    for (const field of ['email', 'userEmail', 'user_email']) {
-      try {
-        const snap = await db.collection('users').where(field, '==', authUser.email).limit(10).get({ source: 'server' });
-        snap.forEach(doc => inspectProfile(doc.data(), doc.id));
-      } catch (error) {
-        console.warn(`[Bookora Orders] users.${field} lookup skipped:`, error.message);
-      }
-    }
-  }
-
-  return [...new Set(candidates)];
 }
 
-async function queryOrders(db, field, value, found) {
-  if (value == null || !String(value).trim()) return;
+async function query(db, field, value, found) {
+  if (value == null || String(value).trim() === '') return;
   try {
     const snap = await db.collection('orders').where(field, '==', value).get({ source: 'server' });
     snap.forEach(doc => found.set(doc.id, normalize(doc.data(), doc.id)));
   } catch (error) {
-    console.warn(`[Bookora Orders] query ${field}=${value} skipped:`, error.message);
+    console.warn(`[Bookora Orders] ${field} query skipped:`, error?.message || error);
   }
 }
 
 async function loadOrders() {
-  if (running) return;
-  const authUser = firebaseAuthUser();
-  if (!authUser || !window.firebase?.firestore) return;
+  if (loading) return;
+  const firebaseUser = getFirebaseUser();
+  if (!firebaseUser || !window.firebase?.firestore) return;
 
-  running = true;
+  loading = true;
+  state.ordersLoading = true;
   try {
     const db = window.firebase.firestore();
     const found = new Map();
-    const appUserIds = await resolveBookoraUserIds(db, authUser);
+    const backendUser = await getBackendUser(firebaseUser);
+    const appIds = new Set();
 
-    // PRIMARY: the production order shown by the user has userId=usr-077055af.
-    // Resolve that Bookora id and query it directly.
-    for (const appUserId of appUserIds) {
-      await queryOrders(db, 'userId', appUserId, found);
-      await queryOrders(db, 'user_id', appUserId, found);
-      await queryOrders(db, 'buyerId', appUserId, found);
-      await queryOrders(db, 'buyer_id', appUserId, found);
+    for (const value of [backendUser?.id, backendUser?.userId, backendUser?.bookoraUserId,
+      state.currentUser?.id, state.currentUser?.userId, state.currentUser?.bookoraUserId]) {
+      if (value != null && String(value).trim()) appIds.add(String(value).trim());
     }
 
-    // Legacy ownership formats.
-    await queryOrders(db, 'userId', authUser.uid, found);
-    await queryOrders(db, 'user_id', authUser.uid, found);
-    await queryOrders(db, 'buyerId', authUser.uid, found);
-    await queryOrders(db, 'buyer_id', authUser.uid, found);
+    try {
+      const cached = JSON.parse(localStorage.getItem('bookora_user_profile') || 'null');
+      for (const value of [cached?.id, cached?.userId, cached?.bookoraUserId]) {
+        if (value != null && String(value).trim()) appIds.add(String(value).trim());
+      }
+    } catch (_) {}
 
-    if (authUser.email) {
-      await queryOrders(db, 'userEmail', authUser.email, found);
-      await queryOrders(db, 'buyerEmail', authUser.email, found);
-      await queryOrders(db, 'user_email', authUser.email, found);
-      await queryOrders(db, 'buyer_email', authUser.email, found);
+    try {
+      const profile = await db.collection('users').doc(firebaseUser.uid).get({ source: 'server' });
+      if (profile.exists) {
+        const p = profile.data() || {};
+        for (const value of [p.id, p.userId, p.bookoraUserId, p.appUserId]) {
+          if (value != null && String(value).trim()) appIds.add(String(value).trim());
+        }
+      }
+    } catch (_) {}
+
+    // Authoritative production schema: orders.userId = Bookora application user id.
+    for (const id of appIds) await query(db, 'userId', id, found);
+
+    // Backward compatibility with older order documents.
+    await query(db, 'userId', firebaseUser.uid, found);
+    await query(db, 'buyerId', firebaseUser.uid, found);
+    await query(db, 'user_id', firebaseUser.uid, found);
+    await query(db, 'buyer_id', firebaseUser.uid, found);
+    if (firebaseUser.email) {
+      await query(db, 'userEmail', firebaseUser.email, found);
+      await query(db, 'buyerEmail', firebaseUser.email, found);
     }
 
-    setOrders(found);
+    publish(found);
+    console.info('[Bookora Orders] Firestore orders loaded:', [...found.values()].map(o => ({ id:o.id, title:o.book_title, amount:o.amount, status:o.status })));
   } catch (error) {
-    console.warn('[Bookora Orders] Firestore order history failed:', error);
+    state.ordersLoading = false;
+    state.ordersLoaded = false;
+    console.error('[Bookora Orders] loader failed:', error);
   } finally {
-    running = false;
+    loading = false;
   }
 }
 
 function boot() {
+  state.ordersLoading = true;
+  state.ordersLoaded = false;
   loadOrders();
 
-  state.subscribe((event) => {
-    if (event === 'USER_LOGGED_IN' || event === 'AUTH_STATE_CHANGED' || event === 'DATA_SYNCED' || event === 'ORDERS_SYNCED') {
-      window.setTimeout(loadOrders, 100);
-    }
-  });
-
   try {
-    if (window.firebase?.auth) {
-      unsubscribeAuth = window.firebase.auth().onAuthStateChanged(() => window.setTimeout(loadOrders, 100));
-    }
+    const auth = window.firebase?.auth?.();
+    if (auth) auth.onAuthStateChanged(() => window.setTimeout(loadOrders, 150));
   } catch (_) {}
 
+  state.subscribe(event => {
+    if (event === 'USER_LOGGED_IN' || event === 'AUTH_STATE_CHANGED' || event === 'DATA_SYNCED') window.setTimeout(loadOrders, 150);
+  });
+
   window.addEventListener('hashchange', () => {
-    if (window.location.hash.split('?')[0] === '#/orders') loadOrders();
+    if ((window.location.hash || '').split('?')[0] === '#/orders') window.setTimeout(loadOrders, 50);
   });
 
   let attempts = 0;
-  const timer = window.setInterval(() => {
+  refreshTimer = window.setInterval(() => {
     attempts += 1;
-    loadOrders();
-    if (attempts >= 60) window.clearInterval(timer);
-  }, 500);
+    if (getFirebaseUser()) loadOrders();
+    if (attempts >= 40) window.clearInterval(refreshTimer);
+  }, 1000);
 }
 
 boot();
