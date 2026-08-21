@@ -23,8 +23,9 @@ async function waitForFirebaseUser() {
   if (!auth) return null;
   return await new Promise(resolve => {
     let settled = false;
+    let unsubscribe = null;
     const finish = user => { if (settled) return; settled = true; try { unsubscribe?.(); } catch (_) {} resolve(user || null); };
-    const unsubscribe = auth.onAuthStateChanged(finish);
+    unsubscribe = auth.onAuthStateChanged(finish);
     setTimeout(() => finish(auth.currentUser || null), 10000);
   });
 }
@@ -85,8 +86,6 @@ async function backend(path, options = {}) {
 }
 
 async function syncPurchasedLibrary() {
-  // Wait for the existing Firebase auth bridge rather than treating a transient
-  // auth restoration window as an unauthenticated account.
   const firebaseUser = await waitForFirebaseUser();
   if (!firebaseUser) throw new Error('Authentication required. Please sign in again.');
   if (!state.isAuthenticated || !state.currentUser?.bookoraUserId) await ensureBackendSession(false);
@@ -168,5 +167,13 @@ window.BookoraPurchaseAccess = {
 };
 
 state.subscribe(event => {
-  if (event === 'USER_LOGGED_IN') setTimeout(() => syncPurchasedLibrary().catch(() => {}), 150);
+  if (event === 'USER_LOGGED_IN') {
+    // LibraryPage now loads entitlements directly from Firestore. Do not create
+    // a backend-auth loop while the library page is being rendered. Other pages
+    // retain the previous purchased-library synchronization behavior.
+    const isLibraryRoute = () => (window.location.hash || '').split('?')[0] === '#/library';
+    setTimeout(() => {
+      if (!isLibraryRoute()) syncPurchasedLibrary().catch(() => {});
+    }, 150);
+  }
 });
