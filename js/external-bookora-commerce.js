@@ -8,18 +8,17 @@ let submitBusy = false;
 function clean(value = '') { return String(value || '').trim(); }
 function getToken() { return clean(state.token); }
 
-async function ensureBookoraSession() {
-  // A Firebase login does not automatically mean the Render API has a
-  // Bookora session. Always establish/restore the backend session immediately
-  // before a protected external-listing submission.
+async function ensureBookoraSession(forceRefresh = false) {
   try {
     if (window.BookoraBackendSession?.ensureBackendSession) {
-      return clean(await window.BookoraBackendSession.ensureBackendSession());
+      const token = clean(await window.BookoraBackendSession.ensureBackendSession(forceRefresh));
+      if (token) return token;
     }
   } catch (error) {
     console.warn('[External Listing] Backend session restore failed:', error?.message || error);
   }
-  return getToken();
+  if (!forceRefresh) return getToken();
+  return '';
 }
 
 function hideOldFulfillmentUI(form) {
@@ -62,6 +61,30 @@ function showIntegration(result) {
   form.style.display = 'none';
 }
 
+function timeoutMessage(error) {
+  if (!error) return 'External listing failed. Please try again.';
+  const message = String(error.message || error);
+  if (error.name === 'AbortError' || /timed out|timeout/i.test(message)) return 'The Bookora server took too long to respond. Please try again.';
+  if (/ERR_NAME_NOT_RESOLVED|network|failed to fetch|load failed/i.test(message)) return 'Unable to connect to the Bookora server. Please try again.';
+  return message;
+}
+
+async function requestWithTimeout(input, options = {}, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...options, signal: controller.signal, cache: 'no-store' });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function parseResponse(response) {
+  let data = null;
+  try { data = await response.json(); } catch (_) {}
+  return data;
+}
+
 async function submitExternalForm(form) {
   if (submitBusy) return;
   const checkbox = document.getElementById('ext-confirm-checkbox');
@@ -76,10 +99,7 @@ async function submitExternalForm(form) {
   if (submit) { submit.disabled = true; submit.textContent = 'Checking secure sign-in…'; }
 
   try {
-    // Do this at submit time, not only at page-load time. This fixes the case
-    // where Firebase has a signed-in user but state.token/localStorage does not
-    // yet contain the protected Bookora Render session token.
-    let token = await ensureBookoraSession();
+    let token = await ensureBookoraSession(false);
     if (!token) throw new Error('Please sign in to Bookora before submitting the external listing.');
 
     if (submit) submit.textContent = 'Submitting external listing…';
@@ -103,46 +123,56 @@ async function submitExternalForm(form) {
       source_url: url, canonical_url: url, rights_confirmed: true
     };
 
-    let res = await apiFetch('/api/publish/external', {
+    let res = await requestWithTimeout(`${window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com'}/api/publish/external`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
       body: JSON.stringify(payload)
-    });
+    }, 30000);
 
-    // If an old/stale Bookora session is stored, recover it once from the
-    // currently signed-in Firebase account and retry. Never loop endlessly.
     if (res.status === 401 || res.status === 403) {
       try {
         localStorage.removeItem('bookora_auth_token');
         state.token = '';
       } catch (_) {}
-      token = await ensureBookoraSession();
-      if (!token) throw new Error('Your sign-in session expired. Please sign in again and retry.');
-      res = await apiFetch('/api/publish/external', {
+      token = await ensureBookoraSession(true);
+      if (!token) throw new Error(res.status === 403 ? 'You are signed in, but your account is not authorized for this action.' : 'Your Bookora login session has expired. Please sign in again.');
+      res = await requestWithTimeout(`${window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com'}/api/publish/external`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
         body: JSON.stringify(payload)
-      });
+      }, 30000);
     }
 
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok || !result.success) throw new Error(result.error || 'External listing could not be created.');
+    const result = await parseResponse(res);
+    if (!res.ok || !result?.success) {
+      if (res.status === 400) throw new Error(result?.error || 'Bookora rejected the submission. Please check the form and try again.');
+      if (res.status === 401) throw new Error('Your Bookora login session has expired. Please sign in again.');
+      if (res.status === 403) throw new Error('You are signed in, but your account is not authorized for this action.');
+      if (res.status >= 500) throw new Error('Bookora server error. Please try again.');
+      throw new Error(result?.error || `External listing failed (HTTP ${res.status}).`);
+    }
 
     Toast.show(result.book?.status === 'approved' ? 'External eBook is now live on Bookora.' : 'External eBook submitted for admin moderation.', 'success');
     if (result.integration) { showIntegration(result); return; }
     window.location.hash = result.book?.status === 'approved' ? `#/book/${encodeURIComponent(result.book.slug)}` : '#/creator/dashboard';
   } catch (error) {
     console.error('Bookora external listing failed:', error);
-    Toast.show(error?.message || 'External listing failed. Please try again.', 'error');
-    if (submit) { submit.disabled = false; submit.textContent = 'Upload PDF & Submit External Listing'; }
-  } finally { submitBusy = false; }
+    Toast.show(timeoutMessage(error), 'error');
+  } finally {
+    submitBusy = false;
+    if (submit && submit.isConnected && submit.closest('#ext-submit-form') && document.getElementById('ext-submit-form')?.style.display !== 'none') {
+      submit.disabled = false;
+      submit.textContent = 'Upload PDF & Submit External Listing';
+    }
+  }
 }
 
 function interceptExternalSubmit(event) {
   const form = event.target instanceof HTMLFormElement ? event.target : null;
   if (!form || form.id !== 'ext-submit-form') return;
   event.preventDefault(); event.stopImmediatePropagation();
-  hideOldFulfillmentUI(form); submitExternalForm(form);
+  hideOldFulfillmentUI(form);
+  void submitExternalForm(form);
 }
 
 function observe() {
