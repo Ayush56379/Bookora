@@ -157,6 +157,22 @@ export function renderPublishExternalPage() {
               <textarea id="ext-description" rows="4" required style="width: 100%; padding: 0.65rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-medium); font-size: 0.95rem;"></textarea>
             </div>
 
+            <!-- Additional automatically detected metadata -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;">
+              <div>
+                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">Pages</label>
+                <input type="number" id="ext-pages" min="0" readonly style="width:100%;padding:0.65rem 0.85rem;border-radius:var(--radius-md);border:1px solid var(--border-medium);font-size:0.95rem;background:var(--bg-tertiary);" />
+              </div>
+              <div>
+                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">Format</label>
+                <input type="text" id="ext-format" readonly style="width:100%;padding:0.65rem 0.85rem;border-radius:var(--radius-md);border:1px solid var(--border-medium);font-size:0.95rem;background:var(--bg-tertiary);" />
+              </div>
+              <div>
+                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">ISBN</label>
+                <input type="text" id="ext-isbn" readonly style="width:100%;padding:0.65rem 0.85rem;border-radius:var(--radius-md);border:1px solid var(--border-medium);font-size:0.95rem;background:var(--bg-tertiary);" />
+              </div>
+            </div>
+
             <!-- MANDATORY LEGAL PERMISSION CONFIRMATION -->
             <div style="background: var(--bg-secondary); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 2rem;">
               <label style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer;">
@@ -261,6 +277,19 @@ export function initPublishExternalEvents() {
     document.getElementById('ext-currency').value = data.source_currency || 'INR';
     document.getElementById('ext-cover-url').value = data.cover_url || '';
     document.getElementById('ext-description').value = data.description || '';
+    const categoryEl = document.getElementById('ext-category');
+    if (categoryEl && data.category) {
+      const wanted = String(data.category).trim().toLowerCase();
+      const option = Array.from(categoryEl.options).find(o => o.value.trim().toLowerCase() === wanted || o.textContent.trim().toLowerCase() === wanted);
+      if (option) categoryEl.value = option.value;
+    }
+    document.getElementById('ext-language').value = data.language || 'English';
+    const pagesEl = document.getElementById('ext-pages');
+    if (pagesEl) pagesEl.value = data.pages || '';
+    const formatEl = document.getElementById('ext-format');
+    if (formatEl) formatEl.value = data.format || '';
+    const isbnEl = document.getElementById('ext-isbn');
+    if (isbnEl) isbnEl.value = data.isbn || '';
 
     // Update Field Source Badges
     const updatePill = (id, sourceText) => {
@@ -330,11 +359,19 @@ export function initPublishExternalEvents() {
       subtitle: document.getElementById('ext-subtitle').value.trim(),
       author: document.getElementById('ext-author').value.trim(),
       category: document.getElementById('ext-category').value,
+      language: document.getElementById('ext-language').value.trim(),
+      pages: parseInt(document.getElementById('ext-pages')?.value || '0', 10) || 0,
+      format: document.getElementById('ext-format')?.value.trim() || 'PDF',
+      isbn: document.getElementById('ext-isbn')?.value.trim() || '',
+      publisher: document.getElementById('ext-publisher').value.trim(),
       price: parseFloat(document.getElementById('ext-price').value),
+      original_price: parseFloat(document.getElementById('ext-price').value),
+      original_currency: document.getElementById('ext-currency').value.trim(),
       cover_url: document.getElementById('ext-cover-url').value.trim(),
       description: document.getElementById('ext-description').value.trim(),
       source_url: urlInput.value.trim(),
-      source_domain: document.getElementById('ext-publisher').value.trim() || 'external.com'
+      canonical_url: currentImportData?.canonical_url || urlInput.value.trim(),
+      source_domain: currentImportData?.source_domain || document.getElementById('ext-publisher').value.trim() || 'external.com'
     };
 
     submitBtn.disabled = true;
