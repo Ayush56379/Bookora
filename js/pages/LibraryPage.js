@@ -24,12 +24,8 @@ function coverMarkup(book) {
 }
 
 function stateMarkup() {
-  if (libraryLoadState === 'loading') {
-    return `<div class="library-state"><div class="library-spinner"></div><p>Loading your library...</p></div>`;
-  }
-  if (libraryLoadState === 'error') {
-    return `<div class="library-state"><div class="library-error-icon">!</div><h3>Unable to load your library.</h3><p>${String(libraryLoadError || 'Please try again.').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))}</p><button type="button" class="btn btn-primary btn-sm library-retry-btn">Retry</button></div>`;
-  }
+  if (libraryLoadState === 'loading') return `<div class="library-state"><div class="library-spinner"></div><p>Loading your library...</p></div>`;
+  if (libraryLoadState === 'error') return `<div class="library-state"><div class="library-error-icon">!</div><h3>Unable to load your library.</h3><p>${String(libraryLoadError || 'Please try again.').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]))}</p><button type="button" class="btn btn-primary btn-sm library-retry-btn">Retry</button></div>`;
   return `<div style="background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:5rem 2rem;text-align:center;max-width:540px;margin:0 auto;"><div style="width:64px;height:64px;border-radius:99px;background:var(--accent-light);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 6.5 2z"/></svg></div><h3 style="font-size:1.35rem;font-weight:800;color:var(--text-primary);margin-bottom:.5rem;">Your Library is Empty</h3><p style="font-size:.95rem;color:var(--text-secondary);margin-bottom:2rem;">Purchase an eBook and it will remain in your library permanently. You can read or download it whenever you want.</p><a href="#/explore" class="btn btn-primary btn-lg">Explore Top eBooks</a></div>`;
 }
 
@@ -39,10 +35,8 @@ export function renderLibraryPage() {
   const heading = state.isAdmin ? 'All eBook Library' : 'My eBook Library';
   const eyebrow = state.isAdmin ? 'ADMIN LIBRARY' : 'PERSONAL LIBRARY';
   const description = state.isAdmin ? `You have full access to ${books.length} approved Bookora eBook${books.length === 1 ? '' : 's'} for administration, reading and download.` : `You own ${books.length} permanent digital license${books.length === 1 ? '' : 's'}. Read in-browser or download your licensed files anytime.`;
-
   let body;
-  if (libraryLoadState === 'loading') body = stateMarkup();
-  else if (libraryLoadState === 'error') body = stateMarkup();
+  if (libraryLoadState === 'loading' || libraryLoadState === 'error') body = stateMarkup();
   else if (books.length > 0) body = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2rem;">${books.map(book => {
     const prog = state.readingProgress?.[book.id] || { percent: 0, current_page: 1, total_pages: book.pages || 100 };
     return `<div class="book-card animate-slide-up" style="background:#fff;padding:1.5rem;"><div style="display:flex;gap:1rem;margin-bottom:1.25rem;">${coverMarkup(book)}<div style="min-width:0;"><span class="badge badge-bookora" style="font-size:.65rem;margin-bottom:4px;">${state.isAdmin ? 'ADMIN ACCESS' : 'LIFETIME LICENSE'}</span><h3 style="font-size:1.05rem;font-weight:700;color:var(--text-primary);line-height:1.3;">${String(book.title || 'Untitled eBook')}</h3><div style="font-size:.8rem;color:var(--text-muted);margin-top:4px;">by ${String(book.author || 'Bookora Creator')}</div></div></div><div style="margin-bottom:1.25rem;"><div style="display:flex;justify-content:space-between;font-size:.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:4px;"><span>Reading Progress</span><span>${prog.percent || 0}%</span></div><div style="width:100%;height:6px;background:var(--bg-tertiary);border-radius:99px;overflow:hidden;"><div style="width:${Math.max(0,Math.min(100,Number(prog.percent)||0))}%;height:100%;background:var(--accent);border-radius:99px;"></div></div></div><div style="display:flex;gap:.75rem;border-top:1px solid var(--border-subtle);padding-top:1rem;"><button class="btn btn-primary btn-sm lib-read-btn" data-id="${String(book.id)}" style="flex:1;">${prog.percent > 0 ? 'Resume Reading' : 'Read eBook'}</button><button class="btn btn-secondary btn-sm lib-download-btn" data-id="${String(book.id)}" title="Download licensed PDF">PDF</button></div></div>`;
@@ -55,13 +49,11 @@ export function renderLibraryPage() {
 async function syncLibrary() {
   const sync = window.BookoraPurchaseAccess?.syncPurchasedLibrary;
   if (!sync) throw new Error('Library service is not available.');
-  libraryLoadState = 'loading';
-  libraryLoadError = '';
+  libraryLoadState = 'loading'; libraryLoadError = '';
   window.dispatchEvent(new Event('bookora-library-render'));
-  console.info('[Library] Current user:', window.firebase?.auth?.()?.currentUser ? { uid: window.firebase.auth().currentUser.uid, email: window.firebase.auth().currentUser.email || '' } : null);
   try {
     const items = await sync();
-    console.info('[Library] Library items:', Array.isArray(items) ? items.map(item => ({ id: item?.id, title: item?.title })) : items);
+    console.info('[Library] API response:', items);
     libraryLoadState = 'loaded';
     window.dispatchEvent(new Event('hashchange'));
     return items;
@@ -76,22 +68,30 @@ async function syncLibrary() {
 
 export function initLibraryEvents() {
   const startSync = () => {
-    if (librarySyncStarted || !state.isAuthenticated || !window.BookoraPurchaseAccess?.syncPurchasedLibrary) return;
+    if (librarySyncStarted || !window.BookoraPurchaseAccess?.syncPurchasedLibrary) return;
     librarySyncStarted = true;
     syncLibrary().catch(() => { librarySyncStarted = false; });
   };
 
-  if (state.isAuthenticated) startSync();
-  else {
+  // Use the existing auth-session-bridge readiness promise. Do not install a
+  // second onAuthStateChanged listener just for the Library page.
+  if (state.isAuthenticated && window.BookoraAuthReady) {
+    void window.BookoraAuthReady.then(() => startSync());
+  } else if (window.BookoraAuthReady) {
     libraryLoadState = 'loading';
-    try {
-      const auth = window.firebase?.auth?.();
-      if (auth) {
-        const unsubscribe = auth.onAuthStateChanged(user => {
-          if (user) { unsubscribe?.(); startSync(); }
-        });
+    void window.BookoraAuthReady.then(firebaseUser => {
+      if (firebaseUser || state.isAuthenticated) startSync();
+      else {
+        libraryLoadState = 'error';
+        libraryLoadError = 'Authentication required. Please sign in again.';
+        window.dispatchEvent(new Event('bookora-library-render'));
       }
-    } catch (error) { console.warn('[Library] Auth wait failed:', error); }
+    });
+  } else if (state.isAuthenticated) {
+    startSync();
+  } else {
+    libraryLoadState = 'error';
+    libraryLoadError = 'Authentication required. Please sign in again.';
   }
 
   const refresh = () => { librarySyncStarted = false; startSync(); };
@@ -122,6 +122,6 @@ export function initLibraryEvents() {
   window.addEventListener('bookora-library-render', () => {
     if ((window.location.hash || '').split('?')[0] !== '#/library') return;
     const content = document.querySelector('.library-content');
-    if (content) content.innerHTML = libraryLoadState === 'loading' ? stateMarkup() : libraryLoadState === 'error' ? stateMarkup() : `<div></div>`;
+    if (content) content.innerHTML = libraryLoadState === 'loading' || libraryLoadState === 'error' ? stateMarkup() : `<div></div>`;
   }, { once: true });
 }
