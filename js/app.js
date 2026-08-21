@@ -228,14 +228,14 @@ class App {
       else if (path === '/admin/ai-diagnostics') { pageHtml = renderAdminAIDiagnosticsPage(); initCallback = () => initAdminAIDiagnosticsEvents(); }
       else pageHtml = renderNotFoundPage();
 
-      this.root.innerHTML = `<div id="header-container">${renderHeader()}</div><main id="main-content">${pageHtml}</main><div id="footer-container">${renderFooter()}</div>`;
+      this.root.innerHTML = `<div id="header-container">${renderHeader()}</div><main id="main-content" style="flex:1;">${pageHtml}</main><div id="footer-container">${renderFooter()}</div>`;
       initHeaderEvents();
-      if (initCallback) setTimeout(() => { try { initCallback(); } catch (e) { console.error('Route init failed:', e); } }, 0);
-      this.lastRenderedHash = hash; this.lastRenderedPath = path;
-    } finally {
-      this.routeRunning = false;
-    }
+      if (typeof initCallback === 'function') { try { initCallback(); } catch (err) { console.error('Page event initialization error:', err); } }
+      this.lastRenderedHash = hash;
+      this.lastRenderedPath = path;
+    } finally { this.routeRunning = false; }
   }
 }
 
-window.BookoraApp = new App();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => new App());
+else new App();
