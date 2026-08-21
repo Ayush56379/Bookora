@@ -84,11 +84,6 @@ class BookoraState {
     const normalizedEmail = email.toLowerCase();
     let profile = {};
     let source = '';
-
-    // Firebase/Firestore is the canonical browser identity source. Do not call
-    // the legacy Render /api/auth/firebase resolver because that endpoint can
-    // return 403 for a valid Firebase user. Library ownership is verified
-    // directly against Firestore.
     try {
       const cached = this.currentUser || JSON.parse(localStorage.getItem('bookora_user_profile') || '{}');
       if (cached && String(cached.firebaseUid || cached.uid || '') === String(firebaseUser.uid) && cached.bookoraUserId) {
@@ -96,7 +91,6 @@ class BookoraState {
         source = 'cached-profile';
       }
     } catch (_) {}
-
     if (!profile.bookoraUserId) {
       try {
         const snapshot = await db.collection('users').doc(firebaseUser.uid).get();
@@ -106,7 +100,6 @@ class BookoraState {
         }
       } catch (error) { console.warn('[Auth] UID user lookup failed:', error.message); }
     }
-
     if (!profile.bookoraUserId) {
       for (const field of ['firebaseUid', 'firebase_uid', 'uid', 'auth_uid', 'authUid']) {
         try {
@@ -119,7 +112,6 @@ class BookoraState {
         } catch (error) { console.warn(`[Auth] ${field} user lookup failed:`, error.message); }
       }
     }
-
     if (!profile.bookoraUserId && email) {
       try {
         const snapshot = await db.collection('users').where('email', '==', email).limit(5).get();
@@ -130,9 +122,6 @@ class BookoraState {
         }
       } catch (error) { console.warn('[Auth] Email user lookup failed:', error.message); }
     }
-
-    // Legacy records can use generated Bookora IDs as their user document ID.
-    // Accept such an ID only when it is backed by an active library entitlement.
     if (!profile.bookoraUserId) {
       try {
         const candidates = [profile.id, firebaseUser.uid].filter(Boolean).map(String);
@@ -147,7 +136,6 @@ class BookoraState {
         }
       } catch (error) { console.warn('[Auth] Library identity bridge skipped:', error.message); }
     }
-
     const bookoraUserId = String(profile.bookoraUserId || profile.userId || profile.user_id || profile.id || profile.bookora_user_id || '').trim();
     console.log('[Auth] Bookora identity source:', source || '(not found)');
     console.log('[Auth] Firebase UID:', firebaseUser.uid);
@@ -160,13 +148,16 @@ class BookoraState {
       const { auth } = await this.getFirebase();
       auth.onAuthStateChanged(async firebaseUser => {
         if (!firebaseUser) {
+          this.token = '';
           if (!this.currentUser) { this.isAuthenticated = false; this.isAdmin = false; this.isSeller = false; }
           this.notify('AUTH_STATE_CHANGED', null);
           if (!this.booksLoaded) this.syncData();
           return;
         }
-        try { await this.loadAuthenticatedUser(firebaseUser); }
-        catch (error) { console.error('Firebase session sync failed:', error); }
+        try {
+          this.token = await firebaseUser.getIdToken(false);
+          await this.loadAuthenticatedUser(firebaseUser);
+        } catch (error) { console.error('Firebase session sync failed:', error); }
       });
     } catch (error) {
       console.warn('Firebase session waiting:', error.message);
@@ -202,16 +193,14 @@ class BookoraState {
     this.activeMode = this.isAdmin ? 'admin' : this.isSeller ? 'seller' : 'buyer';
     localStorage.setItem('bookora_user_profile', JSON.stringify(user));
     localStorage.setItem('bookora_active_mode', this.activeMode);
-    console.log('[Library] Firebase UID:', firebaseUser.uid);
-    console.log('[Library] Firebase email:', firebaseUser.email || '');
-    console.log('[Library] Resolved Bookora user ID:', user.bookoraUserId || '(missing)');
     this.notify('USER_LOGGED_IN', user);
     await this.syncData();
   }
 
-  setUser(user) {
+  setUser(user, token = '') {
     if (!user) return;
     this.currentUser = user;
+    this.token = token || this.token || '';
     this.isAuthenticated = true;
     this.isAdmin = user.role === 'admin' || String(user.email || '').toLowerCase() === MASTER_ADMIN_EMAIL || user.isMasterAdmin === true;
     this.isSeller = this.isAdmin || user.seller_status === 'approved' || user.role === 'creator' || user.role === 'seller';
@@ -270,8 +259,6 @@ class BookoraState {
         const wishlistSnapshot = await db.collection('wishlists').doc(this.currentUser?.uid || '__anonymous__').get();
         const activeLibraryDocs = librarySnapshot.docs.filter(doc => String(doc.data()?.accessStatus || 'active').toLowerCase() === 'active');
         this.library = new Set(activeLibraryDocs.map(doc => String(doc.data()?.bookId || doc.data()?.book_id || '')).filter(Boolean));
-        console.log('[Library] Firestore query userId:', resolvedUserId || '(missing)');
-        console.log('[Library] Firestore active library records:', activeLibraryDocs.length);
         const wishlistIds = wishlistSnapshot.exists && Array.isArray(wishlistSnapshot.data()?.bookIds) ? wishlistSnapshot.data().bookIds : [];
         this.wishlist = new Set(wishlistIds.map(id => String(id)));
       } catch (error) { console.warn('Library/wishlist sync skipped:', error.message); }
