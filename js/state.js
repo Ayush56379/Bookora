@@ -85,9 +85,7 @@ class BookoraState {
     let profile = {};
     let source = '';
 
-    // 1) Reuse a known Bookora ID from the in-memory/cached profile first.
-    // This is important because some accounts use a Bookora user ID that is
-    // not the Firebase UID and the users collection document key can differ.
+    // Existing cached session may already contain the correct generated Bookora ID.
     try {
       const cached = this.currentUser || JSON.parse(localStorage.getItem('bookora_user_profile') || '{}');
       if (cached && String(cached.firebaseUid || cached.uid || '') === String(firebaseUser.uid) && cached.bookoraUserId) {
@@ -96,7 +94,7 @@ class BookoraState {
       }
     } catch (_) {}
 
-    // 2) Firebase UID document (legacy/current layouts).
+    // Support both users/{firebaseUid} and generated users/{bookoraUserId} layouts.
     if (!profile.bookoraUserId) {
       try {
         const snapshot = await db.collection('users').doc(firebaseUser.uid).get();
@@ -107,8 +105,6 @@ class BookoraState {
       } catch (error) { console.warn('[Auth] UID user lookup failed:', error.message); }
     }
 
-    // 3) Explicit firebaseUid/uid field lookup. Some Bookora users use a
-    // generated document ID (for example usr-xxxx) rather than Firebase UID.
     if (!profile.bookoraUserId) {
       for (const field of ['firebaseUid', 'uid']) {
         try {
@@ -122,8 +118,6 @@ class BookoraState {
       }
     }
 
-    // 4) Email lookup. First try the exact Firebase email, then do a small
-    // collection scan fallback because old records may have different casing.
     if (!profile.bookoraUserId && email) {
       try {
         const snapshot = await db.collection('users').where('email', '==', email).limit(5).get();
@@ -134,35 +128,16 @@ class BookoraState {
         }
       } catch (error) { console.warn('[Auth] Email user lookup failed:', error.message); }
     }
-    if (!profile.bookoraUserId && email) {
-      try {
-        const snapshot = await db.collection('users').limit(100).get();
-        const match = snapshot.docs.find(doc => String(doc.data()?.email || '').trim().toLowerCase() === normalizedEmail);
-        if (match) {
-          profile = { ...(match.data() || {}), id: match.id };
-          source = 'users/email-scan';
-        }
-      } catch (error) { console.warn('[Auth] Email fallback lookup failed:', error.message); }
-    }
 
-    // 5) Last-resort identity resolution through the existing secure backend
-    // Firebase exchange. This only resolves the Bookora identity; the Library
-    // page still reads entitlements directly from Firestore.
+    // Secure backend identity exchange is only a resolver fallback; entitlement
+    // loading remains Firestore-direct in LibraryPage.
     if (!profile.bookoraUserId) {
       try {
         const idToken = await firebaseUser.getIdToken(false);
         const response = await fetch(apiUrl('/api/auth/firebase'), {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-            Accept: 'application/json',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            firebaseUid: firebaseUser.uid,
-            email: email || '',
-            role: 'buyer'
-          }),
+          headers: { Authorization: `Bearer ${idToken}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ firebaseUid: firebaseUser.uid, email: email || '', role: 'buyer' }),
           cache: 'no-store'
         });
         const data = await response.json().catch(() => ({}));
@@ -175,26 +150,11 @@ class BookoraState {
       } catch (error) { console.warn('[Auth] Backend identity fallback failed:', error.message); }
     }
 
-    const bookoraUserId = String(
-      profile.bookoraUserId ||
-      profile.userId ||
-      profile.user_id ||
-      profile.id ||
-      profile.bookora_user_id ||
-      ''
-    ).trim();
-
+    const bookoraUserId = String(profile.bookoraUserId || profile.userId || profile.user_id || profile.id || profile.bookora_user_id || '').trim();
     console.log('[Auth] Bookora identity source:', source || '(not found)');
     console.log('[Auth] Firebase UID:', firebaseUser.uid);
     console.log('[Auth] Resolved Bookora user ID:', bookoraUserId || '(missing)');
-
-    return {
-      ...profile,
-      uid: firebaseUser.uid,
-      email: firebaseUser.email || profile.email || '',
-      bookoraUserId: bookoraUserId || null,
-      firebaseUid: firebaseUser.uid
-    };
+    return { ...profile, uid: firebaseUser.uid, email: firebaseUser.email || profile.email || '', bookoraUserId: bookoraUserId || null, firebaseUid: firebaseUser.uid };
   }
 
   async startFirebaseSession() {
@@ -308,11 +268,7 @@ class BookoraState {
       try {
         const resolvedUserId = String(this.currentUser?.bookoraUserId || this.currentUser?.userId || this.currentUser?.id || '').trim();
         let librarySnapshot = { docs: [] };
-        if (resolvedUserId) {
-          // Use a single Firestore field filter and check accessStatus locally.
-          // This avoids requiring a composite Firestore index for the library.
-          librarySnapshot = await db.collection('library').where('userId', '==', resolvedUserId).get();
-        }
+        if (resolvedUserId) librarySnapshot = await db.collection('library').where('userId', '==', resolvedUserId).get();
         const wishlistSnapshot = await db.collection('wishlists').doc(this.currentUser?.uid || '__anonymous__').get();
         const activeLibraryDocs = librarySnapshot.docs.filter(doc => String(doc.data()?.accessStatus || 'active').toLowerCase() === 'active');
         this.library = new Set(activeLibraryDocs.map(doc => String(doc.data()?.bookId || doc.data()?.book_id || '')).filter(Boolean));
@@ -367,16 +323,32 @@ class BookoraState {
     const b = { ...book };
     b.id = String(b.id ?? b.bookId ?? '');
     b.status = String(b.status ?? '').toLowerCase();
+    b.source_type = b.source_type || b.sourceType || 'internal';
+    b.category = b.category || 'Other';
     b.title = b.title || 'Untitled eBook';
-    b.author = b.author || b.creatorName || b.creator_name || 'Bookora Creator';
-    b.cover_url = b.cover_url || b.coverUrl || b.cover || '';
-    b.coverUrl = b.coverUrl || b.cover_url || '';
-    b.cover_gradient = b.cover_gradient || b.coverGradient || 'linear-gradient(135deg,#1E3A8A,#3B82F6)';
-    b.price = Number(b.price ?? 0);
-    b.pages = Number(b.pages ?? b.pageCount ?? 0) || 0;
+    b.author = b.author || b.seller_name || b.sellerName || 'Bookora Creator';
+    b.description = b.description || '';
+    b.slug = b.slug || b.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    b.cover_url = b.cover_url || b.coverUrl || b.cover_image_url || b.coverImageUrl || '';
+    b.cover_file_id = b.cover_file_id || b.coverFileId || '';
+    b.pdf_file_id = b.pdf_file_id || b.pdfFileId || b.file_id || b.fileId || '';
+    b.pdf_url = b.pdf_url || b.pdfUrl || b.file_url || b.fileUrl || b.download_url || b.downloadUrl || '';
+    b.sample_pdf_url = b.sample_pdf_url || b.samplePdfUrl || b.preview_pdf_url || b.previewPdfUrl || '';
+    b.created_at = b.created_at || b.createdAt || b.updated_at || b.updatedAt || '';
+    b.is_new = Boolean(b.is_new ?? b.isNew);
+    b.is_trending = Boolean(b.is_trending ?? b.isTrending);
+    b.is_bestseller = Boolean(b.is_bestseller ?? b.isBestseller);
+    b.price = Number(b.price || 0);
     return b;
   }
 
+  getApprovedBooks() { return (Array.isArray(this.books) ? this.books : []).map(book => this.normalizeBook(book)).filter(Boolean).filter(book => book.status === 'approved'); }
+  getTrendingBooks() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_trending); return (flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))).slice(0, 24); }
+  getBestSellers() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_bestseller); return (flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))).slice(0, 24); }
+  getNewReleases() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_new); return (flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))); }
+  getExternalBooks() { return this.getApprovedBooks().filter(book => book.source_type === 'external'); }
+  getBookBySlug(slug) { const wanted = decodeURIComponent(String(slug || '')).trim().replace(/^\/+|\/+$/g, '').toLowerCase(); if (!wanted) return null; return this.getApprovedBooks().find(book => { const bookSlug = String(book.slug || '').trim().replace(/^\/+|\/+$/g, '').toLowerCase(); const bookId = String(book.id || '').trim().toLowerCase(); const titleSlug = String(book.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); return bookSlug === wanted || bookId === wanted || titleSlug === wanted; }) || null; }
+  getCategoryBySlug(slug) { return this.categories.find(category => category.slug === slug); }
   hasUser() { return !!this.currentUser; }
   getUserId() { return this.currentUser?.bookoraUserId || this.currentUser?.userId || this.currentUser?.id || this.currentUser?.uid || null; }
 }
