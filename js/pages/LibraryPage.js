@@ -23,8 +23,6 @@ function normalizeAccessStatus(value) {
 }
 
 function getLibraryBooks() {
-  // The library collection is the source of truth for user entitlements.
-  // Join the entitlement with the public Firestore catalog only for media/details.
   return libraryRecords.map(record => {
     const bookId = String(record.bookId || record.book_id || record.id || '').trim();
     const catalogBook = (Array.isArray(state.books) ? state.books : [])
@@ -75,8 +73,7 @@ function rerenderLibrary() {
   const count = getLibraryBooks().length;
   const description = document.querySelector('.library-license-count');
   if (description && !state.isAdmin) description.textContent = `You own ${count} permanent digital license${count === 1 ? '' : 's'}. Read in-browser or download your licensed files anytime.`;
-  const heading = document.querySelector('.library-content');
-  if (heading) bindLibraryButtons();
+  bindLibraryButtons();
 }
 
 export function renderLibraryPage() {
@@ -156,28 +153,36 @@ async function loadLibraryDirectFromFirebase() {
   try {
     const { db, bookoraUserId } = await getAuthenticatedBookoraUser();
 
-    // Direct Firestore read: no Render/API round trip is used to populate the library.
-    // The entitlement documents already contain the canonical Bookora userId.
-    const snapshot = await db.collection('library').where('userId', '==', bookoraUserId).get();
+    if (state.isAdmin) {
+      // Preserve the existing admin-library behavior: admins can see the approved catalog.
+      const snapshot = await db.collection('books').where('status', '==', 'approved').get();
+      libraryRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), bookId: doc.id }));
+      state.library = new Set(libraryRecords.map(record => String(record.bookId)).filter(Boolean));
+      console.info('[Library] Admin catalog records:', libraryRecords.length);
+    } else {
+      // Direct Firestore read: no Render/API round trip is used to populate a buyer's library.
+      // The entitlement documents contain the canonical Bookora userId.
+      const snapshot = await db.collection('library').where('userId', '==', bookoraUserId).get();
 
-    libraryRecords = snapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(record => normalizeAccessStatus(record.accessStatus) === 'active');
+      libraryRecords = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(record => normalizeAccessStatus(record.accessStatus) === 'active');
 
-    state.library = new Set(libraryRecords
-      .map(record => String(record.bookId || record.book_id || '').trim())
-      .filter(Boolean));
+      state.library = new Set(libraryRecords
+        .map(record => String(record.bookId || record.book_id || '').trim())
+        .filter(Boolean));
 
-    console.info('[Library] Firestore collection: library');
-    console.info('[Library] Firestore userId:', bookoraUserId);
-    console.info('[Library] Active library records:', libraryRecords.length);
-    console.info('[Library] Library items:', libraryRecords.map(item => ({
-      libraryId: item.bookoraLibraryId || item.id,
-      bookId: item.bookId,
-      title: item.title,
-      orderId: item.orderId,
-      accessStatus: item.accessStatus
-    })));
+      console.info('[Library] Firestore collection: library');
+      console.info('[Library] Firestore userId:', bookoraUserId);
+      console.info('[Library] Active library records:', libraryRecords.length);
+      console.info('[Library] Library items:', libraryRecords.map(item => ({
+        libraryId: item.bookoraLibraryId || item.id,
+        bookId: item.bookId,
+        title: item.title,
+        orderId: item.orderId,
+        accessStatus: item.accessStatus
+      })));
+    }
 
     libraryLoadState = 'loaded';
     rerenderLibrary();
