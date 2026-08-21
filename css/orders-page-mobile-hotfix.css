@@ -1,8 +1,14 @@
-/* Keep the existing order table usable on narrow screens when no card markup exists. */
-.orders-page .orders-table-wrap{display:block!important;width:100%;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}
-.orders-page .orders-table-wrap table{min-width:720px!important}
+/* Final mobile override: use the dedicated responsive order cards instead of forcing a wide table. */
+.orders-page .orders-table-wrap{width:100%;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.orders-page .orders-table{min-width:920px}
+.orders-page .orders-mobile-list{display:none}
+
+@media (max-width:760px){
+  .orders-page .orders-table-wrap{display:none!important}
+  .orders-page .orders-mobile-list{display:grid!important}
+}
+
 @media (max-width:480px){
-  .orders-page .orders-table-wrap{margin:0!important;padding:0!important}
-  .orders-page .orders-table-wrap table{min-width:720px!important;font-size:.78rem!important}
-  .orders-page .orders-table-wrap th,.orders-page .orders-table-wrap td{padding:.8rem!important;white-space:normal!important;vertical-align:top!important}
+  .orders-page .orders-mobile-list{display:grid!important}
+  .orders-page .orders-table-wrap{display:none!important}
 }
