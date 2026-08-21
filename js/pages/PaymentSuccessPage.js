@@ -1,6 +1,6 @@
 // Bookora payment result page.
-// Cashfree/backend status is authoritative. Closing the Cashfree window is
-// a normal user action and must never be presented as a technical error.
+// Cashfree/backend status is authoritative. The result page stays visible
+// after verification so the customer can clearly see what happened.
 import { state } from '../state.js';
 import { apiUrl } from '../config.js';
 
@@ -21,11 +21,7 @@ function normalizeStatus(value) {
 }
 
 function extractStatus(data) {
-  const values = [
-    data?.payment_state, data?.payment_status, data?.order_status, data?.status,
-    data?.order?.payment_state, data?.order?.payment_status,
-    data?.order?.order_status, data?.order?.status
-  ];
+  const values = [data?.payment_state, data?.payment_status, data?.order_status, data?.status, data?.order?.payment_state, data?.order?.payment_status, data?.order?.order_status, data?.order?.status];
   for (const value of values) {
     const normalized = normalizeStatus(value);
     if (normalized) return normalized;
@@ -39,15 +35,25 @@ function escapeHtml(value) {
 }
 function render(markup) { const el = document.getElementById('main-content'); if (el) el.innerHTML = markup; }
 
-function shell(icon, title, text, actions = '') {
-  return `<div class="payment-result-page" style="background:var(--bg-secondary);min-height:85vh;padding:4rem 1rem;display:flex;align-items:center;justify-content:center"><div class="container" style="max-width:620px;width:100%"><div style="background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:3rem 2.5rem;text-align:center;box-shadow:var(--shadow-lg)"><div style="width:72px;height:72px;border-radius:999px;background:#F8FAFC;border:2px solid #E2E8F0;color:#0F172A;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;font-size:32px">${icon}</div><h1 style="font-family:var(--font-display);font-size:2rem;font-weight:800;margin:0 0 .75rem">${title}</h1><p style="color:var(--text-secondary);line-height:1.6;margin:0">${text}</p>${actions ? `<div style="display:flex;justify-content:center;gap:1rem;flex-wrap:wrap;margin-top:1.8rem">${actions}</div>` : ''}</div></div></div>`;
+function details(orderId, data) {
+  const order = data?.order || {};
+  const amount = Number(order?.order_amount ?? order?.amount ?? 0);
+  const amountText = Number.isFinite(amount) && amount > 0 ? `₹${amount.toFixed(2)}` : '—';
+  const gatewayId = order?.cf_order_id || order?.order_id || orderId;
+  return `<div style="margin-top:1.6rem;background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:14px;padding:1rem;text-align:left;font-size:.9rem"><div style="display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0"><span style="color:var(--text-secondary)">Order ID</span><strong style="font-family:monospace;word-break:break-all">${escapeHtml(orderId)}</strong></div><div style="display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0"><span style="color:var(--text-secondary)">Amount</span><strong>${amountText}</strong></div><div style="display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0"><span style="color:var(--text-secondary)">Cashfree Order</span><strong style="font-family:monospace;word-break:break-all">${escapeHtml(gatewayId)}</strong></div></div>`;
 }
-function loadingMarkup() { return shell('◷','Checking Payment','Please wait while we securely confirm your payment.'); }
-function pendingMarkup() { return shell('◷','Payment Not Completed','The payment window was closed or Cashfree has not confirmed the payment yet. No eBook has been unlocked. If a payment was actually completed, Bookora will detect it automatically.','<button id="payment-refresh-status" class="btn btn-primary btn-lg">Check Again</button><a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-secondary btn-lg">Continue Shopping</a>'); }
-function pendingFinalMarkup() { return shell('◷','Payment Not Completed','We could not confirm a completed payment. If you closed the payment window, nothing is wrong—your eBook remains locked until Cashfree confirms a successful payment. You can check My Orders or try the purchase again.','<button id="payment-refresh-status" class="btn btn-primary btn-lg">Check Again</button><a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-secondary btn-lg">Try Again</a>'); }
-function cancelledMarkup() { return shell('×','Payment Cancelled','Your payment was cancelled. No eBook was unlocked. You can safely try again.','<a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-primary btn-lg">Try Again</a>'); }
-function failedMarkup() { return shell('!','Payment Failed','The payment was not completed. Your eBook has not been unlocked. You can safely try again.','<a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-primary btn-lg">Try Again</a>'); }
-function expiredMarkup() { return shell('⌛','Payment Expired','This payment session expired before Bookora received a successful payment. Your eBook has not been unlocked.','<a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-primary btn-lg">Try Again</a>'); }
+
+function shell(icon, title, text, actions = '', extra = '') {
+  return `<div class="payment-result-page" style="background:var(--bg-secondary);min-height:85vh;padding:4rem 1rem;display:flex;align-items:center;justify-content:center"><div class="container" style="max-width:650px;width:100%"><div style="background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:3rem 2.5rem;text-align:center;box-shadow:var(--shadow-lg)"><div style="width:72px;height:72px;border-radius:999px;background:#F8FAFC;border:2px solid #E2E8F0;color:#0F172A;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;font-size:32px">${icon}</div><h1 style="font-family:var(--font-display);font-size:2rem;font-weight:800;margin:0 0 .75rem">${title}</h1><p style="color:var(--text-secondary);line-height:1.6;margin:0">${text}</p>${extra}${actions ? `<div style="display:flex;justify-content:center;gap:1rem;flex-wrap:wrap;margin-top:1.8rem">${actions}</div>` : ''}</div></div></div>`;
+}
+
+function loadingMarkup() { return shell('◷','Checking Payment','Please wait while Bookora securely confirms the Cashfree payment.'); }
+function pendingMarkup(orderId, data) { return shell('◷','Payment Pending','Cashfree has not confirmed a completed payment yet. Your eBook remains locked until Bookora receives a verified successful payment.', '', details(orderId, data) + '<div style="margin-top:1rem;color:var(--text-muted);font-size:.85rem">We will keep checking automatically.</div>'); }
+function pendingFinalMarkup(orderId, data) { return shell('◷','Payment Still Pending','We could not confirm a completed payment yet. Please do not pay again until you check My Orders. If your bank shows a debit, allow the gateway/bank time to update the final status.', '<button id="payment-refresh-status" class="btn btn-primary btn-lg">Check Again</button><a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-secondary btn-lg">Continue Shopping</a>', details(orderId, data)); }
+function successMarkup(orderId, data) { return shell('✓','Payment Successful','Your payment has been verified by Bookora. Your eBook access is now unlocked and the purchase has been added to your Library.', '<a href="#/library" class="btn btn-primary btn-lg">Open My Library</a><a href="#/orders" class="btn btn-secondary btn-lg">View Order</a><a href="#/explore" class="btn btn-secondary btn-lg">Continue Shopping</a>', details(orderId, data)); }
+function cancelledMarkup(orderId, data) { return shell('×','Payment Cancelled','The Cashfree payment was cancelled. No eBook was unlocked and no seller earning was created for this order.', '<a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-primary btn-lg">Try Again</a>', details(orderId, data)); }
+function failedMarkup(orderId, data) { return shell('!','Payment Failed','Cashfree did not confirm this payment. Your eBook remains locked and the order has not been fulfilled. You can safely try the purchase again.', '<a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-primary btn-lg">Try Again</a>', details(orderId, data)); }
+function expiredMarkup(orderId, data) { return shell('⌛','Payment Expired','This Cashfree payment session expired before Bookora received a successful payment. Your eBook remains locked.', '<a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a><a href="#/explore" class="btn btn-primary btn-lg">Try Again</a>', details(orderId, data)); }
 function errorMarkup(message) { return shell('!','We Couldn’t Check the Payment',escapeHtml(message || 'We could not check the payment right now. Your eBook remains locked until the payment is confirmed.'),'<button id="payment-refresh-status" class="btn btn-primary btn-lg">Check Again</button><a href="#/orders" class="btn btn-secondary btn-lg">My Orders</a>'); }
 
 async function ensureSession(force = false) {
@@ -81,27 +87,9 @@ async function verifyOrder(orderId) {
   throw new Error('Unable to restore the secure payment session.');
 }
 
-async function syncLibrary() {
-  if (window.BookoraPurchaseAccess?.syncPurchasedLibrary) return await window.BookoraPurchaseAccess.syncPurchasedLibrary();
-  const api = String(window.BOOKORA_API_URL || apiUrl('')).replace(/\/$/, '');
-  const response = await fetch(`${api}/api/library`, { headers:{ Accept:'application/json', Authorization:`Bearer ${state.token}` }, cache:'no-store' });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Unable to sync your library.');
-  return Array.isArray(data) ? data : (Array.isArray(data.books) ? data.books : []);
-}
-
-async function redirectToLibrary() {
-  try { await syncLibrary(); } catch (error) { console.warn('Library sync after payment:', error); }
-  await sleep(150);
-  if ((window.location.hash || '').split('?')[0] === '#/payment/success') window.location.hash = '#/library';
-}
-
 function attachRefresh(flow) {
   document.getElementById('payment-refresh-status')?.addEventListener('click', () => {
-    flow.polls = 0;
-    flow.running = false;
-    flow.done = false;
-    runFlow(flow.orderId, true);
+    flow.polls = 0; flow.running = false; flow.done = false; runFlow(flow.orderId, true);
   }, { once:true });
 }
 
@@ -114,25 +102,16 @@ async function runFlow(orderId, immediate = false) {
     const data = await verifyOrder(orderId);
     const status = extractStatus(data);
     flow.status = status;
+    flow.data = data;
 
-    if (status === 'PAID') {
-      flow.done = true;
-      render(shell('✓','Payment Successful','Your payment has been verified. Redirecting you to your permanent Bookora Library…'));
-      await redirectToLibrary();
-      return;
-    }
-    if (status === 'CANCELLED') { flow.done = true; render(cancelledMarkup()); return; }
-    if (status === 'FAILED') { flow.done = true; render(failedMarkup()); return; }
-    if (status === 'EXPIRED') { flow.done = true; render(expiredMarkup()); return; }
+    if (status === 'PAID') { flow.done = true; render(successMarkup(orderId, data)); return; }
+    if (status === 'CANCELLED') { flow.done = true; render(cancelledMarkup(orderId, data)); return; }
+    if (status === 'FAILED') { flow.done = true; render(failedMarkup(orderId, data)); return; }
+    if (status === 'EXPIRED') { flow.done = true; render(expiredMarkup(orderId, data)); return; }
 
     flow.running = false;
-    if (flow.polls >= 30) {
-      flow.done = true;
-      render(pendingFinalMarkup());
-      attachRefresh(flow);
-      return;
-    }
-    render(pendingMarkup());
+    if (flow.polls >= 30) { flow.done = true; render(pendingFinalMarkup(orderId, data)); attachRefresh(flow); return; }
+    render(pendingMarkup(orderId, data));
     flow.polls += 1;
     window.setTimeout(() => runFlow(orderId), 2000);
   } catch (error) {
@@ -144,8 +123,6 @@ async function runFlow(orderId, immediate = false) {
 }
 
 export function renderPaymentSuccessPage() {
-  // app.js historically rendered this route without an init callback. Keep
-  // the module self-starting so payment verification cannot silently stop.
   window.setTimeout(() => initPaymentSuccessEvents(), 0);
   return loadingMarkup();
 }
