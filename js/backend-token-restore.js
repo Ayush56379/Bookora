@@ -1,11 +1,10 @@
-// Bookora backend-session restore bridge.
-// Firebase auth is the identity layer; protected Render APIs use the Bookora
-// session token created during the normal sign-in flow. Restore that token
-// before protected actions instead of exchanging Firebase on every page load.
+// Bookora backend-session bridge.
+// Firebase Auth is the identity layer. Protected Render APIs accept the
+// verified Firebase ID token directly; no page-load /api/auth/firebase
+// exchange is performed here.
 import { state } from './state.js';
 
 const TOKEN_KEY = 'bookora_auth_token';
-const API = String(window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com').replace(/\/$/, '');
 
 function restore() {
   try {
@@ -19,37 +18,21 @@ function restore() {
   return '';
 }
 
-async function ensureBackendSession() {
-  const existing = restore();
-  if (existing) return existing;
-
+async function ensureBackendSession(forceRefresh = false) {
   const firebaseUser = window.firebase?.auth?.()?.currentUser;
-  if (!firebaseUser) throw new Error('Please sign in to continue.');
-
-  const idToken = await firebaseUser.getIdToken(false);
-  const response = await fetch(`${API}/api/auth/firebase`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${idToken}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json'
-    },
-    body: JSON.stringify({ role: state.currentUser?.role === 'creator' ? 'creator' : 'buyer' }),
-    cache: 'no-store'
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.success || !data.token) {
-    throw new Error(data.error || `Bookora authentication failed (${response.status}).`);
+  if (!firebaseUser) {
+    const restored = restore();
+    if (restored) return restored;
+    throw new Error('Please sign in to continue.');
   }
 
-  state.token = String(data.token);
+  // Prefer a current Firebase ID token. The backend verifies it server-side
+  // and maps it to the existing Bookora identity/permissions.
+  const token = await firebaseUser.getIdToken(!!forceRefresh);
+  if (!token) throw new Error('Firebase authentication token is unavailable.');
+  state.token = token;
   state.isAuthenticated = true;
-  if (data.user) state.currentUser = { ...(state.currentUser || {}), ...data.user };
-  try {
-    localStorage.setItem(TOKEN_KEY, state.token);
-    localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser || {}));
-  } catch (_) {}
-  return state.token;
+  return token;
 }
 
 restore();
