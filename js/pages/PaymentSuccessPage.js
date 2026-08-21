@@ -1,6 +1,6 @@
 // Bookora payment result page.
 // Cashfree/backend status is authoritative. The result page stays visible
-// after verification so the customer can clearly see what happened.
+after verification so the customer can clearly see what happened.
 import { state } from '../state.js';
 import { apiUrl } from '../config.js';
 
@@ -31,7 +31,7 @@ function extractStatus(data) {
 }
 
 function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c]));
+  return String(value ?? '').replace(/[&<>'\"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;' }[c]));
 }
 function render(markup) { const el = document.getElementById('main-content'); if (el) el.innerHTML = markup; }
 
@@ -98,7 +98,8 @@ async function runFlow(orderId, immediate = false) {
   if (!flow || flow.running || flow.done) return;
   flow.running = true;
   try {
-    if (!immediate) render(loadingMarkup());
+    // Do not re-render the loading screen on every polling cycle.
+    // This prevents the visible Checking Payment -> Pending -> Checking loop.
     const data = await verifyOrder(orderId);
     const status = extractStatus(data);
     flow.status = status;
