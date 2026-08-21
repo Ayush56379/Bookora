@@ -4,6 +4,15 @@
 import { state } from './state.js';
 
 const PROFILE_KEY = 'bookora_user_profile';
+let resolveAuthReady;
+let authReadyResolved = false;
+window.BookoraAuthReady = window.BookoraAuthReady || new Promise(resolve => { resolveAuthReady = resolve; });
+
+function markAuthReady(firebaseUser) {
+  if (authReadyResolved) return;
+  authReadyResolved = true;
+  try { resolveAuthReady?.(firebaseUser || null); } catch (_) {}
+}
 
 function cachedProfile() {
   try {
@@ -30,6 +39,8 @@ function applyUser(user) {
     role: isMasterAdmin ? 'admin' : (user.role || 'buyer'),
     status: user.status || 'active',
     seller_status: user.seller_status || 'none',
+    bookoraUserId: user.bookoraUserId || user.userId || user.user_id || user.id || null,
+    firebaseUid: user.firebaseUid || user.uid,
     isMasterAdmin
   };
   state.isAuthenticated = true;
@@ -44,31 +55,67 @@ function applyUser(user) {
   return true;
 }
 
-function hydrateFromFirebaseUser(firebaseUser) {
+async function hydrateFromFirebaseUser(firebaseUser) {
   if (!firebaseUser) return false;
   const cached = cachedProfile();
   const sameUser = !cached.uid || String(cached.uid) === String(firebaseUser.uid);
-  return applyUser({
+  let mapped = {
     ...(sameUser ? cached : {}),
     uid: firebaseUser.uid,
     email: firebaseUser.email || (sameUser ? cached.email : '') || '',
     name: (sameUser ? cached.name : '') || firebaseUser.displayName || '',
     photoURL: (sameUser ? cached.photoURL : '') || firebaseUser.photoURL || '',
     avatar: (sameUser ? cached.avatar : '') || firebaseUser.photoURL || ''
-  });
+  };
+
+  // Resolve the canonical Bookora internal ID from the existing users record.
+  // This does not create or mutate a second user record.
+  try {
+    const db = window.firebase?.firestore?.();
+    if (db) {
+      let snapshot = await db.collection('users').doc(firebaseUser.uid).get();
+      if (!snapshot.exists && firebaseUser.email) {
+        const byEmail = await db.collection('users').where('email', '==', String(firebaseUser.email).trim().toLowerCase()).limit(1).get();
+        if (!byEmail.empty) snapshot = byEmail.docs[0];
+      }
+      if (snapshot.exists) {
+        const profile = snapshot.data() || {};
+        mapped = {
+          ...mapped,
+          ...profile,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || profile.email || mapped.email,
+          bookoraUserId: profile.bookoraUserId || profile.userId || profile.user_id || profile.id || mapped.bookoraUserId || null,
+          firebaseUid: firebaseUser.uid
+        };
+      }
+    }
+  } catch (error) {
+    console.warn('[Bookora Auth Bridge] Bookora user mapping skipped:', error?.message || error);
+  }
+
+  const applied = applyUser(mapped);
+  if (applied) {
+    console.log('[Library] Firebase UID:', firebaseUser.uid);
+    console.log('[Library] Firebase email:', firebaseUser.email || '');
+    console.log('[Library] Resolved Bookora user ID:', state.currentUser?.bookoraUserId || '(missing)');
+  }
+  markAuthReady(firebaseUser);
+  return applied;
 }
 
 function hydrateFromCachedProfile() {
   const cached = cachedProfile();
-  // Logout removes this key, so a remaining valid profile represents the
-  // existing Bookora session when Firebase is restoring slowly/unavailable.
   return cached.uid ? applyUser(cached) : false;
 }
 
 function hydrateNow() {
   try {
     const auth = window.firebase?.auth?.();
-    if (auth?.currentUser && hydrateFromFirebaseUser(auth.currentUser)) return true;
+    if (auth?.currentUser) {
+      void hydrateFromFirebaseUser(auth.currentUser);
+      return true;
+    }
   } catch (_) {}
   return hydrateFromCachedProfile();
 }
@@ -81,12 +128,15 @@ function install() {
       return false;
     }
 
-    // Important: hydrate synchronously before the SPA handles wishlist links.
     hydrateNow();
 
     auth.onAuthStateChanged(firebaseUser => {
-      if (firebaseUser) hydrateFromFirebaseUser(firebaseUser);
-      else if (!state.currentUser) hydrateFromCachedProfile();
+      if (firebaseUser) {
+        void hydrateFromFirebaseUser(firebaseUser);
+      } else {
+        markAuthReady(null);
+        if (!state.currentUser) hydrateFromCachedProfile();
+      }
     });
 
     return true;
@@ -97,22 +147,20 @@ function install() {
   }
 }
 
-// Capture phase runs before app.js's document click handler.
 document.addEventListener('click', event => {
   const element = event.target instanceof Element ? event.target : null;
   if (!element) return;
-  if (element.closest('.book-wishlist-btn') || element.closest('a[href="#/wishlist"]')) {
-    hydrateNow();
-  }
+  if (element.closest('.book-wishlist-btn') || element.closest('a[href="#/wishlist"]')) hydrateNow();
 }, true);
 
-// This listener is intentionally installed before app.js through index.html,
-// so protected-route checks see the real Firebase/session state first.
 window.addEventListener('hashchange', hydrateNow, { passive: true });
 
 if (!install()) {
   let tries = 0;
   const timer = setInterval(() => {
-    if (install() || ++tries >= 40) clearInterval(timer);
+    if (install() || ++tries >= 40) {
+      if (tries >= 40 && !authReadyResolved) markAuthReady(window.firebase?.auth?.()?.currentUser || null);
+      clearInterval(timer);
+    }
   }, 250);
 }
