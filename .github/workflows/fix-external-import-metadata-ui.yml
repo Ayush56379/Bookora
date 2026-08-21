@@ -1,0 +1,49 @@
+name: Fix external importer metadata UI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch importer
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('js/pages/PublishExternalPage.js')
+          s=p.read_text(encoding='utf-8')
+
+          marker='<!-- MANDATORY LEGAL PERMISSION CONFIRMATION -->'
+          if 'id="ext-pages"' not in s:
+              block='''<!-- Additional automatically detected metadata -->\n            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;">\n              <div>\n                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">Pages</label>\n                <input type="number" id="ext-pages" min="0" readonly style="width:100%;padding:0.65rem 0.85rem;border-radius:var(--radius-md);border:1px solid var(--border-medium);font-size:0.95rem;background:var(--bg-tertiary);" />\n              </div>\n              <div>\n                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">Format</label>\n                <input type="text" id="ext-format" readonly style="width:100%;padding:0.65rem 0.85rem;border-radius:var(--radius-md);border:1px solid var(--border-medium);font-size:0.95rem;background:var(--bg-tertiary);" />\n              </div>\n              <div>\n                <label style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:0.35rem;">ISBN</label>\n                <input type="text" id="ext-isbn" readonly style="width:100%;padding:0.65rem 0.85rem;border-radius:var(--radius-md);border:1px solid var(--border-medium);font-size:0.95rem;background:var(--bg-tertiary);" />\n              </div>\n            </div>\n\n            '''
+              s=s.replace(marker,block+marker,1)
+
+          old="""    document.getElementById('ext-description').value = data.description || '';\n\n    // Update Field Source Badges"""
+          new="""    document.getElementById('ext-description').value = data.description || '';\n    const categoryEl = document.getElementById('ext-category');\n    if (categoryEl && data.category) {\n      const wanted = String(data.category).trim().toLowerCase();\n      const option = Array.from(categoryEl.options).find(o => o.value.trim().toLowerCase() === wanted || o.textContent.trim().toLowerCase() === wanted);\n      if (option) categoryEl.value = option.value;\n    }\n    document.getElementById('ext-language').value = data.language || 'English';\n    const pagesEl = document.getElementById('ext-pages');\n    if (pagesEl) pagesEl.value = data.pages || '';\n    const formatEl = document.getElementById('ext-format');\n    if (formatEl) formatEl.value = data.format || '';\n    const isbnEl = document.getElementById('ext-isbn');\n    if (isbnEl) isbnEl.value = data.isbn || '';\n\n    // Update Field Source Badges"""
+          if old in s: s=s.replace(old,new,1)
+
+          old_payload="""      category: document.getElementById('ext-category').value,\n      price: parseFloat(document.getElementById('ext-price').value),\n      cover_url: document.getElementById('ext-cover-url').value.trim(),\n      description: document.getElementById('ext-description').value.trim(),\n      source_url: urlInput.value.trim(),\n      source_domain: document.getElementById('ext-publisher').value.trim() || 'external.com'"""
+          new_payload="""      category: document.getElementById('ext-category').value,\n      language: document.getElementById('ext-language').value.trim(),\n      pages: parseInt(document.getElementById('ext-pages')?.value || '0', 10) || 0,\n      format: document.getElementById('ext-format')?.value.trim() || 'PDF',\n      isbn: document.getElementById('ext-isbn')?.value.trim() || '',\n      publisher: document.getElementById('ext-publisher').value.trim(),\n      price: parseFloat(document.getElementById('ext-price').value),\n      original_price: parseFloat(document.getElementById('ext-price').value),\n      original_currency: document.getElementById('ext-currency').value.trim(),\n      cover_url: document.getElementById('ext-cover-url').value.trim(),\n      description: document.getElementById('ext-description').value.trim(),\n      source_url: urlInput.value.trim(),\n      canonical_url: currentImportData?.canonical_url || urlInput.value.trim(),\n      source_domain: currentImportData?.source_domain || document.getElementById('ext-publisher').value.trim() || 'external.com'"""
+          if old_payload in s: s=s.replace(old_payload,new_payload,1)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/pages/PublishExternalPage.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "fix: map all external metadata fields"
+          git push
