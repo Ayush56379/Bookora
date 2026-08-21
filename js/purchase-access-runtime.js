@@ -1,6 +1,7 @@
 // Bookora purchased-access runtime.
-// This module owns authenticated purchased-library syncing and protected PDF access.
-// Payment result state/redirects are handled exclusively by PaymentSuccessPage.js.
+// This module owns authenticated protected PDF access.
+// Library listing is Firestore-direct in LibraryPage.js; it must never trigger
+// a backend auth/session request merely because the user opened /library.
 import { state } from './state.js';
 import { apiUrl } from './config.js';
 import { ReaderModal } from './components/ReaderModal.js';
@@ -42,8 +43,6 @@ async function ensureBackendSession(force = false) {
       const firebaseUser = await waitForFirebaseUser();
       if (!firebaseUser) throw new Error('Authentication required. Please sign in again.');
       const idToken = await firebaseUser.getIdToken(force);
-      console.log('[Library] Firebase UID:', firebaseUser.uid);
-      console.log('[Library] Firebase email:', firebaseUser.email || '');
       const response = await fetch(`${API}/api/auth/firebase`, {
         method:'POST',
         headers:{ Authorization:`Bearer ${idToken}`, Accept:'application/json', 'Content-Type':'application/json' },
@@ -61,7 +60,6 @@ async function ensureBackendSession(force = false) {
           firebaseUid: firebaseUser.uid,
           bookoraUserId: data.user.bookoraUserId || data.user.userId || data.user.id || state.currentUser?.bookoraUserId || null
         };
-        console.log('[Library] Resolved Bookora user ID:', state.currentUser.bookoraUserId || '(missing)');
       }
       localStorage.setItem('bookora_auth_token', data.token);
       localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser || {}));
@@ -85,18 +83,13 @@ async function backend(path, options = {}) {
   return response;
 }
 
+// Explicit protected-access operation only. Never called automatically on login.
 async function syncPurchasedLibrary() {
   const firebaseUser = await waitForFirebaseUser();
   if (!firebaseUser) throw new Error('Authentication required. Please sign in again.');
-  if (!state.isAuthenticated || !state.currentUser?.bookoraUserId) await ensureBackendSession(false);
-
-  console.log('[Library] Firebase UID:', firebaseUser.uid);
-  console.log('[Library] Firebase email:', firebaseUser.email || '');
-  console.log('[Library] Resolved Bookora user ID:', state.currentUser?.bookoraUserId || '(backend resolved)');
-
+  await ensureBackendSession(false);
   const response = await backend('/api/library');
   const data = await response.json().catch(() => ({}));
-  console.log('[Library] API response:', data);
   if (!response.ok) throw new Error(data.error || 'Unable to load your library.');
   const books = Array.isArray(data) ? data : (Array.isArray(data.library) ? data.library : (Array.isArray(data.books) ? data.books : []));
   for (const item of books) {
@@ -105,7 +98,6 @@ async function syncPurchasedLibrary() {
     if (id) state.library.add(id);
     if (book?.id && !state.books.some(existing => String(existing.id) === id)) state.books.push(book);
   }
-  console.log('[Library] Library items:', books.map(item => ({ id: item?.id || item?.bookId, title: item?.title })));
   return books;
 }
 
@@ -166,14 +158,5 @@ window.BookoraPurchaseAccess = {
   fetchPurchasedPdf
 };
 
-state.subscribe(event => {
-  if (event === 'USER_LOGGED_IN') {
-    // LibraryPage now loads entitlements directly from Firestore. Do not create
-    // a backend-auth loop while the library page is being rendered. Other pages
-    // retain the previous purchased-library synchronization behavior.
-    const isLibraryRoute = () => (window.location.hash || '').split('?')[0] === '#/library';
-    setTimeout(() => {
-      if (!isLibraryRoute()) syncPurchasedLibrary().catch(() => {});
-    }, 150);
-  }
-});
+// No USER_LOGGED_IN listener on purpose. The library page is Firestore-direct.
+// Backend authentication starts only after an explicit protected Read/Download.
