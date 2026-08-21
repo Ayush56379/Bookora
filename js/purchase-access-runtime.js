@@ -9,6 +9,26 @@ import { Toast } from './components/Toast.js';
 const API = String(apiUrl('') || window.BOOKORA_API_URL || '').replace(/\/$/, '');
 let sessionPromise = null;
 
+async function waitForFirebaseUser() {
+  const current = window.firebase?.auth?.()?.currentUser;
+  if (current) return current;
+  if (window.BookoraAuthReady) {
+    const resolved = await Promise.race([
+      window.BookoraAuthReady,
+      new Promise(resolve => setTimeout(() => resolve(null), 10000))
+    ]);
+    if (resolved) return resolved;
+  }
+  const auth = window.firebase?.auth?.();
+  if (!auth) return null;
+  return await new Promise(resolve => {
+    let settled = false;
+    const finish = user => { if (settled) return; settled = true; try { unsubscribe?.(); } catch (_) {} resolve(user || null); };
+    const unsubscribe = auth.onAuthStateChanged(finish);
+    setTimeout(() => finish(auth.currentUser || null), 10000);
+  });
+}
+
 async function ensureBackendSession(force = false) {
   if (!force && state.token) return state.token;
   if (!force) {
@@ -18,18 +38,32 @@ async function ensureBackendSession(force = false) {
   if (sessionPromise) return sessionPromise;
   sessionPromise = (async () => {
     try {
-      const firebaseUser = window.firebase?.auth?.()?.currentUser;
-      if (!firebaseUser) throw new Error('Please sign in to access your purchased eBook.');
-      const idToken = await firebaseUser.getIdToken(true);
+      const firebaseUser = await waitForFirebaseUser();
+      if (!firebaseUser) throw new Error('Authentication required. Please sign in again.');
+      const idToken = await firebaseUser.getIdToken(force);
+      console.log('[Library] Firebase UID:', firebaseUser.uid);
+      console.log('[Library] Firebase email:', firebaseUser.email || '');
       const response = await fetch(`${API}/api/auth/firebase`, {
-        method:'POST', headers:{ Authorization:`Bearer ${idToken}`, Accept:'application/json' }, cache:'no-store'
+        method:'POST',
+        headers:{ Authorization:`Bearer ${idToken}`, Accept:'application/json', 'Content-Type':'application/json' },
+        body: JSON.stringify({ firebaseUid: firebaseUser.uid, email: firebaseUser.email || '', role: state.currentUser?.role || 'buyer' }),
+        cache:'no-store'
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.token) throw new Error(data.error || 'Could not create a secure Bookora session.');
       state.token = data.token;
       state.isAuthenticated = true;
+      if (data.user) {
+        state.currentUser = {
+          ...(state.currentUser || {}),
+          ...data.user,
+          firebaseUid: firebaseUser.uid,
+          bookoraUserId: data.user.bookoraUserId || data.user.userId || data.user.id || state.currentUser?.bookoraUserId || null
+        };
+        console.log('[Library] Resolved Bookora user ID:', state.currentUser.bookoraUserId || '(missing)');
+      }
       localStorage.setItem('bookora_auth_token', data.token);
-      if (data.user) state.currentUser = { ...(state.currentUser || {}), ...data.user };
+      localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser || {}));
       return data.token;
     } finally { sessionPromise = null; }
   })();
@@ -51,17 +85,28 @@ async function backend(path, options = {}) {
 }
 
 async function syncPurchasedLibrary() {
-  if (!state.isAuthenticated) await ensureBackendSession(false);
+  // Wait for the existing Firebase auth bridge rather than treating a transient
+  // auth restoration window as an unauthenticated account.
+  const firebaseUser = await waitForFirebaseUser();
+  if (!firebaseUser) throw new Error('Authentication required. Please sign in again.');
+  if (!state.isAuthenticated || !state.currentUser?.bookoraUserId) await ensureBackendSession(false);
+
+  console.log('[Library] Firebase UID:', firebaseUser.uid);
+  console.log('[Library] Firebase email:', firebaseUser.email || '');
+  console.log('[Library] Resolved Bookora user ID:', state.currentUser?.bookoraUserId || '(backend resolved)');
+
   const response = await backend('/api/library');
   const data = await response.json().catch(() => ({}));
+  console.log('[Library] API response:', data);
   if (!response.ok) throw new Error(data.error || 'Unable to load your library.');
-  const books = Array.isArray(data) ? data : (Array.isArray(data.books) ? data.books : []);
-  for (const book of books) {
-    const id = String(book?.id || '').trim();
+  const books = Array.isArray(data) ? data : (Array.isArray(data.library) ? data.library : (Array.isArray(data.books) ? data.books : []));
+  for (const item of books) {
+    const book = item.bookId && !item.title ? (state.books.find(b => String(b.id) === String(item.bookId)) || item) : item;
+    const id = String(book?.id || book?.bookId || '').trim();
     if (id) state.library.add(id);
-    const existing = state.books.find(item => String(item.id) === id);
-    if (!existing && id) state.books.push(book);
+    if (book?.id && !state.books.some(existing => String(existing.id) === id)) state.books.push(book);
   }
+  console.log('[Library] Library items:', books.map(item => ({ id: item?.id || item?.bookId, title: item?.title })));
   return books;
 }
 
