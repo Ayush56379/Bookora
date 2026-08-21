@@ -1,7 +1,8 @@
 // Bookora purchased-access runtime.
 // This module owns authenticated protected PDF access.
-// Library listing is Firestore-direct in LibraryPage.js; it must never trigger
-// a backend auth/session request merely because the user opened /library.
+// Firebase is the browser identity source; the Render backend verifies the
+// Firebase ID token server-side through its existing direct-auth fallback.
+// Library listing remains Firestore-direct and never creates an auth session.
 import { state } from './state.js';
 import { apiUrl } from './config.js';
 import { ReaderModal } from './components/ReaderModal.js';
@@ -33,37 +34,18 @@ async function waitForFirebaseUser() {
 
 async function ensureBackendSession(force = false) {
   if (!force && state.token) return state.token;
-  if (!force) {
-    const cached = localStorage.getItem('bookora_auth_token') || '';
-    if (cached) { state.token = cached; return cached; }
-  }
   if (sessionPromise) return sessionPromise;
   sessionPromise = (async () => {
     try {
       const firebaseUser = await waitForFirebaseUser();
       if (!firebaseUser) throw new Error('Authentication required. Please sign in again.');
-      const idToken = await firebaseUser.getIdToken(force);
-      const response = await fetch(`${API}/api/auth/firebase`, {
-        method:'POST',
-        headers:{ Authorization:`Bearer ${idToken}`, Accept:'application/json', 'Content-Type':'application/json' },
-        body: JSON.stringify({ firebaseUid: firebaseUser.uid, email: firebaseUser.email || '', role: state.currentUser?.role || 'buyer' }),
-        cache:'no-store'
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.token) throw new Error(data.error || 'Could not create a secure Bookora session.');
-      state.token = data.token;
+      const idToken = await firebaseUser.getIdToken(!!force);
+      if (!idToken) throw new Error('Firebase authentication token is unavailable. Please sign in again.');
+      // Do not call /api/auth/firebase here. The backend already verifies this
+      // Firebase ID token directly and resolves the Bookora user securely.
+      state.token = idToken;
       state.isAuthenticated = true;
-      if (data.user) {
-        state.currentUser = {
-          ...(state.currentUser || {}),
-          ...data.user,
-          firebaseUid: firebaseUser.uid,
-          bookoraUserId: data.user.bookoraUserId || data.user.userId || data.user.id || state.currentUser?.bookoraUserId || null
-        };
-      }
-      localStorage.setItem('bookora_auth_token', data.token);
-      localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser || {}));
-      return data.token;
+      return idToken;
     } finally { sessionPromise = null; }
   })();
   return sessionPromise;
@@ -83,7 +65,6 @@ async function backend(path, options = {}) {
   return response;
 }
 
-// Explicit protected-access operation only. Never called automatically on login.
 async function syncPurchasedLibrary() {
   const firebaseUser = await waitForFirebaseUser();
   if (!firebaseUser) throw new Error('Authentication required. Please sign in again.');
@@ -158,5 +139,5 @@ window.BookoraPurchaseAccess = {
   fetchPurchasedPdf
 };
 
-// No USER_LOGGED_IN listener on purpose. The library page is Firestore-direct.
-// Backend authentication starts only after an explicit protected Read/Download.
+// No USER_LOGGED_IN listener. Protected backend authentication begins only
+// after an explicit Read/Download action.
