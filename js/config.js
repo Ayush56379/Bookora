@@ -1,5 +1,5 @@
 // Bookora frontend API configuration
-// All production data, uploads, AI and payments go through the Render backend.
+// Firebase Auth is the browser authentication authority for protected APIs.
 export const API_BASE_URL = 'https://bookora-backend-x08l.onrender.com';
 
 const endpointMap = {
@@ -23,19 +23,49 @@ const endpointMap = {
   '/api/cashfree/verify-order': '/api/cashfree/verify-order'
 };
 
+function getFirebaseAuth() {
+  try {
+    if (!window.firebase?.apps?.length || typeof window.firebase.auth !== 'function') return null;
+    return window.firebase.auth();
+  } catch (_) {
+    return null;
+  }
+}
+
+async function getFreshFirebaseIdToken(forceRefresh = false) {
+  const auth = getFirebaseAuth();
+  if (!auth) return '';
+  let user = auth.currentUser;
+  if (!user && window.BookoraFirebaseAuth?.waitForAuth) user = await window.BookoraFirebaseAuth.waitForAuth();
+  if (!user) return '';
+  try { return await user.getIdToken(!!forceRefresh); } catch (_) { return ''; }
+}
+
 export async function apiFetch(endpoint, options = {}) {
   const path = endpointMap[endpoint] || endpoint;
   const method = String(options.method || 'GET').toUpperCase();
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
-  if (statefulAuthToken(options)) headers.set('Authorization', `Bearer ${statefulAuthToken(options)}`);
-  if (method !== 'GET' && method !== 'HEAD' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  return fetch(`${API_BASE_URL}${path}`, { ...options, method, headers });
-}
 
-function statefulAuthToken(options) {
-  const h = options.headers || {};
-  return h.Authorization || h.authorization || '';
+  // Explicit caller headers remain supported, but Firebase is authoritative
+  // whenever a signed-in Firebase user exists. Never use localStorage tokens.
+  const firebaseToken = await getFreshFirebaseIdToken(false);
+  if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
+
+  if (method !== 'GET' && method !== 'HEAD' && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  let response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers });
+  if (response.status === 401) {
+    const refreshedToken = await getFreshFirebaseIdToken(true);
+    if (refreshedToken) {
+      const retryHeaders = new Headers(headers);
+      retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
+      response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers: retryHeaders });
+    }
+  }
+  return response;
 }
 
 export function apiUrl(path = '') { return `${API_BASE_URL}${path}`; }
