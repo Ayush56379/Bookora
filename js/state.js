@@ -78,6 +78,22 @@ class BookoraState {
     return { auth: window.firebase.auth(), db: window.firebase.firestore() };
   }
 
+  async resolveBookoraUser(firebaseUser, db) {
+    if (!firebaseUser) return null;
+    const email = String(firebaseUser.email || '').trim().toLowerCase();
+    let snapshot = await db.collection('users').doc(firebaseUser.uid).get();
+    let profile = snapshot.exists ? (snapshot.data() || {}) : {};
+    if (!snapshot.exists && email) {
+      const emailSnapshot = await db.collection('users').where('email', '==', email).limit(1).get();
+      if (!emailSnapshot.empty) {
+        snapshot = emailSnapshot.docs[0];
+        profile = snapshot.data() || {};
+      }
+    }
+    const bookoraUserId = String(profile.bookoraUserId || profile.userId || profile.user_id || profile.id || profile.bookora_user_id || '').trim();
+    return { ...profile, uid: firebaseUser.uid, email: firebaseUser.email || profile.email || '', bookoraUserId: bookoraUserId || null, firebaseUid: firebaseUser.uid };
+  }
+
   async startFirebaseSession() {
     try {
       const { auth } = await this.getFirebase();
@@ -100,13 +116,14 @@ class BookoraState {
   async loadAuthenticatedUser(firebaseUser) {
     if (!firebaseUser) return;
     const { db } = await this.getFirebase();
-    const userRef = db.collection('users').doc(firebaseUser.uid);
-    const snapshot = await userRef.get();
-    const profile = snapshot.exists ? (snapshot.data() || {}) : {};
+    const profile = await this.resolveBookoraUser(firebaseUser, db) || {};
     const email = firebaseUser.email || profile.email || '';
     const isMasterAdmin = String(email).toLowerCase() === MASTER_ADMIN_EMAIL;
     const user = {
+      ...profile,
       uid: firebaseUser.uid,
+      firebaseUid: firebaseUser.uid,
+      bookoraUserId: profile.bookoraUserId || null,
       email,
       name: profile.name || firebaseUser.displayName || email.split('@')[0] || 'Bookora User',
       photoURL: profile.photoURL || firebaseUser.photoURL || '',
@@ -114,8 +131,8 @@ class BookoraState {
       status: profile.status || 'active',
       seller_status: profile.seller_status || 'none',
       isMasterAdmin,
-      createdAt: profile.createdAt || null,
-      updatedAt: profile.updatedAt || null
+      createdAt: profile.createdAt || profile.created_at || null,
+      updatedAt: profile.updatedAt || profile.updated_at || null
     };
     this.currentUser = user;
     this.isAuthenticated = true;
@@ -124,6 +141,9 @@ class BookoraState {
     this.activeMode = this.isAdmin ? 'admin' : this.isSeller ? 'seller' : 'buyer';
     localStorage.setItem('bookora_user_profile', JSON.stringify(user));
     localStorage.setItem('bookora_active_mode', this.activeMode);
+    console.log('[Library] Firebase UID:', firebaseUser.uid);
+    console.log('[Library] Firebase email:', firebaseUser.email || '');
+    console.log('[Library] Resolved Bookora user ID:', user.bookoraUserId || '(missing)');
     this.notify('USER_LOGGED_IN', user);
     await this.syncData();
   }
@@ -172,24 +192,29 @@ class BookoraState {
         if (publicSettings.exists) this.settings = publicSettings.data() || {};
       } catch (error) { console.warn('Settings sync skipped:', error.message); }
       if (this.isAuthenticated && this.currentUser?.uid) {
-        const uid = this.currentUser.uid;
         try {
-          const userSnapshot = await db.collection('users').doc(uid).get();
-          if (userSnapshot.exists) {
-            const user = userSnapshot.data();
-            this.currentUser = { uid, ...user };
-            this.isAdmin = user.role === 'admin' || user.isMasterAdmin === true || String(user.email || '').toLowerCase() === MASTER_ADMIN_EMAIL;
-            this.isSeller = this.isAdmin || user.seller_status === 'approved' || user.role === 'creator' || user.role === 'seller';
+          const profile = await this.resolveBookoraUser({ uid: this.currentUser.uid, email: this.currentUser.email }, db);
+          if (profile) {
+            this.currentUser = { ...this.currentUser, ...profile, bookoraUserId: profile.bookoraUserId || this.currentUser.bookoraUserId || null };
+            this.isAdmin = this.currentUser.role === 'admin' || this.currentUser.isMasterAdmin === true || String(this.currentUser.email || '').toLowerCase() === MASTER_ADMIN_EMAIL;
+            this.isSeller = this.isAdmin || this.currentUser.seller_status === 'approved' || this.currentUser.role === 'creator' || this.currentUser.role === 'seller';
             localStorage.setItem('bookora_user_profile', JSON.stringify(this.currentUser));
           }
         } catch (error) { console.warn('User profile sync skipped:', error.message); }
       }
       try {
-        const [librarySnapshot, wishlistSnapshot] = await Promise.all([
-          db.collection('library').where('userId', '==', this.currentUser?.uid || '').get(),
-          db.collection('wishlists').doc(this.currentUser?.uid || '__anonymous__').get()
-        ]);
-        this.library = new Set(librarySnapshot.docs.map(doc => String(doc.data()?.bookId || doc.data()?.book_id || '')));
+        const resolvedUserId = String(this.currentUser?.bookoraUserId || this.currentUser?.userId || this.currentUser?.id || '').trim();
+        let librarySnapshot = { docs: [] };
+        if (resolvedUserId) {
+          // Use a single Firestore field filter and check accessStatus locally.
+          // This avoids requiring a composite Firestore index for the library.
+          librarySnapshot = await db.collection('library').where('userId', '==', resolvedUserId).get();
+        }
+        const wishlistSnapshot = await db.collection('wishlists').doc(this.currentUser?.uid || '__anonymous__').get();
+        const activeLibraryDocs = librarySnapshot.docs.filter(doc => String(doc.data()?.accessStatus || 'active').toLowerCase() === 'active');
+        this.library = new Set(activeLibraryDocs.map(doc => String(doc.data()?.bookId || doc.data()?.book_id || '')).filter(Boolean));
+        console.log('[Library] Firestore query userId:', resolvedUserId || '(missing)');
+        console.log('[Library] Firestore active library records:', activeLibraryDocs.length);
         const wishlistIds = wishlistSnapshot.exists && Array.isArray(wishlistSnapshot.data()?.bookIds) ? wishlistSnapshot.data().bookIds : [];
         this.wishlist = new Set(wishlistIds.map(id => String(id)));
       } catch (error) { console.warn('Library/wishlist sync skipped:', error.message); }
@@ -247,10 +272,6 @@ class BookoraState {
     b.slug = b.slug || b.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     b.cover_url = b.cover_url || b.coverUrl || b.cover_image_url || b.coverImageUrl || '';
     b.cover_file_id = b.cover_file_id || b.coverFileId || '';
-
-    // Preserve the PDF fields needed by the free-sample reader. These were
-    // previously dropped during normalization, so the detail page had no
-    // pdf_file_id/pdf_url to send to the Google Apps Script sample endpoint.
     b.pdf_file_id = b.pdf_file_id || b.pdfFileId || b.file_id || b.fileId || '';
     b.pdf_url = b.pdf_url || b.pdfUrl || b.file_url || b.fileUrl || b.download_url || b.downloadUrl || '';
     b.sample_pdf_url = b.sample_pdf_url || b.samplePdfUrl || b.preview_pdf_url || b.previewPdfUrl || '';
