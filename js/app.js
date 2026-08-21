@@ -19,7 +19,7 @@ import { renderLibraryPage, initLibraryEvents } from './pages/LibraryPage.js';
 import { renderOrdersPage } from './pages/OrdersPage.js';
 import { renderWishlistPage } from './pages/WishlistPage.js';
 import { renderCheckoutPage, initCheckoutEvents } from './pages/CheckoutPage.js';
-import { renderPaymentSuccessPage } from './pages/PaymentSuccessPage.js?v=20260821-3';
+import { renderPaymentSuccessPage } from './pages/PaymentSuccessPage.js?v=20260821-4';
 import { renderPaymentFailedPage } from './pages/PaymentFailedPage.js';
 import { renderCreatorDashboardPage, initCreatorDashboardEvents } from './pages/CreatorDashboardPage.js';
 import { renderPublishInternalPage, initPublishInternalEvents } from './pages/PublishInternalPage.js';
