@@ -1,5 +1,6 @@
 import { apiFetch } from '../config.js';
 import { state } from '../state.js';
+import { getFreshFirebaseIdToken } from '../firebase-authenticated-fetch.js';
 import { updateSEO } from '../utils/seo.js';
 import { formatPrice } from '../utils/formatters.js';
 import { Toast } from '../components/Toast.js';
@@ -132,18 +133,22 @@ export function initPublishExternalEvents() {
   form?.addEventListener('submit',async e=>{
     e.preventDefault();
     const pdf=pdfInput?.files?.[0];
-    if(!state.token){Toast.show('Please sign in before submitting.','warning');return;}
+    const token = await getFreshFirebaseIdToken(true);
+    if(!token){Toast.show('Please sign in before submitting.','warning');return;}
+    state.token = token;
+    state.isAuthenticated = true;
     if(!pdf||pdf.type!=='application/pdf'){Toast.show('Please select a valid PDF file.','warning');return;}
     if(!confirm.checked){Toast.show('Please confirm authorization.','warning');return;}
     submit.disabled=true;submit.textContent='Uploading PDF…';
     try{
       const pdfData=await fileToDataUrl(pdf);
-      const uploadRes=await apiFetch('/api/books/upload-files',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.token}`},body:JSON.stringify({pdf:{name:pdf.name,mimeType:'application/pdf',data:pdfData}})});
+      const authHeaders={'Content-Type':'application/json','Authorization':`Bearer ${token}`};
+      const uploadRes=await apiFetch('/api/books/upload-files',{method:'POST',headers:authHeaders,body:JSON.stringify({pdf:{name:pdf.name,mimeType:'application/pdf',data:pdfData}})});
       const upload=await uploadRes.json();
       if(!uploadRes.ok||!upload.success)throw new Error(upload.error||'PDF upload failed.');
       submit.textContent='Creating listing…';
       const payload={title:document.getElementById('ext-title').value.trim(),subtitle:document.getElementById('ext-subtitle').value.trim(),author:document.getElementById('ext-author').value.trim(),publisher:document.getElementById('ext-publisher').value.trim(),price:Number(document.getElementById('ext-price').value),original_price:Number(document.getElementById('ext-price').value),original_currency:document.getElementById('ext-currency').value.trim()||'INR',category:document.getElementById('ext-category').value,language:document.getElementById('ext-language').value.trim(),pages:Number(document.getElementById('ext-pages').value||0),format:document.getElementById('ext-format').value.trim()||'PDF',isbn:document.getElementById('ext-isbn').value.trim(),cover_url:document.getElementById('ext-cover-url').value.trim(),description:document.getElementById('ext-description').value.trim(),source_url:urlInput.value.trim(),canonical_url:imported?.canonical_url||urlInput.value.trim(),source_domain:imported?.source_domain||'',pdf_file_id:upload.pdf_file_id||'',pdf_url:upload.pdf_url||''};
-      const res=await apiFetch('/api/publish/external',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.token}`},body:JSON.stringify(payload)});
+      const res=await apiFetch('/api/publish/external',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify(payload)});
       const data=await res.json();
       if(!res.ok||!data.success)throw new Error(data.error||'External listing creation failed.');
       createdBookId=data.book?.id||'';
@@ -153,7 +158,7 @@ export function initPublishExternalEvents() {
         document.getElementById('ext-copy-code')?.addEventListener('click',async()=>{await navigator.clipboard?.writeText(integration.header_code||'');Toast.show('Verification code copied.','success');});
         document.getElementById('ext-verify-site')?.addEventListener('click',async()=>{
           const btn=document.getElementById('ext-verify-site');const out=document.getElementById('ext-verify-result');btn.disabled=true;btn.textContent='Checking website…';
-          try{const vr=await apiFetch('/api/external/integration/verify',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${state.token}`},body:JSON.stringify({book_id:createdBookId})});const vd=await vr.json();if(!vr.ok||!vd.verified)throw new Error(vd.error||'Verification failed.');out.textContent='✓ Website verified. The listing can now proceed to Admin moderation. The buyer will pay on the external site and receive Bookora Library access only after verified seller-server payment confirmation.';out.style.color='#166534';Toast.show('External website verified successfully.','success');}catch(err){out.textContent='✗ '+(err.message||'Verification failed.');out.style.color='#b91c1c';}finally{btn.disabled=false;btn.textContent='Verify Website';}
+          try{const vr=await apiFetch('/api/external/integration/verify',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify({book_id:createdBookId})});const vd=await vr.json();if(!vr.ok||!vd.verified)throw new Error(vd.error||'Verification failed.');out.textContent='✓ Website verified. The listing can now proceed to Admin moderation. The buyer will pay on the external site and receive Bookora Library access only after verified seller-server payment confirmation.';out.style.color='#166534';Toast.show('External website verified successfully.','success');}catch(err){out.textContent='✗ '+(err.message||'Verification failed.');out.style.color='#b91c1c';}finally{btn.disabled=false;btn.textContent='Verify Website';}
         });
       }
       submit.textContent='PDF uploaded • Listing created';
