@@ -1,8 +1,17 @@
 // Bookora Firebase identity bridge.
-// IMPORTANT: Firebase ID tokens and Bookora backend session tokens are different.
-// Never place a Firebase ID token into state.token because protected Render APIs
-// expect the Bookora session token returned by /api/auth/firebase.
+// Firebase ID tokens are used only when no Bookora backend session token exists.
+// The Render backend verifies Firebase tokens server-side before allowing protected actions.
 import { state } from './state.js';
+
+const BACKEND_TOKEN_KEY = 'bookora_auth_token';
+
+function hasBackendSession() {
+  try {
+    return !!String(localStorage.getItem(BACKEND_TOKEN_KEY) || '').trim();
+  } catch (_) {
+    return false;
+  }
+}
 
 async function getFirebaseIdToken(forceRefresh = false) {
   try {
@@ -13,6 +22,17 @@ async function getFirebaseIdToken(forceRefresh = false) {
     console.warn('[Auth Token Bridge] Firebase ID token read failed:', error?.message || error);
     return '';
   }
+}
+
+async function syncFirebaseToken(forceRefresh = false) {
+  // Prefer the normal Bookora session whenever one exists.
+  if (hasBackendSession()) return '';
+  const token = await getFirebaseIdToken(forceRefresh);
+  if (token) {
+    state.token = token;
+    state.isAuthenticated = true;
+  }
+  return token;
 }
 
 async function start() {
@@ -26,14 +46,24 @@ async function start() {
 
   try {
     const auth = window.firebase.auth();
-    auth.onAuthStateChanged(() => {
-      // Restore only an existing Bookora API session. Do not overwrite it with
-      // the Firebase ID token.
+    auth.onAuthStateChanged(async user => {
+      if (!user) return;
+      await syncFirebaseToken(false);
+
+      // Firebase ID tokens are short-lived. Keep the protected API token fresh
+      // while the user remains signed in. Never overwrite an existing Bookora
+      // backend session token.
       try {
-        const backendToken = String(localStorage.getItem('bookora_auth_token') || '').trim();
-        if (backendToken) state.token = backendToken;
+        user.getIdToken().then(token => {
+          if (token && !hasBackendSession()) state.token = token;
+        }).catch(() => {});
       } catch (_) {}
     });
+
+    // Keep Firebase token state current without forcing a refresh on every request.
+    setInterval(() => {
+      if (auth.currentUser && !hasBackendSession()) syncFirebaseToken(true).catch(() => {});
+    }, 45 * 60 * 1000);
   } catch (error) {
     console.warn('[Auth Token Bridge] Startup failed:', error?.message || error);
   }
@@ -41,4 +71,4 @@ async function start() {
 
 start();
 
-export { getFirebaseIdToken };
+export { getFirebaseIdToken, syncFirebaseToken };
