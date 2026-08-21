@@ -8,6 +8,20 @@ let submitBusy = false;
 function clean(value = '') { return String(value || '').trim(); }
 function getToken() { return clean(state.token); }
 
+async function ensureBookoraSession() {
+  // A Firebase login does not automatically mean the Render API has a
+  // Bookora session. Always establish/restore the backend session immediately
+  // before a protected external-listing submission.
+  try {
+    if (window.BookoraBackendSession?.ensureBackendSession) {
+      return clean(await window.BookoraBackendSession.ensureBackendSession());
+    }
+  } catch (error) {
+    console.warn('[External Listing] Backend session restore failed:', error?.message || error);
+  }
+  return getToken();
+}
+
 function hideOldFulfillmentUI(form) {
   form?.querySelectorAll('#bookora-external-fulfillment-box, .bookora-ext-fulfillment').forEach(el => el.remove());
 }
@@ -57,12 +71,19 @@ async function submitExternalForm(form) {
   if (!checkbox?.checked) { Toast.show('Please confirm that you have permission to list and promote this eBook.', 'warning'); return; }
   if (!url) { Toast.show('Original sales-page URL is required.', 'warning'); return; }
   if (!/^https?:\/\//i.test(url)) { Toast.show('Please enter a valid public HTTP/HTTPS sales-page URL.', 'warning'); return; }
-  if (!getToken()) { Toast.show('Please sign in again before submitting the external listing.', 'error'); return; }
 
   submitBusy = true;
-  if (submit) { submit.disabled = true; submit.textContent = 'Submitting external listing…'; }
+  if (submit) { submit.disabled = true; submit.textContent = 'Checking secure sign-in…'; }
 
   try {
+    // Do this at submit time, not only at page-load time. This fixes the case
+    // where Firebase has a signed-in user but state.token/localStorage does not
+    // yet contain the protected Bookora Render session token.
+    let token = await ensureBookoraSession();
+    if (!token) throw new Error('Please sign in to Bookora before submitting the external listing.');
+
+    if (submit) submit.textContent = 'Submitting external listing…';
+
     const price = Number(document.getElementById('ext-price')?.value || 0);
     const payload = {
       title: clean(document.getElementById('ext-title')?.value),
@@ -81,11 +102,29 @@ async function submitExternalForm(form) {
       description: clean(document.getElementById('ext-description')?.value),
       source_url: url, canonical_url: url, rights_confirmed: true
     };
-    const res = await apiFetch('/api/publish/external', {
+
+    let res = await apiFetch('/api/publish/external', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify(payload)
     });
+
+    // If an old/stale Bookora session is stored, recover it once from the
+    // currently signed-in Firebase account and retry. Never loop endlessly.
+    if (res.status === 401 || res.status === 403) {
+      try {
+        localStorage.removeItem('bookora_auth_token');
+        state.token = '';
+      } catch (_) {}
+      token = await ensureBookoraSession();
+      if (!token) throw new Error('Your sign-in session expired. Please sign in again and retry.');
+      res = await apiFetch('/api/publish/external', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(payload)
+      });
+    }
+
     const result = await res.json().catch(() => ({}));
     if (!res.ok || !result.success) throw new Error(result.error || 'External listing could not be created.');
 
@@ -95,7 +134,7 @@ async function submitExternalForm(form) {
   } catch (error) {
     console.error('Bookora external listing failed:', error);
     Toast.show(error?.message || 'External listing failed. Please try again.', 'error');
-    if (submit) { submit.disabled = false; submit.textContent = 'Submit External Listing for Moderation Review'; }
+    if (submit) { submit.disabled = false; submit.textContent = 'Upload PDF & Submit External Listing'; }
   } finally { submitBusy = false; }
 }
 
