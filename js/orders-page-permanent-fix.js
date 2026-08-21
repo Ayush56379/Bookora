@@ -1,13 +1,14 @@
 /* Bookora Orders permanent data bridge.
- * The payment backend stores orders against the Bookora application user id
- * (order.user_id), not necessarily the Firebase Auth uid. Resolve that id from
- * the authenticated Firestore user profile and load the real orders collection.
+ * Orders are owned by the Bookora application user id (usr-xxxx), while
+ * Firebase Auth uses a different uid. Resolve the application id first and
+ * query Firestore orders by that id. Keep Firebase/email fallbacks for older
+ * records. Never use a broad orders read because that would expose other
+ * buyers' transactions.
  */
 import { state } from './state.js';
 
 let running = false;
-let lastSignature = '';
-let unsubscribeOrders = null;
+let unsubscribeAuth = null;
 
 function firebaseAuthUser() {
   try { return window.firebase?.auth?.()?.currentUser || null; } catch (_) { return null; }
@@ -56,39 +57,62 @@ function setOrders(found) {
   state.notify('ORDERS_SYNCED', orders);
 }
 
-async function resolveBookoraUserId(db, authUser) {
+function addCandidate(list, value) {
+  if (value != null && String(value).trim()) list.push(String(value).trim());
+}
+
+async function resolveBookoraUserIds(db, authUser) {
   const candidates = [];
   const stateUser = state.currentUser || {};
-  for (const value of [stateUser.id, stateUser.userId, stateUser.bookoraUserId]) {
-    if (value != null && String(value).trim()) candidates.push(String(value).trim());
+
+  // Cached/session profile can already contain the application identity.
+  addCandidate(candidates, stateUser.id);
+  addCandidate(candidates, stateUser.userId);
+  addCandidate(candidates, stateUser.bookoraUserId);
+  addCandidate(candidates, stateUser.bookora_user_id);
+
+  const inspectProfile = (profile, docId = '') => {
+    const p = profile || {};
+    addCandidate(candidates, p.id);
+    addCandidate(candidates, p.userId);
+    addCandidate(candidates, p.bookoraUserId);
+    addCandidate(candidates, p.bookora_user_id);
+    addCandidate(candidates, p.applicationUserId);
+    addCandidate(candidates, p.application_user_id);
+    // Only use the document id if the document explicitly represents this
+    // Firebase user. A Firebase uid itself must never be treated as usr-xxxx.
+    if (p.firebaseUid === authUser.uid || p.firebase_uid === authUser.uid || p.authUid === authUser.uid || p.auth_uid === authUser.uid) {
+      addCandidate(candidates, docId);
+    }
+  };
+
+  // Normal Firebase layout: users/{firebaseUid}.
+  try {
+    const byUid = await db.collection('users').doc(authUser.uid).get({ source: 'server' });
+    if (byUid.exists) inspectProfile(byUid.data(), byUid.id);
+  } catch (error) {
+    console.warn('[Bookora Orders] users/{uid} lookup skipped:', error.message);
   }
 
-  // The backend creates orders with user.get("id"), which is the Bookora
-  // application user id (usr-xxxx), not Firebase's uid. Resolve it from the
-  // Firestore users profile when the cached state does not contain it.
-  if (authUser?.email) {
+  // Some Bookora user records store the Firebase identity in a field instead
+  // of using it as the document id. Support all known variants.
+  for (const field of ['uid', 'firebaseUid', 'firebase_uid', 'authUid', 'auth_uid']) {
     try {
-      const byUid = await db.collection('users').doc(authUser.uid).get({ source: 'server' });
-      if (byUid.exists) {
-        const profile = byUid.data() || {};
-        for (const value of [profile.id, profile.userId, profile.bookoraUserId]) {
-          if (value != null && String(value).trim()) candidates.push(String(value).trim());
-        }
-      }
+      const snap = await db.collection('users').where(field, '==', authUser.uid).limit(10).get({ source: 'server' });
+      snap.forEach(doc => inspectProfile(doc.data(), doc.id));
     } catch (error) {
-      console.warn('[Bookora Orders] user profile lookup skipped:', error.message);
+      console.warn(`[Bookora Orders] users.${field} lookup skipped:`, error.message);
     }
+  }
 
-    try {
-      const byEmail = await db.collection('users').where('email', '==', authUser.email).limit(5).get({ source: 'server' });
-      byEmail.forEach(doc => {
-        const profile = doc.data() || {};
-        for (const value of [profile.id, profile.userId, profile.bookoraUserId, doc.id]) {
-          if (value != null && String(value).trim()) candidates.push(String(value).trim());
-        }
-      });
-    } catch (error) {
-      console.warn('[Bookora Orders] email user lookup skipped:', error.message);
+  if (authUser.email) {
+    for (const field of ['email', 'userEmail', 'user_email']) {
+      try {
+        const snap = await db.collection('users').where(field, '==', authUser.email).limit(10).get({ source: 'server' });
+        snap.forEach(doc => inspectProfile(doc.data(), doc.id));
+      } catch (error) {
+        console.warn(`[Bookora Orders] users.${field} lookup skipped:`, error.message);
+      }
     }
   }
 
@@ -101,7 +125,7 @@ async function queryOrders(db, field, value, found) {
     const snap = await db.collection('orders').where(field, '==', value).get({ source: 'server' });
     snap.forEach(doc => found.set(doc.id, normalize(doc.data(), doc.id)));
   } catch (error) {
-    console.warn(`[Bookora Orders] query ${field} skipped:`, error.message);
+    console.warn(`[Bookora Orders] query ${field}=${value} skipped:`, error.message);
   }
 }
 
@@ -114,15 +138,21 @@ async function loadOrders() {
   try {
     const db = window.firebase.firestore();
     const found = new Map();
-    const appUserIds = await resolveBookoraUserId(db, authUser);
+    const appUserIds = await resolveBookoraUserIds(db, authUser);
 
-    // IMPORTANT: production checkout stores order.user_id = Bookora user's
-    // application id. Query that first, then retain Firebase/email fallbacks
-    // for older orders.
-    for (const id of appUserIds) await queryOrders(db, 'userId', id, found);
+    // PRIMARY: the production order shown by the user has userId=usr-077055af.
+    // Resolve that Bookora id and query it directly.
+    for (const appUserId of appUserIds) {
+      await queryOrders(db, 'userId', appUserId, found);
+      await queryOrders(db, 'user_id', appUserId, found);
+      await queryOrders(db, 'buyerId', appUserId, found);
+      await queryOrders(db, 'buyer_id', appUserId, found);
+    }
+
+    // Legacy ownership formats.
     await queryOrders(db, 'userId', authUser.uid, found);
-    await queryOrders(db, 'buyerId', authUser.uid, found);
     await queryOrders(db, 'user_id', authUser.uid, found);
+    await queryOrders(db, 'buyerId', authUser.uid, found);
     await queryOrders(db, 'buyer_id', authUser.uid, found);
 
     if (authUser.email) {
@@ -133,7 +163,6 @@ async function loadOrders() {
     }
 
     setOrders(found);
-    lastSignature = `${authUser.uid}:${appUserIds.join(',')}:${found.size}`;
   } catch (error) {
     console.warn('[Bookora Orders] Firestore order history failed:', error);
   } finally {
@@ -141,30 +170,25 @@ async function loadOrders() {
   }
 }
 
-function attachRealtimeListener() {
-  try {
-    const authUser = firebaseAuthUser();
-    if (!authUser || !window.firebase?.firestore) return;
-    if (unsubscribeOrders) { unsubscribeOrders(); unsubscribeOrders = null; }
-    // A lightweight refresh listener is used instead of a broad collection
-    // listener because the backend ownership id can differ from Firebase uid.
-    unsubscribeOrders = window.firebase.auth().onAuthStateChanged(() => {
-      window.setTimeout(loadOrders, 100);
-    });
-  } catch (_) {}
-}
-
 function boot() {
   loadOrders();
-  attachRealtimeListener();
+
   state.subscribe((event) => {
     if (event === 'USER_LOGGED_IN' || event === 'AUTH_STATE_CHANGED' || event === 'DATA_SYNCED' || event === 'ORDERS_SYNCED') {
       window.setTimeout(loadOrders, 100);
     }
   });
+
+  try {
+    if (window.firebase?.auth) {
+      unsubscribeAuth = window.firebase.auth().onAuthStateChanged(() => window.setTimeout(loadOrders, 100));
+    }
+  } catch (_) {}
+
   window.addEventListener('hashchange', () => {
     if (window.location.hash.split('?')[0] === '#/orders') loadOrders();
   });
+
   let attempts = 0;
   const timer = window.setInterval(() => {
     attempts += 1;
