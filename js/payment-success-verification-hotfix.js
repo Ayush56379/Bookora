@@ -3,7 +3,7 @@
 // after the SPA has rendered; it intentionally does NOT use MutationObserver,
 // because DOM mutations caused by the payment result must never start a second
 // verification request that can overwrite the result.
-import { initPaymentSuccessEvents } from './pages/PaymentSuccessPage.js';
+import { initPaymentSuccessEvents } from './pages/PaymentSuccessPage.js?v=20260821-3';
 
 let startedOrderId = '';
 let scheduled = false;
