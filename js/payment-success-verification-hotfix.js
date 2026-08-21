@@ -1,6 +1,6 @@
 // Payment-success verification bootstrap.
 // PaymentSuccessPage.js is the single owner of payment result state.
-import { initPaymentSuccessEvents } from './pages/PaymentSuccessPage.js?v=20260821-4';
+import { initPaymentSuccessEvents } from './pages/PaymentSuccessPage.js?v=20260821-6';
 
 let startedOrderId = '';
 let scheduled = false;
