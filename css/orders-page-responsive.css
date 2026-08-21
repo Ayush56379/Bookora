@@ -1,0 +1,37 @@
+/* Bookora Order History — responsive cards/table */
+.orders-page{width:100%;overflow-x:hidden}
+.orders-page .orders-shell{width:100%;min-width:0}
+.orders-page .orders-card{width:100%;min-width:0;overflow:hidden}
+.orders-page .orders-table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.orders-page .orders-table{width:100%;min-width:760px;border-collapse:collapse}
+.orders-page .orders-table th,.orders-page .orders-table td{vertical-align:middle}
+.orders-page .orders-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere;word-break:break-all}
+.orders-page .orders-book-title{overflow-wrap:anywhere;line-height:1.35}
+.orders-page .orders-actions{display:flex;justify-content:flex-end;gap:.5rem;flex-wrap:wrap}
+.orders-page .orders-status{white-space:nowrap}
+.orders-page .orders-mobile-list{display:none}
+.orders-page .orders-mobile-item{border:1px solid var(--border-subtle);border-radius:16px;padding:1rem;background:#fff}
+.orders-page .orders-mobile-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem .8rem;align-items:start}
+.orders-page .orders-mobile-label{font-size:.75rem;color:var(--text-muted)}
+.orders-page .orders-mobile-value{text-align:right;overflow-wrap:anywhere;word-break:break-word}
+
+@media (max-width:760px){
+  .orders-page{padding:1.5rem 0 3rem!important}
+  .orders-page .container{padding-left:.9rem!important;padding-right:.9rem!important}
+  .orders-page .orders-heading{margin-bottom:1.25rem!important}
+  .orders-page .orders-heading h1{font-size:clamp(1.7rem,8vw,2.2rem)!important}
+  .orders-page .orders-heading p{font-size:.88rem!important;line-height:1.5}
+  .orders-page .orders-table-wrap{display:none}
+  .orders-page .orders-mobile-list{display:grid;gap:.75rem;padding:.8rem}
+  .orders-page .orders-mobile-item{box-shadow:0 4px 18px rgba(15,23,42,.05)}
+  .orders-page .orders-mobile-grid{grid-template-columns:1fr;gap:.15rem .8rem}
+  .orders-page .orders-mobile-value{text-align:left}
+  .orders-page .orders-mobile-action{width:100%;margin-top:.65rem}
+  .orders-page .orders-mobile-action .btn{width:100%;min-height:46px}
+}
+
+@media (max-width:380px){
+  .orders-page .container{padding-left:.65rem!important;padding-right:.65rem!important}
+  .orders-page .orders-mobile-list{padding:.55rem}
+  .orders-page .orders-mobile-item{padding:.85rem}
+}
