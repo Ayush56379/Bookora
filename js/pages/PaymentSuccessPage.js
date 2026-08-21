@@ -5,8 +5,6 @@ import { formatPrice } from '../utils/formatters.js';
 import { ReaderModal } from '../components/ReaderModal.js';
 import { downloadEBook } from '../utils/pdfDownloader.js';
 
-// A payment-success route may be initialized by more than one SPA hook.
-// Keep one terminal state per order so a stale request can never downgrade PAID.
 const paymentFlows = new Map();
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -32,13 +30,14 @@ async function waitForFirebaseUser(timeoutMs = 15000) {
     if (auth.currentUser) return auth.currentUser;
     return await new Promise(resolve => {
       let done = false;
+      let unsubscribe = null;
       const finish = user => {
         if (done) return;
         done = true;
         try { unsubscribe?.(); } catch (_) {}
         resolve(user || null);
       };
-      const unsubscribe = auth.onAuthStateChanged(finish);
+      unsubscribe = auth.onAuthStateChanged(finish);
       setTimeout(() => finish(auth.currentUser || null), timeoutMs);
     });
   } catch (_) {
@@ -46,16 +45,10 @@ async function waitForFirebaseUser(timeoutMs = 15000) {
   }
 }
 
-// Do not depend on another asynchronously-loaded module to create the backend
-// session. The payment-success route can execute before payment-auth-session-fix.js
-// because ES modules are evaluated asynchronously. Exchange the Firebase ID token
-// here as a self-contained fallback/primary path, eliminating that race completely.
 async function ensureBackendSession(force = false) {
   if (!force && state.token) return true;
-
   const firebaseUser = await waitForFirebaseUser();
   if (!firebaseUser) return false;
-
   try {
     const firebaseIdToken = await firebaseUser.getIdToken(!!force);
     const api = String(window.BOOKORA_API_URL || apiUrl('')).replace(/\/$/, '');
@@ -71,7 +64,6 @@ async function ensureBackendSession(force = false) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.token) throw new Error(data.error || 'Secure session creation failed.');
-
     state.token = data.token;
     state.isAuthenticated = true;
     if (data.user) state.currentUser = { ...(state.currentUser || {}), ...data.user };
@@ -136,7 +128,20 @@ function bindSuccess(book) {
   document.getElementById('success-read-btn')?.addEventListener('click', () => book && ReaderModal.open(book, false));
   document.getElementById('success-download-btn')?.addEventListener('click', () => book && downloadEBook(book, state.currentUser));
 }
-export function renderPaymentSuccessPage() { return loadingMarkup(); }
+
+// The SPA router previously rendered this page but did not register an init
+// callback for it. Start verification after the router inserts #main-content.
+// This makes the payment-success route self-starting and removes the dependency
+// on a separately loaded bootstrap script.
+export function renderPaymentSuccessPage() {
+  const orderId = getOrderId();
+  if (orderId) {
+    setTimeout(() => {
+      try { initPaymentSuccessEvents(); } catch (error) { console.error('Payment verification start failed:', error); }
+    }, 0);
+  }
+  return loadingMarkup();
+}
 
 export function initPaymentSuccessEvents() {
   const orderId = getOrderId();
@@ -158,7 +163,6 @@ export function initPaymentSuccessEvents() {
       const order = result.order || {};
       const book = getBookForOrder(order);
 
-      // PAID is terminal for this page. Nothing may render Pending afterwards.
       if (stateValue === 'PAID' || result.paid === true) {
         flow.state = 'PAID';
         paymentFlows.set(orderId, flow);
