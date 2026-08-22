@@ -1,5 +1,5 @@
 // Bookora global language runtime.
-// Google Website Translator handles full visible-site translation.
+// Full visible-site translation is handled by Google Website Translator only when a non-English language is selected.
 // Firebase/Firestore persists the signed-in user's language preference.
 (() => {
   'use strict';
@@ -43,8 +43,7 @@
     const user = auth()?.currentUser;
     if (!user || !window.firebase?.firestore) return false;
     try {
-      const db = window.firebase.firestore();
-      await db.collection('users').doc(user.uid).set({
+      await window.firebase.firestore().collection('users').doc(user.uid).set({
         languageCode: code,
         languageName: MAP[code] || MAP[DEFAULT],
         languageUpdatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
@@ -60,17 +59,14 @@
     const user = auth()?.currentUser;
     if (!user || !window.firebase?.firestore) return;
     try {
-      const local = getCode();
+      const hasLocal = (() => { try { return !!localStorage.getItem(KEY); } catch (_) { return false; } })();
       const snap = await window.firebase.firestore().collection('users').doc(user.uid).get();
       const remote = String(snap.data()?.languageCode || '').trim();
-      // An explicit local choice wins; otherwise use the saved Firebase choice.
-      const hasLocal = (() => { try { return !!localStorage.getItem(KEY); } catch (_) { return false; } })();
-      const code = hasLocal ? local : (MAP[remote] ? remote : DEFAULT);
-      if (code !== getCode()) {
-        localStorage.setItem(KEY, code);
-        setCookie(code);
+      if (!hasLocal && MAP[remote]) {
+        localStorage.setItem(KEY, remote);
+        setCookie(remote);
         window.location.reload();
-      } else if (code !== DEFAULT) setCookie(code);
+      }
     } catch (e) { console.warn('[Bookora Language] Firestore load skipped:', e?.message || e); }
   }
 
@@ -99,6 +95,7 @@
   window.googleTranslateElementInit = () => { ensureTranslateHost(); initTranslator(); };
 
   function loadTranslator() {
+    if (getCode() === DEFAULT) return;
     if (window.google?.translate?.TranslateElement) return initTranslator();
     if (document.getElementById('bookora-google-translate-script')) return;
     const script = document.createElement('script');
@@ -126,9 +123,12 @@
   }
 
   function start() {
-    ensureTranslateHost();
-    loadTranslator();
+    if (!document.body) return;
     setupLanguageSelect();
+    if (getCode() !== DEFAULT) {
+      ensureTranslateHost();
+      loadTranslator();
+    }
     const observer = new MutationObserver(() => setupLanguageSelect());
     observer.observe(document.body, {childList:true, subtree:true});
     const a = auth();
@@ -139,10 +139,18 @@
     window.BOOKORA_LANGUAGE = {
       languages: LANGUAGES.map(([code,name]) => ({code,name})),
       get: getCode,
-      set: async code => { if (!MAP[code]) return; try { localStorage.setItem(KEY,code); } catch (_) {} setCookie(code); await saveFirebase(code); window.location.reload(); }
+      set: async code => {
+        if (!MAP[code]) return;
+        try { localStorage.setItem(KEY,code); } catch (_) {}
+        setCookie(code);
+        await saveFirebase(code);
+        window.location.reload();
+      }
     };
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true});
-  else start();
+  // Run after the SPA has had a chance to render. This prevents the translator runtime from blocking/altering initial page boot.
+  const boot = () => setTimeout(start, 300);
+  if (document.readyState === 'loading') window.addEventListener('load', boot, {once:true});
+  else boot();
 })();
