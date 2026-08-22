@@ -1,0 +1,22 @@
+/* Bookora premium motion system — lightweight, responsive and accessible. */
+:root{--motion-fast:160ms;--motion-normal:260ms;--motion-slow:500ms;--motion-ease:cubic-bezier(.2,.8,.2,1)}
+#app .book-card,#app .card,#app .stat-card,#app .product-card,#app .feature-card,#app .pricing-card,#app .dashboard-card{transition:transform var(--motion-normal) var(--motion-ease),box-shadow var(--motion-normal) var(--motion-ease),border-color var(--motion-normal) var(--motion-ease)}
+@media (hover:hover){#app .book-card:hover,#app .card:hover,#app .product-card:hover,#app .feature-card:hover,#app .pricing-card:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(20,30,70,.10)}}
+#app button,#app .btn,#app a.nav-link,#app .mobile-nav-toggle,#app [role="button"]{transition:transform var(--motion-fast) ease,box-shadow var(--motion-fast) ease,background-color var(--motion-fast) ease,color var(--motion-fast) ease,border-color var(--motion-fast) ease}
+@media (hover:hover){#app button:hover,#app .btn:hover,#app [role="button"]:hover{transform:translateY(-1px)}#app button:active,#app .btn:active,#app [role="button"]:active{transform:translateY(0) scale(.98)}}
+#app input,#app select,#app textarea{transition:border-color var(--motion-fast) ease,box-shadow var(--motion-fast) ease,background-color var(--motion-fast) ease}
+#app input:focus,#app select:focus,#app textarea:focus{box-shadow:0 0 0 3px rgba(59,91,255,.12)}
+#app .page-enter,#app .route-enter{animation:bookoraPageIn var(--motion-slow) var(--motion-ease) both}
+@keyframes bookoraPageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+#app .fade-in{animation:bookoraFade var(--motion-normal) ease both}@keyframes bookoraFade{from{opacity:0}to{opacity:1}}
+#app .slide-up{animation:bookoraSlideUp var(--motion-normal) var(--motion-ease) both}@keyframes bookoraSlideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+#app .loading-shimmer{background:linear-gradient(90deg,rgba(0,0,0,.04) 25%,rgba(255,255,255,.5) 50%,rgba(0,0,0,.04) 75%);background-size:200% 100%;animation:bookoraShimmer 1.25s linear infinite}@keyframes bookoraShimmer{to{background-position:-200% 0}}
+#app .spinner{animation:bookoraSpin .8s linear infinite}@keyframes bookoraSpin{to{transform:rotate(360deg)}}
+#app .success-check{animation:bookoraPop .42s var(--motion-ease) both}@keyframes bookoraPop{0%{opacity:0;transform:scale(.75)}70%{transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
+#app .pulse-status{animation:bookoraPulse 1.8s ease-in-out infinite}@keyframes bookoraPulse{50%{opacity:.55}}
+#app .mobile-nav-drawer{transition:transform var(--motion-normal) var(--motion-ease),visibility var(--motion-normal) ease,opacity var(--motion-normal) ease;transform:translateX(-105%);opacity:0}
+#app .mobile-nav-drawer.open{transform:translateX(0);opacity:1}
+#app .drawer-backdrop{transition:opacity var(--motion-normal) ease;opacity:0}.drawer-backdrop.open{opacity:1}
+#app .modal,#app [role="dialog"]{transition:opacity var(--motion-normal) ease,transform var(--motion-normal) var(--motion-ease)}
+#app .skeleton{animation:bookoraShimmer 1.25s linear infinite}
+@media (prefers-reduced-motion:reduce){#app *,#app *::before,#app *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
