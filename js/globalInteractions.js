@@ -1,6 +1,6 @@
 // Bookora — global interaction safety + SPA stability bridge.
 // Keep navigation SPA-only and prevent asynchronous data syncs from
-a// destroying an interaction that is currently being opened.
+// destroying an interaction that is currently being opened.
 
 import './admin-mode-persistence-hotfix.js';
 import { state } from './state.js';
