@@ -1,0 +1,12 @@
+// Regional checkout display hotfix: keep the checkout UI in the user's region currency.
+import { state } from './state.js';
+function apply(){
+  const hash=window.location.hash||'';const match=hash.match(/^#\/checkout\/([^?]+)/);if(!match)return;
+  const slug=decodeURIComponent(match[1]);const book=state.getBookBySlug(slug);if(!book)return;const regional=window.BookoraRegionalCurrency;if(!regional?.formatRegional)return;
+  const source=String(book.currency||book.currency_code||'INR').toUpperCase();const base=Number(window.__bookoraCheckoutBasePrice ?? book.sale_price ?? book.salePrice ?? book.price ?? 0);const total=Number(window.__bookoraCheckoutFinalPrice ?? base);const discount=Math.max(0,base-total);
+  const subtotal=document.getElementById('checkout-subtotal-price');const discountEl=document.getElementById('discount-amount');const tax=document.getElementById('checkout-tax-included');const totalEl=document.getElementById('checkout-total-price');
+  if(subtotal)subtotal.textContent=regional.formatRegional(base,source);if(discountEl)discountEl.textContent=`-${regional.formatRegional(discount,source)}`;if(tax)tax.textContent=`Included (${regional.formatRegional(0,source)})`;if(totalEl)totalEl.textContent=regional.formatRegional(total,source);
+}
+window.addEventListener('bookora:currency-ready',()=>setTimeout(apply,0));window.addEventListener('hashchange',()=>setTimeout(apply,50));
+const observer=new MutationObserver(()=>{clearTimeout(window.__bookoraRegionalCheckoutTimer);window.__bookoraRegionalCheckoutTimer=setTimeout(apply,40);});
+if(document.body)observer.observe(document.body,{childList:true,subtree:true});apply();
