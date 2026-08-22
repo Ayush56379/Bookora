@@ -1,0 +1,57 @@
+name: Show external payment success-page code
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch external publish integration UI
+        shell: bash
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('js/pages/PublishExternalPage.js')
+          text = p.read_text(encoding='utf-8')
+          marker = 'BOOKORA_SUCCESS_PAGE_CODE_UI_V1'
+          if marker not in text:
+              old = 'const integration=data.integration||{};'
+              new = '''const integration=data.integration||{};\n      // BOOKORA_SUCCESS_PAGE_CODE_UI_V1\n      const successPageCode=integration.success_page_code||integration.combined_success_code||'';'''
+              if old not in text:
+                  raise SystemExit('Expected integration initialization was not found.')
+              text=text.replace(old,new,1)
+              old_panel = '<div style="background:#fff;border:1px solid #93c5fd;border-radius:12px;padding:1rem"><div style="font-weight:800;color:#1e40af">Step 2 — Add this code anywhere on your external website</div><textarea id="ext-code-box" readonly rows="3" style="width:100%;margin-top:.6rem;padding:.7rem;font-family:monospace;font-size:.78rem;border:1px solid #cbd5e1;border-radius:8px">${esc(integration.header_code||'')}</textarea><button type="button" id="ext-copy-code" class="btn" style="margin-top:.6rem">Copy Code</button><button type="button" id="ext-verify-site" class="btn btn-primary" style="margin-top:.6rem;margin-left:.5rem">Verify Website</button><div id="ext-verify-result" style="margin-top:.7rem;font-size:.82rem;color:#475569">Listing is hidden until verification succeeds.</div></div>'
+              new_panel = old_panel + '''<div style="margin-top:1rem;background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;padding:1rem"><div style="font-weight:800;color:#0f172a">Payment Success / Thank-you Page Code</div><p style="font-size:.8rem;color:#475569;margin:.4rem 0">Paste this second code on the exact page your website shows after a successful payment. It connects that page to Bookora and displays the verified fulfillment status.</p><textarea id="ext-success-code-box" readonly rows="3" style="width:100%;margin-top:.5rem;padding:.7rem;font-family:monospace;font-size:.78rem;border:1px solid #cbd5e1;border-radius:8px">${esc(successPageCode)}</textarea><button type="button" id="ext-copy-success-code" class="btn" style="margin-top:.6rem">Copy Success-Page Code</button><div style="font-size:.74rem;color:#64748b;margin-top:.5rem">Secure Library activation still requires the seller payment-server webhook; this browser code is not trusted as proof of payment.</div></div>'''
+              if old_panel not in text:
+                  raise SystemExit('Expected integration panel markup was not found.')
+              text=text.replace(old_panel,new_panel,1)
+              old_copy = "document.getElementById('ext-copy-code')?.addEventListener('click',async()=>{await navigator.clipboard?.writeText(integration.header_code||'');Toast.show('Verification code copied.','success');});"
+              new_copy = old_copy + "\n        document.getElementById('ext-copy-success-code')?.addEventListener('click',async()=>{await navigator.clipboard?.writeText(successPageCode||'');Toast.show('Payment success-page code copied.','success');});"
+              if old_copy not in text:
+                  raise SystemExit('Expected copy handler was not found.')
+              text=text.replace(old_copy,new_copy,1)
+              p.write_text(text,encoding='utf-8')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/pages/PublishExternalPage.js
+          if git diff --cached --quiet; then
+            echo "No UI patch needed."
+          else
+            git commit -m "feat: add payment success-page integration code"
+            git push
+          fi
