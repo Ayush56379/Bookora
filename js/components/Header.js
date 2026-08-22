@@ -7,7 +7,7 @@ const ICONS = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/>',
   explore: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8Z"/>',
   categories: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
-  best: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/>',
+  best: '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4 2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/>',
   new: '<path d="M4 5h16v14H4z"/><path d="M8 3v4M16 3v4M4 9h16"/><path d="M8 13h3M8 16h5"/>',
   plans: '<path d="M4 5h16v14H4z"/><path d="M8 3v4M16 3v4M4 9h16"/><path d="M8 13h8M8 16h5"/>',
   wishlist: '<path d="M20.8 8.6c0 5.2-8.8 10.1-8.8 10.1S3.2 13.8 3.2 8.6A4.6 4.6 0 0 1 12 6.4a4.6 4.6 0 0 1 8.8 2.2Z"/>',
@@ -41,14 +41,22 @@ function mobileItem(href, icon, label, extraStyle = '') {
   return `<a href="${href}" class="nav-link mobile-drawer-link bookora-mobile-icon-item" style="${extraStyle}">${svgIcon(icon)}<span>${label}</span></a>`;
 }
 
+function modeButton(mode, label, icon, activeMode) {
+  const selected = activeMode === mode;
+  return `<button type="button" class="bookora-profile-mode-option" data-profile-mode="${mode}" style="width:100%;display:flex;align-items:center;gap:.55rem;padding:.55rem .65rem;border:0;border-radius:9px;background:${selected ? '#EFF6FF' : 'transparent'};color:${mode === 'admin' ? '#0F172A' : mode === 'seller' ? '#6D28D9' : '#2563EB'};font-size:.82rem;font-weight:700;text-align:left;cursor:pointer;">
+    ${svgIcon(icon, 17)}<span style="flex:1;">${label}</span>${selected ? '<span aria-hidden="true">✓</span>' : ''}
+  </button>`;
+}
+
 export function renderHeader() {
   const user = state.currentUser || { name: 'Guest', email: '', avatar: '', role: 'buyer' };
   const isAuth = state.isAuthenticated;
   const isAdmin = state.isAdmin;
   const isSeller = state.isSeller;
-  const activeMode = state.activeMode; // 'buyer', 'seller', 'admin'
+  const activeMode = state.activeMode;
   const wishlistCount = state.wishlist.size;
   const hash = window.location.hash || '#/';
+  const canChangeMode = isSeller || isAdmin;
 
   return `
     <header id="main-header" class="header-sticky">
@@ -92,8 +100,7 @@ export function renderHeader() {
         </nav>
 
         <div style="display: flex; align-items: center; gap: 0.75rem;">
-          <div id="header-mode-switcher">${renderModeSwitcher()}</div>
-
+          <!-- Mode switching is intentionally not shown in the header. It lives inside the profile menu. -->
           ${activeMode === 'buyer' ? `
             <a href="#/wishlist" class="btn btn-ghost btn-sm" style="position: relative; width: 38px; height: 38px; padding: 0; border-radius: var(--radius-full);" title="Wishlist">
               ${svgIcon('wishlist', 19)}
@@ -110,11 +117,23 @@ export function renderHeader() {
                 <span class="badge ${isAdmin ? 'badge-bookora' : isSeller ? 'badge-external' : 'badge-new'}" style="font-size: 0.65rem; padding: 1px 6px;">${isAdmin ? 'ADMIN' : isSeller ? 'SELLER' : 'BUYER'}</span>
               </button>
 
-              <div id="user-menu-dropdown" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 260px; background: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); padding: 0.6rem; z-index: 60;">
+              <div id="user-menu-dropdown" style="display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 270px; background: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); padding: 0.6rem; z-index: 60;">
                 <div style="padding: 0.6rem; border-bottom: 1px solid var(--border-subtle); margin-bottom: 0.4rem;">
                   <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">${user.name}</div>
                   <div style="font-size: 0.75rem; color: var(--text-muted);">${user.email}</div>
                 </div>
+
+                ${canChangeMode ? `
+                  <div style="padding:.25rem .2rem .55rem;border-bottom:1px solid var(--border-subtle);margin-bottom:.4rem;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:.35rem .45rem .4rem;">
+                      <span style="font-size:.76rem;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Change Mode</span>
+                      <span style="font-size:.68rem;font-weight:800;color:#16A34A;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:999px;padding:.18rem .42rem;">SAVED</span>
+                    </div>
+                    ${modeButton('buyer','Buyer','profile',activeMode)}
+                    ${isSeller ? modeButton('seller','Seller','seller',activeMode) : ''}
+                    ${isAdmin ? modeButton('admin','Admin','admin',activeMode) : ''}
+                  </div>
+                ` : ''}
 
                 ${isAdmin ? `
                   ${menuItem('#/admin', 'admin', 'Admin Control Center', 'font-weight:700;color:#0F172A;')}
@@ -185,8 +204,7 @@ export function renderHeader() {
 }
 
 export function initHeaderEvents() {
-  initModeSwitcherEvents();
-
+  // Header mode switching is intentionally disabled; use the profile menu instead.
   const userBtn = document.getElementById('user-menu-btn');
   const userDropdown = document.getElementById('user-menu-dropdown');
   if (userBtn && userDropdown) {
@@ -196,6 +214,25 @@ export function initHeaderEvents() {
     });
     document.addEventListener('click', () => { userDropdown.style.display = 'none'; });
   }
+
+  document.querySelectorAll('[data-profile-mode]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const mode = btn.dataset.profileMode;
+      if (!['buyer', 'seller', 'admin'].includes(mode)) return;
+      if (mode === 'seller' && !state.isSeller) return;
+      if (mode === 'admin' && !state.isAdmin) return;
+      if (mode === state.activeMode) return;
+
+      const changed = state.setActiveMode(mode);
+      if (changed === false) return;
+
+      userDropdown.style.display = 'none';
+      Toast.show(`Switched to ${mode.toUpperCase()} Mode`, 'info');
+      window.location.hash = mode === 'admin' ? '#/admin' : mode === 'seller' ? '#/seller/dashboard' : '#/';
+    });
+  });
 
   const toggleBtn = document.getElementById('mobile-nav-toggle-btn');
   const closeBtn = document.getElementById('mobile-drawer-close-btn');
