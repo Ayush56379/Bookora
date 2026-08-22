@@ -1,4 +1,3 @@
-// Compatibility file only.
-// Mobile mode switching is permanently disabled.
-// The global language runtime is booted explicitly from index.html after the SPA loads.
-export {};
+// Compatibility entry. Mobile mode switching remains disabled.
+// Language runtime is loaded here only as a deferred, post-SPA compatibility boot.
+import './language-runtime.js';
