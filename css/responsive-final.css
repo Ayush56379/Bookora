@@ -1,0 +1,70 @@
+/* Bookora Responsive Final Pass — desktop preserved; tablet/mobile reflow. */
+*,*::before,*::after{box-sizing:border-box}
+html,body{width:100%;max-width:100%;min-width:0;overflow-x:hidden}
+body{margin:0}
+#app{width:100%;max-width:100%;min-width:0;overflow-x:clip}
+#app>*{min-width:0;max-width:100%}
+#app img,#app video,#app iframe,#app canvas,#app svg{max-width:100%}
+#app img{height:auto}
+#app input,#app select,#app textarea{box-sizing:border-box;max-width:100%;min-width:0}
+#app button{box-sizing:border-box;max-width:100%;min-width:0;min-height:44px}
+#app a,#app button{touch-action:manipulation}
+#app [class*="grid"]{min-width:0}
+@media (max-width:1024px){
+ #app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{width:100%;max-width:100%;padding-left:24px;padding-right:24px}
+ #app .grid,#app .books-grid,#app .book-grid,#app .card-grid,#app .catalog-grid,#app .stats-grid,#app .dashboard-grid,#app .admin-grid,#app .settings-grid,#app .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #app .two-column,#app .two-col,#app .split-layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+ #app .page-header,#app .section-header,#app .toolbar,#app .actions,#app .form-actions{flex-wrap:wrap;min-width:0}
+ #app .page-header>*,#app .section-header>*,#app .toolbar>*,#app .actions>*{min-width:0;max-width:100%}
+}
+@media (max-width:900px){
+ #app .desktop-nav{display:none!important}
+ #app .mobile-nav-toggle{display:flex!important;align-items:center;justify-content:center;min-width:44px;min-height:44px}
+ #app .header-sticky>.container{width:100%;max-width:100%;min-height:64px;height:auto!important;padding-top:10px;padding-bottom:10px}
+}
+@media (max-width:700px){
+ #app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{padding-left:16px;padding-right:16px}
+ #app .grid,#app .books-grid,#app .book-grid,#app .card-grid,#app .catalog-grid,#app .stats-grid,#app .dashboard-grid,#app .admin-grid,#app .settings-grid,#app .form-grid,#app .two-column,#app .two-col,#app .split-layout{grid-template-columns:minmax(0,1fr)!important}
+ #app form .form-row,#app form .form-grid,#app .form-row.two-column,#app .form-row.two-col{display:grid;grid-template-columns:minmax(0,1fr)!important;gap:14px}
+ #app form .field,#app form .form-group{width:100%;min-width:0}
+ #app form input,#app form select,#app form textarea{width:100%;font-size:16px}
+ #app .page-header,#app .section-header,#app .toolbar,#app .actions,#app .form-actions,#app .modal-actions{width:100%;display:flex;flex-wrap:wrap;gap:10px}
+ #app .page-header>*,#app .section-header>*,#app .toolbar>*,#app .actions>*,#app .form-actions>*,#app .modal-actions>*{min-width:0;max-width:100%}
+ #app .toolbar input,#app .toolbar select,#app .search-input{width:100%;flex:1 1 100%}
+ #app .book-card,#app .card,#app .stat-card{min-width:0;width:100%;height:auto}
+ #app .book-card img{width:100%;height:auto;max-height:none}
+ #app .book-detail,#app .book-details,#app .book-detail-layout,#app .product-detail-layout{display:grid;grid-template-columns:minmax(0,1fr)!important}
+ #app .book-cover,#app .product-cover{width:100%;max-width:420px;margin-left:auto;margin-right:auto}
+ #app .sidebar,#app .dashboard-sidebar,#app .admin-sidebar{width:100%;max-width:100%;position:static;min-width:0}
+ #app .dashboard-layout,#app .admin-layout{display:grid;grid-template-columns:minmax(0,1fr)!important}
+ #app .table-responsive,#app .table-wrap,#app .data-table-wrap,#app .admin-table-wrap,#app .orders-table-wrap{width:100%;max-width:100%;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch}
+ #app .table-responsive table,#app .table-wrap table,#app .data-table-wrap table,#app .admin-table-wrap table,#app .orders-table-wrap table{min-width:680px}
+ #app .modal,#app .dialog,#app [role="dialog"]{width:calc(100vw - 24px)!important;max-width:600px!important;max-height:calc(100vh - 24px);overflow:auto;margin:12px auto}
+ #app .modal-content{max-width:100%;min-width:0}
+ #app .reader,#app .pdf-reader,#app .reader-shell,#app .pdf-shell{width:100%;max-width:100%;min-width:0}
+ #app .reader-toolbar,#app .pdf-toolbar{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}
+ #app .reader-toolbar>*,#app .pdf-toolbar>*{min-width:44px;max-width:100%}
+ #app [style*="width: 380px"],#app [style*="width:380px"],#app [style*="width: 420px"],#app [style*="width:420px"],#app [style*="width: 480px"],#app [style*="width:480px"],#app [style*="width: 500px"],#app [style*="width:500px"]{width:100%!important;max-width:100%!important}
+ #app [style*="max-width: 1200px"],#app [style*="max-width:1200px"],#app [style*="max-width: 1240px"],#app [style*="max-width:1240px"]{max-width:100%!important}
+ #app h1{font-size:clamp(1.65rem,7vw,2.25rem);line-height:1.15}
+ #app h2{font-size:clamp(1.35rem,6vw,1.8rem);line-height:1.2}
+ #app h3{font-size:clamp(1.1rem,5vw,1.4rem);line-height:1.25}
+ #app p{overflow-wrap:anywhere}
+}
+@media (max-width:480px){
+ #app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{padding-left:12px;padding-right:12px}
+ #app .header-sticky>.container{padding-left:12px;padding-right:12px;gap:6px}
+ #app .btn:not(.btn-sm),#app .form-actions .btn,#app .actions .btn{width:100%}
+ #app .btn-sm{width:auto}
+ #app .modal,#app .dialog,#app [role="dialog"]{width:calc(100vw - 16px)!important;max-height:calc(100vh - 16px);margin:8px auto}
+ #app .mobile-nav-drawer{width:min(90vw,340px);max-width:340px}
+}
+@media (max-width:360px){
+ #app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{padding-left:10px;padding-right:10px}
+ #app .header-sticky>.container{padding-left:10px;padding-right:10px}
+}
+#app .mobile-nav-drawer{pointer-events:none;visibility:hidden}
+#app .mobile-nav-drawer.open{pointer-events:auto;visibility:visible}
+#app .drawer-backdrop{pointer-events:none}
+#app .drawer-backdrop.open{pointer-events:auto}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}}
