@@ -1,9 +1,10 @@
-// ModeSwitcher is intentionally disabled.
-// Workspace changes are now available only inside Account Settings.
+// ModeSwitcher is permanently disabled.
+// Buyer / Seller / Admin mode switching is not exposed in the account,
+// profile menu, settings, or mobile navigation UI.
 export function renderModeSwitcher() {
   return '';
 }
 
 export function initModeSwitcherEvents() {
-  // Intentionally no-op. Do not reintroduce header mode switching.
+  // Intentionally no-op.
 }
