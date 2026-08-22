@@ -1,6 +1,6 @@
 // Bookora permanent profile-menu stability + Google avatar authority.
-// Keeps an open desktop profile dropdown open while background Firebase/session
-// hydration occurs, and always prefers Firebase Auth's Google photoURL.
+// Keeps an open desktop profile dropdown stable during background hydration
+// and makes Firebase Auth's Google photoURL the authoritative avatar.
 
 (() => {
   'use strict';
@@ -13,17 +13,13 @@
 
   const isMenuOpen = () => document.getElementById('user-menu-dropdown')?.style.display === 'block';
 
-  const getFirebasePhoto = () => {
-    try { return String(window.firebase?.auth?.()?.currentUser?.photoURL || '').trim(); }
-    catch (_) { return ''; }
+  const firebaseUser = () => {
+    try { return window.firebase?.auth?.()?.currentUser || null; } catch (_) { return null; }
   };
 
-  const getUserName = () => {
-    try {
-      const user = window.firebase?.auth?.()?.currentUser;
-      return String(user?.displayName || '').trim();
-    } catch (_) { return ''; }
-  };
+  const getFirebasePhoto = () => String(firebaseUser()?.photoURL || '').trim();
+
+  const getUserName = () => String(firebaseUser()?.displayName || '').trim();
 
   function syncGooglePhotoToState() {
     const photo = getFirebasePhoto();
@@ -65,30 +61,41 @@
     });
   }
 
-  // Suppress low-level background events before they reach the SPA router.
-  // This is intentionally installed synchronously after app.js has loaded.
   import('./state.js').then(({ state }) => {
-    if (!state || state.__profileMenuStabilityPatched) return;
-    state.__profileMenuStabilityPatched = true;
+    if (!state) return;
     window.__BOOKORA_STATE__ = state;
-    const originalNotify = state.notify.bind(state);
-    state.notify = (event, payload = null) => {
-      const rendered = !!document.querySelector('#main-content');
-      if (rendered && ['DATA_SYNCED', 'AUTH_STATE_CHANGED', 'USER_PROFILE_PHOTO_UPDATED'].includes(event)) {
-        return;
-      }
-      return originalNotify(event, payload);
-    };
+    if (!state.__profileMenuStabilityPatched) {
+      state.__profileMenuStabilityPatched = true;
+      const originalNotify = state.notify.bind(state);
+      state.notify = (event, payload = null) => {
+        const rendered = !!document.querySelector('#main-content');
+        if (rendered && ['DATA_SYNCED', 'AUTH_STATE_CHANGED', 'USER_PROFILE_PHOTO_UPDATED'].includes(event)) return;
+        return originalNotify(event, payload);
+      };
+    }
     syncGooglePhotoToState();
     syncAvatarDom();
   }).catch(() => {});
+
+  function attachFirebasePhotoListener() {
+    try {
+      const auth = window.firebase?.auth?.();
+      if (!auth || auth.__bookoraProfilePhotoListener) return false;
+      auth.__bookoraProfilePhotoListener = true;
+      auth.onAuthStateChanged(() => {
+        setTimeout(syncGooglePhotoToState, 0);
+        setTimeout(syncAvatarDom, 0);
+        setTimeout(syncAvatarDom, 300);
+      });
+      return true;
+    } catch (_) { return false; }
+  }
 
   document.addEventListener('click', event => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
 
     if (target.closest('#user-menu-btn')) {
-      // Let Header's own click handler run first; capture the final state next.
       setTimeout(() => {
         menuWasOpen = isMenuOpen();
         syncGooglePhotoToState();
@@ -97,21 +104,12 @@
       return;
     }
 
-    if (target.closest('#header-logout-btn')) {
+    if (target.closest('#header-logout-btn') || target.closest('#user-menu-dropdown a') || target.closest('#user-menu-dropdown button[data-profile-mode]')) {
       menuWasOpen = false;
       return;
     }
 
-    if (target.closest('#user-menu-dropdown a, #user-menu-dropdown button[data-profile-mode]')) {
-      menuWasOpen = false;
-      return;
-    }
-  }, false);
-
-  document.addEventListener('click', event => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target) return;
-    if (!target.closest('#user-menu-btn') && !target.closest('#user-menu-dropdown')) menuWasOpen = false;
+    if (!target.closest('#user-menu-dropdown')) menuWasOpen = false;
   }, false);
 
   window.addEventListener('hashchange', () => {
@@ -131,8 +129,12 @@
 
   const start = () => {
     if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+    attachFirebasePhotoListener();
     syncGooglePhotoToState();
     syncAvatarDom();
+    setTimeout(attachFirebasePhotoListener, 300);
+    setTimeout(attachFirebasePhotoListener, 1000);
   };
+
   if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
 })();
