@@ -1,47 +1,30 @@
-// Bookora — global interaction safety + SPA click bridge.
-// This file is loaded before the SPA and survives route replacements.
+// Bookora — global interaction safety + SPA stability bridge.
+// Keep navigation SPA-only and prevent asynchronous data syncs from
+// destroying an interaction that is currently being opened.
+
+import { state } from './state.js';
 
 const MOBILE_BREAKPOINT = 930;
-const get = id => document.getElementById(id);
 
-function setDrawer(open) {
-  const drawer = get('mobile-nav-drawer');
-  const backdrop = get('mobile-drawer-backdrop');
-  const toggle = get('mobile-nav-toggle-btn');
-
-  if (!drawer || !backdrop) {
-    document.documentElement.classList.remove('bookora-menu-open');
-    document.body.classList.remove('bookora-menu-open');
-    return;
-  }
-
-  drawer.classList.toggle('open', open);
-  backdrop.classList.toggle('open', open);
-  drawer.setAttribute('aria-hidden', open ? 'false' : 'true');
-  backdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
-  if (toggle) {
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    toggle.setAttribute('aria-label', open ? 'Close Navigation Drawer' : 'Open Navigation Drawer');
-  }
-  document.documentElement.classList.toggle('bookora-menu-open', open);
-  document.body.classList.toggle('bookora-menu-open', open);
-}
-
-function toggleDrawer() {
-  const drawer = get('mobile-nav-drawer');
-  setDrawer(!drawer?.classList.contains('open'));
+function get(id) {
+  return document.getElementById(id);
 }
 
 function closeDrawer() {
-  setDrawer(false);
+  const drawer = get('mobile-nav-drawer');
+  const backdrop = get('mobile-drawer-backdrop');
+  drawer?.classList.remove('open');
+  backdrop?.classList.remove('open');
+  document.documentElement.classList.remove('bookora-menu-open');
+  document.body.classList.remove('bookora-menu-open');
 }
 
 function navigateTo(value) {
-  if (!value) return false;
-  const target = String(value).trim();
+  const target = String(value || '').trim();
   if (!target) return false;
 
-  // Internal SPA route.
+  // Bookora is a hash-based SPA. Never use window.location.href for an
+  // internal route because that causes a full document reload.
   if (target.startsWith('#/')) {
     closeDrawer();
     if (window.location.hash !== target) window.location.hash = target;
@@ -49,16 +32,17 @@ function navigateTo(value) {
     return true;
   }
 
-  // Relative internal page.
+  // Convert common internal path values to SPA hashes as a safety net.
   if (target.startsWith('/') && !target.startsWith('//')) {
     closeDrawer();
-    window.location.href = target;
+    const hash = `#${target}`;
+    if (window.location.hash !== hash) window.location.hash = hash;
+    else window.dispatchEvent(new Event('hashchange'));
     return true;
   }
 
-  // External URL explicitly supplied by a component.
+  // Explicit external URLs remain normal browser navigation.
   if (/^https?:\/\//i.test(target)) {
-    closeDrawer();
     window.location.href = target;
     return true;
   }
@@ -66,87 +50,138 @@ function navigateTo(value) {
   return false;
 }
 
+function installDataSyncStabilityGuard() {
+  if (window.__BOOKORA_DATA_SYNC_GUARD__) return;
+  window.__BOOKORA_DATA_SYNC_GUARD__ = true;
+
+  const originalSubscribe = state.subscribe.bind(state);
+  let deferred = false;
+  let flushTimer = null;
+
+  const drawerIsOpen = () => get('mobile-nav-drawer')?.classList.contains('open');
+
+  const flush = () => {
+    if (!deferred || drawerIsOpen()) return;
+    deferred = false;
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    window.dispatchEvent(new CustomEvent('bookora:data-sync-ready'));
+  };
+
+  // The header closes the drawer from its own link handler. Run the flush
+  // after the click cycle so DATA_SYNCED cannot close a newly opened drawer.
+  document.addEventListener('click', () => setTimeout(flush, 0), { passive: true });
+
+  state.subscribe = callback => originalSubscribe((event, payload, store) => {
+    if (event === 'DATA_SYNCED' && drawerIsOpen()) {
+      deferred = true;
+      if (!flushTimer) flushTimer = setTimeout(flush, 1500);
+      return;
+    }
+    callback(event, payload, store);
+  });
+}
+
 function installGlobalInteractions() {
   if (window.__BOOKORA_GLOBAL_INTERACTIONS__) return;
   window.__BOOKORA_GLOBAL_INTERACTIONS__ = true;
 
-  /* CAPTURE: only mobile drawer controls are intercepted here. */
-  document.addEventListener('click', event => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target) return;
+  installDataSyncStabilityGuard();
 
-    const toggle = target.closest('#mobile-nav-toggle-btn');
-    if (toggle) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      toggleDrawer();
-      return;
-    }
-
-    const close = target.closest('#mobile-drawer-close-btn');
-    if (close) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      closeDrawer();
-      return;
-    }
-
-    const backdrop = target.closest('#mobile-drawer-backdrop');
-    if (backdrop) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      closeDrawer();
-      return;
-    }
-  }, true);
-
-  /* BUBBLE: route buttons that expose an explicit navigation attribute get a
-     reliable fallback. Existing page handlers still run first and can call
-     preventDefault(), so this does not replace page-specific functionality. */
+  // Only provide a fallback for buttons that explicitly declare a route.
+  // Normal <a href="#/..."> links remain owned by the SPA router in app.js.
   document.addEventListener('click', event => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target || event.defaultPrevented) return;
 
-    const control = target.closest('button,[role="button"],a');
+    const control = target.closest('button,[role="button"]');
     if (!control) return;
 
-    if (control.matches('a[href^="#/"]')) {
-      // Native hash navigation is normally enough. This only closes a stale
-      // drawer so the next page is immediately interactive.
-      closeDrawer();
-      return;
-    }
+    const route = control.dataset.route || control.dataset.navigate || control.dataset.href || control.getAttribute('data-url');
+    if (!route) return;
 
-    if (control.matches('button,[role="button"]')) {
-      const route = control.dataset.route || control.dataset.navigate || control.dataset.href || control.getAttribute('data-url');
-      if (route) navigateTo(route);
-    }
+    event.preventDefault();
+    event.stopPropagation();
+    navigateTo(route);
   });
 
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') closeDrawer();
-    if ((event.key === 'Enter' || event.key === ' ') && event.target?.id === 'mobile-nav-toggle-btn') {
-      event.preventDefault();
-      toggleDrawer();
-    }
   });
 
-  window.addEventListener('hashchange', closeDrawer);
   window.addEventListener('resize', () => {
     if (window.innerWidth > MOBILE_BREAKPOINT) closeDrawer();
   }, { passive: true });
 
-  /* If a route replaces the header while the drawer is open, clear stale
-     scroll locking and backdrop state immediately. */
+  window.addEventListener('hashchange', () => {
+    // Route changes are allowed to close the drawer; the router owns the
+    // actual render. This handler only removes stale scroll locking.
+    closeDrawer();
+  });
+
   const observer = new MutationObserver(() => {
     const drawer = get('mobile-nav-drawer');
     const backdrop = get('mobile-drawer-backdrop');
-    if (!drawer || !backdrop) {
-      document.documentElement.classList.remove('bookora-menu-open');
-      document.body.classList.remove('bookora-menu-open');
-    }
+    if (!drawer || !backdrop) closeDrawer();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Clean mobile hero search action: icon-only button, no blue "Search" text.
+  if (!document.getElementById('bookora-search-button-clean-style')) {
+    const style = document.createElement('style');
+    style.id = 'bookora-search-button-clean-style';
+    style.textContent = `
+      .hero-search-box form > button[type="submit"] {
+        position: relative;
+        flex: 0 0 48px;
+        width: 48px;
+        min-width: 48px;
+        height: 48px;
+        padding: 0 !important;
+        margin: 0;
+        font-size: 0 !important;
+        line-height: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px !important;
+      }
+      .hero-search-box form > button[type="submit"]::before {
+        content: "";
+        width: 15px;
+        height: 15px;
+        border: 2px solid currentColor;
+        border-radius: 50%;
+        box-sizing: border-box;
+        display: block;
+      }
+      .hero-search-box form > button[type="submit"]::after {
+        content: "";
+        position: absolute;
+        width: 7px;
+        height: 2px;
+        background: currentColor;
+        border-radius: 2px;
+        transform: translate(7px, 7px) rotate(45deg);
+        transform-origin: left center;
+      }
+      .hero-search-box form > button[type="submit"]:focus-visible {
+        outline: 3px solid rgba(37, 99, 235, 0.25);
+        outline-offset: 2px;
+      }
+      @media (max-width: 600px) {
+        .hero-search-box form > button[type="submit"] {
+          flex-basis: 46px;
+          width: 46px;
+          min-width: 46px;
+          height: 46px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  }
 
   window.addEventListener('error', event => {
     console.error('[Bookora] Runtime error:', event.error || event.message);
@@ -162,4 +197,4 @@ if (document.readyState === 'loading') {
   installGlobalInteractions();
 }
 
-export { closeDrawer, setDrawer, toggleDrawer, navigateTo };
+export { closeDrawer, navigateTo };
