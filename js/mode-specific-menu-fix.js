@@ -1,12 +1,13 @@
 // Mode-specific navigation drawer for Buyer / Seller / Admin.
 // Keeps the mobile menu aligned with the currently selected mode.
+import './admin-mode-persistence-hotfix.js';
 import { state } from './state.js';
 
 const ICON = {
   home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/>',
   explore:'<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8Z"/>',
   categories:'<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
-  star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/>',
+  star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4 2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9Z"/>',
   new:'<path d="M4 5h16v14H4z"/><path d="M8 3v4M16 3v4M4 9h16"/>',
   plans:'<path d="M4 5h16v14H4z"/><path d="M8 3v4M16 3v4M4 9h16"/>',
   heart:'<path d="M20.8 8.6c0 5.2-8.8 10.1-8.8 10.1S3.2 13.8 3.2 8.6A4.6 4.6 0 0 1 12 6.4a4.6 4.6 0 0 1 8.8 2.2Z"/>',
