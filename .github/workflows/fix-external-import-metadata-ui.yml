@@ -30,23 +30,26 @@ jobs:
 
           old="""    document.getElementById('ext-description').value = data.description || '';\n\n    // Update Field Source Badges"""
           new="""    document.getElementById('ext-description').value = data.description || '';\n    const categoryEl = document.getElementById('ext-category');\n    if (categoryEl && data.category) {\n      const wanted = String(data.category).trim().toLowerCase();\n      const option = Array.from(categoryEl.options).find(o => o.value.trim().toLowerCase() === wanted || o.textContent.trim().toLowerCase() === wanted);\n      if (option) categoryEl.value = option.value;\n    }\n    document.getElementById('ext-language').value = data.language || 'English';\n    const pagesEl = document.getElementById('ext-pages');\n    if (pagesEl) pagesEl.value = data.pages || '';\n    const formatEl = document.getElementById('ext-format');\n    if (formatEl) formatEl.value = data.format || '';\n    const isbnEl = document.getElementById('ext-isbn');\n    if (isbnEl) isbnEl.value = data.isbn || '';\n\n    // Update Field Source Badges"""
-          if old in s: s=s.replace(old,new,1)
+          if old in s:
+              s=s.replace(old,new,1)
 
           old_payload="""      category: document.getElementById('ext-category').value,\n      price: parseFloat(document.getElementById('ext-price').value),\n      cover_url: document.getElementById('ext-cover-url').value.trim(),\n      description: document.getElementById('ext-description').value.trim(),\n      source_url: urlInput.value.trim(),\n      source_domain: document.getElementById('ext-publisher').value.trim() || 'external.com'"""
           new_payload="""      category: document.getElementById('ext-category').value,\n      language: document.getElementById('ext-language').value.trim(),\n      pages: parseInt(document.getElementById('ext-pages')?.value || '0', 10) || 0,\n      format: document.getElementById('ext-format')?.value.trim() || 'PDF',\n      isbn: document.getElementById('ext-isbn')?.value.trim() || '',\n      publisher: document.getElementById('ext-publisher').value.trim(),\n      price: parseFloat(document.getElementById('ext-price').value),\n      original_price: parseFloat(document.getElementById('ext-price').value),\n      original_currency: document.getElementById('ext-currency').value.trim(),\n      cover_url: document.getElementById('ext-cover-url').value.trim(),\n      description: document.getElementById('ext-description').value.trim(),\n      source_url: urlInput.value.trim(),\n      canonical_url: currentImportData?.canonical_url || urlInput.value.trim(),\n      source_domain: currentImportData?.source_domain || document.getElementById('ext-publisher').value.trim() || 'external.com'"""
-          if old_payload in s: s=s.replace(old_payload,new_payload,1)
+          if old_payload in s:
+              s=s.replace(old_payload,new_payload,1)
 
-          # EXTERNAL_IMPORTER_AUTH_WARMUP_V1
-          # Warm Firebase auth before the first Fetch click. The SPA reroutes
-          # on USER_LOGGED_IN, so waiting for auth hydration prevents the first
-          # click from being followed by an importer DOM replacement.
           if 'EXTERNAL_IMPORTER_AUTH_WARMUP_V1' not in s:
-              anchor="""          s=s.replace(marker,block+marker,1)\n\n          old=""""
-              warm="""          # EXTERNAL_IMPORTER_AUTH_WARMUP_V1\n          if 'getFreshFirebaseIdToken(false)' in s and "externalAuthReady" not in s:\n              pass\n          # PublishExternalPage already imports getFreshFirebaseIdToken; inject\n          # the warmup at the start of initPublishExternalEvents.\n          init_anchor="""export function initPublishExternalEvents() {\n  const fetchBtn=document.getElementById('ext-fetch-btn');\n"""
+              init_anchor="""export function initPublishExternalEvents() {\n  const fetchBtn=document.getElementById('ext-fetch-btn');\n"""
               init_replacement="""export function initPublishExternalEvents() {\n  const fetchBtn=document.getElementById('ext-fetch-btn');\n  // EXTERNAL_IMPORTER_AUTH_WARMUP_V1\n  let externalAuthReady=false;\n  const originalFetchText=fetchBtn?.textContent || 'Fetch Book Information';\n  if(fetchBtn){\n    fetchBtn.disabled=true;\n    fetchBtn.setAttribute('aria-disabled','true');\n    fetchBtn.textContent='Preparing Secure Session…';\n    fetchBtn.style.opacity='0.7';\n    fetchBtn.style.cursor='wait';\n    getFreshFirebaseIdToken(false).then(token=>{\n      externalAuthReady=!!token;\n      if(fetchBtn && document.body.contains(fetchBtn)){\n        fetchBtn.disabled=!externalAuthReady;\n        fetchBtn.removeAttribute('aria-disabled');\n        fetchBtn.textContent=externalAuthReady ? originalFetchText : 'Sign In Required';\n        fetchBtn.style.opacity=externalAuthReady ? '' : '0.7';\n        fetchBtn.style.cursor=externalAuthReady ? '' : 'not-allowed';\n      }\n    }).catch(()=>{\n      externalAuthReady=false;\n      if(fetchBtn && document.body.contains(fetchBtn)) fetchBtn.textContent='Sign In Required';\n    });\n  }\n"""
-              if init_anchor in s:\n                  s=s.replace(init_anchor,init_replacement,1)\n              else:\n                  raise SystemExit('External importer init anchor not found')\n              click_anchor="""  fetchBtn?.addEventListener('click',async()=>{\n    const url=urlInput?.value.trim();\n"""
+              if init_anchor not in s:
+                  raise SystemExit('External importer init anchor not found')
+              s=s.replace(init_anchor,init_replacement,1)
+
+              click_anchor="""  fetchBtn?.addEventListener('click',async()=>{\n    const url=urlInput?.value.trim();\n"""
               click_replacement="""  fetchBtn?.addEventListener('click',async()=>{\n    if(!externalAuthReady){\n      Toast.show('Please wait for the secure sign-in session to finish loading.','info');\n      return;\n    }\n    const url=urlInput?.value.trim();\n"""
-              if click_anchor in s:\n                  s=s.replace(click_anchor,click_replacement,1)\n              else:\n                  raise SystemExit('External importer click anchor not found')
+              if click_anchor not in s:
+                  raise SystemExit('External importer click anchor not found')
+              s=s.replace(click_anchor,click_replacement,1)
 
           p.write_text(s,encoding='utf-8')
           PY
