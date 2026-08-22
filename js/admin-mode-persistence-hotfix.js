@@ -1,9 +1,9 @@
-// Bookora — persistent admin buyer/seller mode
-// Keeps the administrator's explicitly selected mode stable across route changes,
+// Bookora — persistent buyer/seller/admin mode
+// Keeps each user's explicitly selected mode stable across route changes,
 // data syncs, page renders and reloads. It never grants a mode the account cannot use.
 import { state } from './state.js';
 
-const KEY = 'bookora_active_mode';
+const GLOBAL_KEY = 'bookora_active_mode';
 const VALID = new Set(['admin', 'seller', 'buyer']);
 let restoring = false;
 
@@ -13,12 +13,40 @@ function canUse(mode) {
   return true;
 }
 
-function storedMode() {
+function userKey() {
+  const user = state.currentUser || {};
+  const id = String(user.uid || user.firebaseUid || user.bookoraUserId || user.email || '').trim().toLowerCase();
+  return id ? `${GLOBAL_KEY}:${encodeURIComponent(id)}` : '';
+}
+
+function read(key) {
   try {
-    const mode = localStorage.getItem(KEY);
-    return VALID.has(mode) ? mode : '';
+    const value = localStorage.getItem(key);
+    return VALID.has(value) ? value : '';
   } catch (_) {
     return '';
+  }
+}
+
+function storedMode() {
+  const key = userKey();
+  const perUser = key ? read(key) : '';
+  if (perUser) return perUser;
+
+  // Migrate the old global preference once for the current authenticated user.
+  const legacy = read(GLOBAL_KEY);
+  if (legacy && key) {
+    try { localStorage.setItem(key, legacy); } catch (_) {}
+  }
+  return legacy;
+}
+
+function persistMode(mode) {
+  if (!VALID.has(mode) || !canUse(mode)) return;
+  try { localStorage.setItem(GLOBAL_KEY, mode); } catch (_) {}
+  const key = userKey();
+  if (key) {
+    try { localStorage.setItem(key, mode); } catch (_) {}
   }
 }
 
@@ -35,26 +63,19 @@ function restoreSelectedMode() {
   }
 }
 
-// Restore immediately when this hotfix loads.
+// Restore as early as possible before the first route/header render.
 restoreSelectedMode();
 
 state.subscribe((event) => {
-  // Authentication/data synchronization must not silently reset the user's
-  // selected admin mode. Re-apply the last explicit selection after sync.
   if (event === 'USER_LOGGED_IN' || event === 'DATA_SYNCED' || event === 'AUTH_STATE_CHANGED') {
     setTimeout(restoreSelectedMode, 0);
+    setTimeout(restoreSelectedMode, 50);
   }
 
-  // MODE_CHANGED is an intentional user selection. Keep it persisted and do
-  // not overwrite it from profile role changes during normal navigation.
   if (event === 'MODE_CHANGED') {
-    try {
-      const mode = state.activeMode;
-      if (VALID.has(mode) && canUse(mode)) localStorage.setItem(KEY, mode);
-    } catch (_) {}
+    persistMode(state.activeMode);
   }
 });
 
-// A route render should never be allowed to replace the selected mode.
 window.addEventListener('hashchange', () => setTimeout(restoreSelectedMode, 0));
 window.addEventListener('pageshow', () => setTimeout(restoreSelectedMode, 0));
