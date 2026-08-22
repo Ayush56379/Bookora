@@ -61,16 +61,25 @@ function waitForAuthRestoration(timeoutMs = 10000) {
 }
 
 async function getFreshFirebaseIdToken(forceRefresh = false) {
-  let auth = firebaseAuth();
+  const auth = firebaseAuth();
   if (!auth) return '';
   const user = auth.currentUser || await waitForAuthRestoration();
   if (!user) return '';
   const token = await user.getIdToken(!!forceRefresh);
   if (token) {
-    // Compatibility only: callers that still inspect state.token see the same
-    // fresh Firebase token. It is never persisted as an authentication authority.
+    // Keep the runtime state synchronized for legacy page-level checks.
+    // Firebase remains the authentication authority; this is only an in-memory mirror.
     state.token = token;
     state.isAuthenticated = true;
+    if (!state.currentUser) {
+      state.currentUser = {
+        uid: user.uid,
+        firebaseUid: user.uid,
+        email: user.email || '',
+        name: user.displayName || user.email?.split('@')[0] || 'Bookora User',
+        photoURL: user.photoURL || ''
+      };
+    }
   }
   return token;
 }
@@ -106,6 +115,21 @@ function install() {
 }
 
 install();
+
+// Global auth bootstrap: when a Firebase session already exists, hydrate the
+// in-memory Bookora token immediately instead of waiting for a later page action.
+// This prevents individual pages from incorrectly treating a restored session
+// as logged out during the short Firebase restoration window.
+(async function bootstrapRestoredSession() {
+  const auth = firebaseAuth();
+  if (!auth) return;
+  try {
+    const user = auth.currentUser || await waitForAuthRestoration(10000);
+    if (user) await getFreshFirebaseIdToken(false);
+  } catch (error) {
+    console.warn('[Firebase Auth] Session bootstrap skipped:', error?.message || error);
+  }
+})();
 
 window.BookoraFirebaseAuth = window.BookoraFirebaseAuth || {};
 window.BookoraFirebaseAuth.getFreshIdToken = getFreshFirebaseIdToken;
