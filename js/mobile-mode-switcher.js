@@ -1,3 +1,4 @@
-// Bookora mobile mode switcher is permanently disabled.
-// This compatibility entry now only boots the global language runtime.
-import './language-runtime.js';
+// Compatibility file only.
+// Mobile mode switching is permanently disabled.
+// The global language runtime is booted explicitly from index.html after the SPA loads.
+export {};
