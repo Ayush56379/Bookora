@@ -87,10 +87,24 @@ export function renderPublishExternalPage() {
   `;
 }
 
-function fileToDataUrl(file) {
+// The internal Bookora upload pipeline sends raw Base64 (without a data-URL
+// prefix) to the resumable upload bridge. External Publish must use the exact
+// same contract; sending "data:application/pdf;base64,..." makes the first
+// chunk invalid and causes the upload decoder to fail.
+function fileToBase64(file) {
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
-    reader.onload=()=>resolve(String(reader.result||''));
+    reader.onload=()=>{
+      try {
+        const result=String(reader.result||'');
+        const comma=result.indexOf(',');
+        const base64=comma>=0 ? result.slice(comma+1) : result;
+        if(!base64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64) || base64.length % 4 !== 0) {
+          throw new Error('Could not prepare the PDF for upload.');
+        }
+        resolve(base64);
+      } catch (error) { reject(error); }
+    };
     reader.onerror=()=>reject(reader.error||new Error('Could not read file.'));
     reader.readAsDataURL(file);
   });
@@ -141,13 +155,14 @@ export function initPublishExternalEvents() {
     if(!confirm.checked){Toast.show('Please confirm authorization.','warning');return;}
     submit.disabled=true;submit.textContent='Uploading PDF…';
     try{
-      const pdfData=await fileToDataUrl(pdf);
+      // Match the working internal upload contract: raw Base64 only.
+      const pdfData=await fileToBase64(pdf);
       const authHeaders={'Content-Type':'application/json','Authorization':`Bearer ${token}`};
       const uploadRes=await apiFetch('/api/books/upload-files',{method:'POST',headers:authHeaders,body:JSON.stringify({pdf:{name:pdf.name,mimeType:'application/pdf',data:pdfData}})});
       const upload=await uploadRes.json();
       if(!uploadRes.ok||!upload.success)throw new Error(upload.error||'PDF upload failed.');
       submit.textContent='Creating listing…';
-      const payload={title:document.getElementById('ext-title').value.trim(),subtitle:document.getElementById('ext-subtitle').value.trim(),author:document.getElementById('ext-author').value.trim(),publisher:document.getElementById('ext-publisher').value.trim(),price:Number(document.getElementById('ext-price').value),original_price:Number(document.getElementById('ext-price').value),original_currency:document.getElementById('ext-currency').value.trim()||'INR',category:document.getElementById('ext-category').value,language:document.getElementById('ext-language').value.trim(),pages:Number(document.getElementById('ext-pages').value||0),format:document.getElementById('ext-format').value.trim()||'PDF',isbn:document.getElementById('ext-isbn').value.trim(),cover_url:document.getElementById('ext-cover-url').value.trim(),description:document.getElementById('ext-description').value.trim(),source_url:urlInput.value.trim(),canonical_url:imported?.canonical_url||urlInput.value.trim(),source_domain:imported?.source_domain||'',pdf_file_id:upload.pdf_file_id||'',pdf_url:upload.pdf_url||''};
+      const payload={title:document.getElementById('ext-title').value.trim(),subtitle:document.getElementById('ext-subtitle').value.trim(),author:document.getElementById('ext-author').value.trim(),publisher:document.getElementById('ext-publisher').value.trim(),price:Number(document.getElementById('ext-price').value),original_price:Number(document.getElementById('ext-price').value),original_currency:document.getElementById('ext-currency').value.trim()||'INR',category:document.getElementById('ext-category').value,language:document.getElementById('ext-language').value.trim(),pages:Number(document.getElementById('ext-pages').value||0),format:document.getElementById('ext-format').value.trim()||'PDF',isbn:document.getElementById('ext-isbn').value.trim(),cover_url:document.getElementById('ext-cover-url').value.trim(),description:document.getElementById('ext-description').value.trim(),source_url:urlInput.value.trim(),canonical_url:imported?.canonical_url||urlInput.value.trim(),source_domain:imported?.source_domain||'',pdf_file_id:upload.pdf_file_id||'',pdf_url:upload.pdf_url||'',rights_confirmed:true};
       const res=await apiFetch('/api/publish/external',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},body:JSON.stringify(payload)});
       const data=await res.json();
       if(!res.ok||!data.success)throw new Error(data.error||'External listing creation failed.');
