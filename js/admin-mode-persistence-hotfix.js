@@ -3,7 +3,8 @@
 // Authentication/data syncs/routes must never silently replace the user's choice.
 import { state } from './state.js';
 
-const KEY_PREFIX = 'bookora_workspace_mode:';
+// Reuse the existing per-user key format so previously saved account preferences survive.
+const KEY_PREFIX = 'bookora_active_mode:';
 const VALID = new Set(['buyer', 'seller', 'admin']);
 const ROUTES = { buyer: '#/', seller: '#/creator/dashboard', admin: '#/admin' };
 let internalWrite = false;
@@ -67,9 +68,6 @@ function modeIcon(mode) {
   return '👤';
 }
 
-// Guard the mutable state field. Auth/profile hydration can assign activeMode directly;
-// after a preference exists, those assignments are ignored unless they come through
-// the explicit setActiveMode() API used by Account Settings.
 let activeModeValue = VALID.has(state.activeMode) ? state.activeMode : 'buyer';
 try {
   Object.defineProperty(state, 'activeMode', {
@@ -140,7 +138,7 @@ function settingsPanelHtml() {
   const modes = roleModes();
   const active = modes.includes(state.activeMode) ? state.activeMode : modes[0];
   return `
-    <section id="bookora-account-mode-settings" aria-labelledby="bookora-account-mode-title"
+    <section id="bookora-account-mode-settings" data-active-mode="${active}" data-mode-count="${modes.length}" aria-labelledby="bookora-account-mode-title"
       style="margin:0 0 2rem 0;background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:2rem;box-shadow:var(--shadow-sm);">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.25rem;">
         <div>
@@ -178,8 +176,11 @@ function injectSettingsPanel() {
   const container = document.querySelector('.user-settings-page .container');
   if (!container) return;
 
+  const modes = roleModes();
+  const active = modes.includes(state.activeMode) ? state.activeMode : modes[0];
   const existing = document.getElementById('bookora-account-mode-settings');
   if (existing) {
+    if (existing.dataset.activeMode === active && existing.dataset.modeCount === String(modes.length)) return;
     existing.outerHTML = settingsPanelHtml();
     return;
   }
@@ -199,14 +200,12 @@ function startSettingsObserver() {
   injectSettingsPanel();
 }
 
-// One delegated handler means the settings cards continue working after SPA renders.
 document.addEventListener('click', event => {
   const button = event.target instanceof Element ? event.target.closest('[data-account-mode]') : null;
   if (!button) return;
   event.preventDefault();
   const mode = button.dataset.accountMode;
-  if (!VALID.has(mode) || !canUse(mode)) return;
-  if (mode === state.activeMode) return;
+  if (!VALID.has(mode) || !canUse(mode) || mode === state.activeMode) return;
 
   const changed = state.setActiveMode(mode);
   if (changed === false) return;
@@ -233,8 +232,7 @@ window.addEventListener('hashchange', () => {
 });
 window.addEventListener('pageshow', () => setTimeout(restoreMode, 0));
 
-// Legacy global storage could make different accounts inherit one another's mode.
-// Remove it; only the account-scoped key above is authoritative now.
+// Legacy global storage is no longer authoritative; remove it so one account cannot inherit another account's mode.
 try { localStorage.removeItem('bookora_active_mode'); } catch (_) {}
 
 if (document.readyState === 'loading') {
