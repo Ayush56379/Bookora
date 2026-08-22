@@ -1,0 +1,111 @@
+/* Bookora Admin Dashboard - mobile layout fix */
+@media (max-width: 767px) {
+  .admin-dashboard {
+    padding: 1.25rem 0 4.5rem !important;
+    min-height: 100vh !important;
+  }
+
+  .admin-dashboard > .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .admin-dashboard > .container > div:first-child {
+    display: block !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .admin-dashboard .badge {
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .admin-dashboard h1 {
+    font-size: clamp(1.85rem, 9vw, 2.55rem) !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.045em !important;
+    margin: 0.55rem 0 0.55rem !important;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-dashboard > .container > div:first-child p {
+    font-size: 0.88rem !important;
+    line-height: 1.45 !important;
+    margin: 0 !important;
+  }
+
+  /* The admin tabs must remain horizontal instead of squeezing each label into tiny columns. */
+  .admin-dashboard > .container > div:nth-child(2) {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0.35rem !important;
+    padding: 0.35rem !important;
+    margin-bottom: 1rem !important;
+    white-space: nowrap;
+  }
+
+  .admin-dashboard > .container > div:nth-child(2)::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-dashboard > .container > div:nth-child(2) .nav-link {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: max-content !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0.58rem 0.8rem !important;
+    font-size: 0.76rem !important;
+    line-height: 1.1 !important;
+  }
+
+  /* Every admin content panel gets comfortable mobile spacing. */
+  .admin-dashboard [style*="border-radius: var(--radius-xl)"] {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .admin-dashboard [style*="grid-template-columns: repeat(auto-fill, minmax(240px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Tables stay usable through horizontal scrolling rather than crushing columns. */
+  .admin-dashboard table {
+    min-width: 680px !important;
+  }
+
+  .admin-dashboard [style*="overflow-x: auto"] {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Overview/stat cards: prevent text from becoming narrow vertical strips. */
+  .admin-dashboard [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .admin-dashboard [style*="font-size: 2.5rem"] {
+    font-size: 2rem !important;
+  }
+
+  .admin-dashboard [style*="font-size: 2.2rem"] {
+    font-size: 2rem !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .admin-dashboard > .container > div:nth-child(2) {
+    scrollbar-width: thin;
+  }
+}
