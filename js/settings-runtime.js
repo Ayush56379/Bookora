@@ -42,23 +42,15 @@ function merged() {
 function setMeta(name, content) {
   if (!content) return;
   let el = document.querySelector(`meta[name="${name}"]`);
-  if (!el) {
-    el = document.createElement('meta');
-    el.name = name;
-    document.head.appendChild(el);
-  }
-  el.content = content;
+  if (!el) { el = document.createElement('meta'); el.name = name; document.head.appendChild(el); }
+  if (el.content !== content) el.content = content;
 }
 
 function setPropertyMeta(property, content) {
   if (!content) return;
   let el = document.querySelector(`meta[property="${property}"]`);
-  if (!el) {
-    el = document.createElement('meta');
-    el.setAttribute('property', property);
-    document.head.appendChild(el);
-  }
-  el.content = content;
+  if (!el) { el = document.createElement('meta'); el.setAttribute('property', property); document.head.appendChild(el); }
+  if (el.content !== content) el.content = content;
 }
 
 function normalizeColor(value, fallback) {
@@ -69,22 +61,17 @@ function normalizeColor(value, fallback) {
 function applyBranding(s) {
   const primary = normalizeColor(s.branding.primary_accent, DEFAULTS.branding.primary_accent);
   const secondary = normalizeColor(s.branding.secondary_accent, DEFAULTS.branding.secondary_accent);
-
-  document.documentElement.style.setProperty('--accent', primary);
-  document.documentElement.style.setProperty('--accent-hover', secondary);
-  document.documentElement.style.setProperty('--brand-primary', primary);
-  document.documentElement.style.setProperty('--brand-secondary', secondary);
-  document.documentElement.style.setProperty('--border-focus', primary);
-  document.documentElement.style.setProperty('--accent-light', `${primary}18`);
+  const root = document.documentElement;
+  if (root.style.getPropertyValue('--accent') !== primary) root.style.setProperty('--accent', primary);
+  if (root.style.getPropertyValue('--accent-hover') !== secondary) root.style.setProperty('--accent-hover', secondary);
+  if (root.style.getPropertyValue('--brand-primary') !== primary) root.style.setProperty('--brand-primary', primary);
+  if (root.style.getPropertyValue('--brand-secondary') !== secondary) root.style.setProperty('--brand-secondary', secondary);
+  if (root.style.getPropertyValue('--border-focus') !== primary) root.style.setProperty('--border-focus', primary);
+  if (root.style.getPropertyValue('--accent-light') !== `${primary}18`) root.style.setProperty('--accent-light', `${primary}18`);
 
   let style = document.getElementById('bookora-branding-runtime-style');
-  if (!style) {
-    style = document.createElement('style');
-    style.id = 'bookora-branding-runtime-style';
-    document.head.appendChild(style);
-  }
-
-  style.textContent = `
+  if (!style) { style = document.createElement('style'); style.id = 'bookora-branding-runtime-style'; document.head.appendChild(style); }
+  const css = `
     .btn-primary, .as-save { background: ${primary} !important; border-color: ${primary} !important; }
     .btn-primary:hover, .as-save:hover { background: ${secondary} !important; border-color: ${secondary} !important; }
     .nav-link.active, .as-tab.active { color: ${primary} !important; }
@@ -96,6 +83,7 @@ function applyBranding(s) {
       outline-color: ${primary} !important; border-color: ${primary} !important;
     }
   `;
+  if (style.textContent !== css) style.textContent = css;
 }
 
 function applyMarketplace(s) {
@@ -111,8 +99,6 @@ function applyMarketplace(s) {
     pdfPreviewEnabled: m.pdf_preview_enabled !== false
   };
 
-  // If seller approval is disabled, every authenticated user is allowed to enter
-  // creator mode. Admin always keeps admin privileges.
   if (state.isAuthenticated && !state.isAdmin && m.seller_approval_required === false) {
     state.isSeller = true;
     state.activeMode = 'seller';
@@ -120,38 +106,21 @@ function applyMarketplace(s) {
   }
 
   let style = document.getElementById('bookora-marketplace-runtime-style');
-  if (!style) {
-    style = document.createElement('style');
-    style.id = 'bookora-marketplace-runtime-style';
-    document.head.appendChild(style);
-  }
-
+  if (!style) { style = document.createElement('style'); style.id = 'bookora-marketplace-runtime-style'; document.head.appendChild(style); }
   const wishlistOff = m.wishlist_enabled === false;
   const reviewsOff = m.reviews_enabled === false;
   const downloadsOff = m.downloads_enabled === false;
   const previewOff = m.pdf_preview_enabled === false;
-
-  style.textContent = `
-    ${wishlistOff ? `
-      #detail-wishlist-btn, .book-wishlist-btn, a[href="#/wishlist"],
-      [id*="wishlist"], [class*="wishlist"] { display:none !important; }
-    ` : ''}
-    ${reviewsOff ? `
-      [id*="review"], [class*="review"] { display:none !important; }
-    ` : ''}
-    ${downloadsOff ? `
-      [id*="download"], [class*="download"] { display:none !important; }
-    ` : ''}
-    ${previewOff ? `
-      .book-detail-page #detail-preview-btn, .book-detail-page .quick-preview-btn,
-      .explore-page .quick-preview-btn { display:none !important; }
-    ` : ''}
+  const css = `
+    ${wishlistOff ? `#detail-wishlist-btn, .book-wishlist-btn, a[href="#/wishlist"], [id*="wishlist"], [class*="wishlist"] { display:none !important; }` : ''}
+    ${reviewsOff ? `[id*="review"], [class*="review"] { display:none !important; }` : ''}
+    ${downloadsOff ? `[id*="download"], [class*="download"] { display:none !important; }` : ''}
+    ${previewOff ? `.book-detail-page #detail-preview-btn, .book-detail-page .quick-preview-btn, .explore-page .quick-preview-btn { display:none !important; }` : ''}
   `;
+  if (style.textContent !== css) style.textContent = css;
 
-  // Keep the admin Marketplace form itself visible; update its royalty copy dynamically.
   const royaltyLabel = document.querySelector('#set-author-royalty')?.closest('.as-grid')?.querySelector('.as-field label');
-  if (royaltyLabel) royaltyLabel.textContent = `Seller / Author Royalty (%)`;
-
+  if (royaltyLabel && royaltyLabel.textContent !== 'Seller / Author Royalty (%)') royaltyLabel.textContent = 'Seller / Author Royalty (%)';
   const price = document.getElementById('pub-price');
   const sale = document.getElementById('pub-saleprice');
   const royalty = document.getElementById('pub-royalty-calc');
@@ -162,15 +131,11 @@ function applyMarketplace(s) {
     const strong = royalty.parentElement?.querySelector('strong');
     if (strong) strong.textContent = `Estimated Author Royalty: ${pct}%`;
   }
-
-  // If book approval is disabled, tell the publish screen that the listing is immediate.
   if (m.book_approval_required === false) {
     const submitInfo = document.querySelector('#step-5 div[style*="background:#eff6ff"]');
-    if (submitInfo) {
-      submitInfo.innerHTML = 'Your eBook will be uploaded to <strong>Google Drive</strong> and published to the marketplace immediately after successful validation.';
-    }
+    if (submitInfo && !submitInfo.textContent.includes('published to the marketplace immediately')) submitInfo.innerHTML = 'Your eBook will be uploaded to <strong>Google Drive</strong> and published to the marketplace immediately after successful validation.';
     const submitHeading = document.querySelector('#step-5 h3');
-    if (submitHeading) submitHeading.textContent = 'Step 5: Publish eBook';
+    if (submitHeading && submitHeading.textContent !== 'Step 5: Publish eBook') submitHeading.textContent = 'Step 5: Publish eBook';
   }
 }
 
@@ -186,34 +151,31 @@ function applyBrandSlots(s) {
   const description = String(s.general.description || DEFAULTS.general.description).trim();
   const supportEmail = String(s.general.support_email || '').trim();
   const contactEmail = String(s.general.contact_email || '').trim();
-
-  document.querySelectorAll('[data-site-name]').forEach(el => { el.textContent = name; });
-  document.querySelectorAll('[data-site-tagline]').forEach(el => { el.textContent = tagline; });
-  document.querySelectorAll('[data-site-description]').forEach(el => { el.textContent = description; });
-  document.querySelectorAll('[data-site-support-email]').forEach(el => { el.textContent = supportEmail; });
-  document.querySelectorAll('[data-site-contact-email]').forEach(el => { el.textContent = contactEmail; });
+  document.querySelectorAll('[data-site-name]').forEach(el => { if (el.textContent !== name) el.textContent = name; });
+  document.querySelectorAll('[data-site-tagline]').forEach(el => { if (el.textContent !== tagline) el.textContent = tagline; });
+  document.querySelectorAll('[data-site-description]').forEach(el => { if (el.textContent !== description) el.textContent = description; });
+  document.querySelectorAll('[data-site-support-email]').forEach(el => { if (el.textContent !== supportEmail) el.textContent = supportEmail; });
+  document.querySelectorAll('[data-site-contact-email]').forEach(el => { if (el.textContent !== contactEmail) el.textContent = contactEmail; });
 
   const brand = document.querySelector('.header-sticky a[href="#/"]');
   if (brand) {
     const blocks = brand.querySelectorAll(':scope > div:last-child > div');
-    if (blocks[0]) blocks[0].textContent = name;
-    if (blocks[1]) blocks[1].textContent = tagline;
+    if (blocks[0] && blocks[0].textContent !== name) blocks[0].textContent = name;
+    if (blocks[1] && blocks[1].textContent !== tagline) blocks[1].textContent = tagline;
   }
-
   const drawer = document.querySelector('#mobile-nav-drawer > div:first-child > div:first-child');
-  if (drawer) drawer.textContent = name;
-
+  if (drawer && drawer.textContent !== name) drawer.textContent = name;
   const footer = document.querySelector('#footer-container footer');
   if (footer) {
     const footerBrand = footer.querySelector('span[style*="font-family"]');
-    if (footerBrand) footerBrand.textContent = name;
+    if (footerBrand && footerBrand.textContent !== name) footerBrand.textContent = name;
     const strong = footer.querySelector('strong');
-    if (strong && (strong.textContent.includes('Discover') || strong.textContent === 'Discover. Read. Publish.')) strong.textContent = tagline;
+    if (strong && (strong.textContent.includes('Discover') || strong.textContent === 'Discover. Read. Publish.') && strong.textContent !== tagline) strong.textContent = tagline;
   }
-
-  document.title = `${name} — ${tagline || 'Digital eBook Marketplace'}`;
+  const title = `${name} — ${tagline || 'Digital eBook Marketplace'}`;
+  if (document.title !== title) document.title = title;
   setMeta('description', description);
-  setPropertyMeta('og:title', `${name} — ${tagline || 'Digital eBook Marketplace'}`);
+  setPropertyMeta('og:title', title);
   setPropertyMeta('og:description', description);
 }
 
@@ -235,44 +197,34 @@ let refreshPending = false;
 
 function installObserver() {
   if (observer || !document.body) return;
+  const appRoot = document.getElementById('app');
+  if (!appRoot) return;
   observer = new MutationObserver(mutations => {
-    const hasNewContent = mutations.some(m => m.addedNodes && m.addedNodes.length);
-    if (!hasNewContent) return;
+    // Only react to newly-rendered element nodes. Text/style changes made by this
+    // runtime must never recursively trigger another settings application.
+    const hasNewElement = mutations.some(m => Array.from(m.addedNodes || []).some(n => n.nodeType === Node.ELEMENT_NODE));
+    if (!hasNewElement) return;
     clearTimeout(window.__BOOKORA_SETTINGS_APPLY_TIMER);
     window.__BOOKORA_SETTINGS_APPLY_TIMER = setTimeout(() => applySettings(), 0);
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(appRoot, { childList: true, subtree: true });
   applySettings();
 }
 
-// Guard marketplace actions even when a component is rendered after the route.
 document.addEventListener('click', event => {
   const m = merged().marketplace;
-  if (m.wishlist_enabled === false && event.target.closest('#detail-wishlist-btn,.book-wishlist-btn,a[href="#/wishlist"]')) {
-    event.preventDefault(); event.stopPropagation(); return;
-  }
-  if (m.pdf_preview_enabled === false && event.target.closest('#detail-preview-btn,.quick-preview-btn')) {
-    event.preventDefault(); event.stopPropagation(); return;
-  }
-  if (m.downloads_enabled === false && event.target.closest('[id*="download"],[class*="download"]')) {
-    event.preventDefault(); event.stopPropagation(); return;
-  }
-  if (m.reviews_enabled === false && event.target.closest('[id*="review"],[class*="review"]')) {
-    event.preventDefault(); event.stopPropagation(); return;
-  }
+  if (m.wishlist_enabled === false && event.target.closest('#detail-wishlist-btn,.book-wishlist-btn,a[href="#/wishlist"]')) { event.preventDefault(); event.stopPropagation(); return; }
+  if (m.pdf_preview_enabled === false && event.target.closest('#detail-preview-btn,.quick-preview-btn')) { event.preventDefault(); event.stopPropagation(); return; }
+  if (m.downloads_enabled === false && event.target.closest('[id*="download"],[class*="download"]')) { event.preventDefault(); event.stopPropagation(); return; }
+  if (m.reviews_enabled === false && event.target.closest('[id*="review"],[class*="review"]')) { event.preventDefault(); event.stopPropagation(); return; }
 });
 
-// Redirect disabled marketplace routes.
 window.addEventListener('hashchange', () => {
   const m = merged().marketplace;
   const path = (window.location.hash || '#/').split('?')[0];
-  if (m.wishlist_enabled === false && path === '#/wishlist') {
-    window.location.hash = '#/explore';
-  }
+  if (m.wishlist_enabled === false && path === '#/wishlist') window.location.hash = '#/explore';
 });
 
-// Enforce book-approval setting at the API boundary for the public create-book request.
-// The backend remains authoritative; this keeps the frontend payload consistent with admin settings.
 if (!window.__BOOKORA_FETCH_MARKETPLACE_PATCHED) {
   window.__BOOKORA_FETCH_MARKETPLACE_PATCHED = true;
   const nativeFetch = window.fetch.bind(window);
@@ -287,9 +239,7 @@ if (!window.__BOOKORA_FETCH_MARKETPLACE_PATCHED) {
           if (m.book_approval_required !== false) payload.status = 'pending';
           init = { ...init, body: JSON.stringify(payload) };
         }
-      } catch (_) {
-        // Leave non-JSON requests untouched.
-      }
+      } catch (_) {}
     }
     return nativeFetch(input, init);
   };
@@ -312,8 +262,5 @@ state.subscribe((event) => {
   }
 });
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', installObserver, { once: true });
-} else {
-  installObserver();
-}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installObserver, { once: true });
+else installObserver();
