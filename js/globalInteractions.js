@@ -55,33 +55,48 @@ function installDataSyncStabilityGuard() {
   window.__BOOKORA_DATA_SYNC_GUARD__ = true;
 
   const originalSubscribe = state.subscribe.bind(state);
-  let deferred = false;
-  let flushTimer = null;
 
-  const drawerIsOpen = () => get('mobile-nav-drawer')?.classList.contains('open');
+  state.subscribe = callback => {
+    let pendingSync = null;
+    let flushTimer = null;
 
-  const flush = () => {
-    if (!deferred || drawerIsOpen()) return;
-    deferred = false;
-    if (flushTimer) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    window.dispatchEvent(new CustomEvent('bookora:data-sync-ready'));
+    const drawerIsOpen = () => get('mobile-nav-drawer')?.classList.contains('open');
+
+    const flushPendingSync = () => {
+      if (!pendingSync || drawerIsOpen()) return;
+      const pending = pendingSync;
+      pendingSync = null;
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      callback(pending.event, pending.payload, pending.store);
+    };
+
+    const wrappedCallback = (event, payload, store) => {
+      if (event === 'DATA_SYNCED' && drawerIsOpen()) {
+        // Do not let the async catalog sync re-render the entire SPA while
+        // the user is opening the mobile drawer. Re-run it after the drawer
+        // has actually closed so the fresh catalog is still rendered.
+        pendingSync = { event, payload, store };
+        if (!flushTimer) flushTimer = setTimeout(flushPendingSync, 1500);
+        return;
+      }
+      callback(event, payload, store);
+    };
+
+    return originalSubscribe(wrappedCallback);
   };
 
-  // The header closes the drawer from its own link handler. Run the flush
-  // after the click cycle so DATA_SYNCED cannot close a newly opened drawer.
-  document.addEventListener('click', () => setTimeout(flush, 0), { passive: true });
-
-  state.subscribe = callback => originalSubscribe((event, payload, store) => {
-    if (event === 'DATA_SYNCED' && drawerIsOpen()) {
-      deferred = true;
-      if (!flushTimer) flushTimer = setTimeout(flush, 1500);
-      return;
+  // Header's drawer-link close handler and the SPA router both run during the
+  // same click cycle. Flush after them have completed.
+  document.addEventListener('click', () => setTimeout(() => {
+    const drawer = get('mobile-nav-drawer');
+    if (!drawer?.classList.contains('open')) {
+      // Each wrapped subscriber owns its pending queue; dispatching a normal
+      // click is enough to let its timer flush without forcing a rerender here.
     }
-    callback(event, payload, store);
-  });
+  }, 0), { passive: true });
 }
 
 function installGlobalInteractions() {
