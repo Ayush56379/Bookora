@@ -112,6 +112,29 @@ function fileToBase64(file) {
 
 export function initPublishExternalEvents() {
   const fetchBtn=document.getElementById('ext-fetch-btn');
+  // EXTERNAL_IMPORTER_AUTH_WARMUP_V1
+  let externalAuthReady=false;
+  const originalFetchText=fetchBtn?.textContent || 'Fetch Book Information';
+  if(fetchBtn){
+    fetchBtn.disabled=true;
+    fetchBtn.setAttribute('aria-disabled','true');
+    fetchBtn.textContent='Preparing Secure Session…';
+    fetchBtn.style.opacity='0.7';
+    fetchBtn.style.cursor='wait';
+    getFreshFirebaseIdToken(false).then(token=>{
+      externalAuthReady=!!token;
+      if(fetchBtn && document.body.contains(fetchBtn)){
+        fetchBtn.disabled=!externalAuthReady;
+        fetchBtn.removeAttribute('aria-disabled');
+        fetchBtn.textContent=externalAuthReady ? originalFetchText : 'Sign In Required';
+        fetchBtn.style.opacity=externalAuthReady ? '' : '0.7';
+        fetchBtn.style.cursor=externalAuthReady ? '' : 'not-allowed';
+      }
+    }).catch(()=>{
+      externalAuthReady=false;
+      if(fetchBtn && document.body.contains(fetchBtn)) fetchBtn.textContent='Sign In Required';
+    });
+  }
   const urlInput=document.getElementById('ext-url-input');
   const form=document.getElementById('ext-submit-form');
   const confirm=document.getElementById('ext-confirm-checkbox');
@@ -126,6 +149,10 @@ export function initPublishExternalEvents() {
   pdfInput?.addEventListener('change',()=>{const f=pdfInput.files?.[0]; if(pdfStatus) pdfStatus.textContent=f?`Selected: ${f.name} • ${(f.size/1024/1024).toFixed(2)} MB`:'No PDF selected.';setSubmit();});
 
   fetchBtn?.addEventListener('click',async()=>{
+    if(!externalAuthReady){
+      Toast.show('Please wait for the secure sign-in session to finish loading.','info');
+      return;
+    }
     const url=urlInput?.value.trim();
     if(!url){Toast.show('Please enter the external sales page URL.','warning');return;}
     const progress=document.getElementById('ext-progress');
