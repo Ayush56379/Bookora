@@ -48,3 +48,13 @@
 .header-avatar-fallback.fallback-visible {
   display: inline-flex !important;
 }
+
+/* Mode switching has been removed from the account/profile UI. */
+#user-menu-dropdown > div:has([data-profile-mode]),
+#user-menu-dropdown [data-profile-mode],
+.mobile-mode-switcher-section,
+[data-mobile-mode-host],
+[data-mode-switcher],
+.mode-switcher-section {
+  display: none !important;
+}
