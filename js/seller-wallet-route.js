@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { renderWalletPage, initWalletPageEvents } from './pages/WalletPage.js';
+import './wallet-cashfree-payout.js';
 
 const isWalletRoute=()=>((window.location.hash||'').split('?')[0]==='#/seller/wallet');
 let rendering=false;
@@ -15,6 +16,7 @@ async function renderSellerWallet(){
     const footer=app.querySelector('#footer-container')?.outerHTML||'';
     app.innerHTML=`${header}<main id="main-content" style="flex:1">${await renderWalletPage()}</main>${footer}`;
     initWalletPageEvents();
+    setTimeout(()=>window.dispatchEvent(new Event('bookora:wallet-rendered')),0);
   }catch(e){console.error('Seller wallet route error:',e);}
   finally{rendering=false;}
 }
