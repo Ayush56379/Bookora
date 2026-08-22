@@ -1,5 +1,6 @@
 // Bookora homepage catalog enhancement
 // Adds a single clear All eBooks catalog with a user-selectable view.
+import './homepage-catalog-reliability.js';
 import { state } from './state.js';
 import { renderBookCard } from './components/BookCard.js';
 
@@ -11,7 +12,7 @@ function escapeHtml(value) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/\"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
 
