@@ -134,6 +134,9 @@ function restoreMode() {
   }
 }
 
+// Restore immediately for a cached session, then again after Firebase hydration/data sync.
+if (state.isAuthenticated) restoreMode();
+
 function settingsPanelHtml() {
   const modes = roleModes();
   const active = modes.includes(state.activeMode) ? state.activeMode : modes[0];
