@@ -62,24 +62,28 @@ function installDataSyncStabilityGuard() {
 
     const drawerIsOpen = () => get('mobile-nav-drawer')?.classList.contains('open');
 
-    const flushPendingSync = () => {
-      if (!pendingSync || drawerIsOpen()) return;
-      const pending = pendingSync;
-      pendingSync = null;
-      if (flushTimer) {
-        clearTimeout(flushTimer);
+    const scheduleFlush = () => {
+      if (flushTimer) return;
+      flushTimer = setTimeout(() => {
         flushTimer = null;
-      }
-      callback(pending.event, pending.payload, pending.store);
+        if (!pendingSync) return;
+        if (drawerIsOpen()) {
+          scheduleFlush();
+          return;
+        }
+        const pending = pendingSync;
+        pendingSync = null;
+        callback(pending.event, pending.payload, pending.store);
+      }, 250);
     };
 
     const wrappedCallback = (event, payload, store) => {
       if (event === 'DATA_SYNCED' && drawerIsOpen()) {
         // Do not let the async catalog sync re-render the entire SPA while
-        // the user is opening the mobile drawer. Re-run it after the drawer
-        // has actually closed so the fresh catalog is still rendered.
+        // the user is opening the mobile drawer. Render the fresh catalog
+        // only after the drawer has actually closed.
         pendingSync = { event, payload, store };
-        if (!flushTimer) flushTimer = setTimeout(flushPendingSync, 1500);
+        scheduleFlush();
         return;
       }
       callback(event, payload, store);
@@ -87,16 +91,6 @@ function installDataSyncStabilityGuard() {
 
     return originalSubscribe(wrappedCallback);
   };
-
-  // Header's drawer-link close handler and the SPA router both run during the
-  // same click cycle. Flush after them have completed.
-  document.addEventListener('click', () => setTimeout(() => {
-    const drawer = get('mobile-nav-drawer');
-    if (!drawer?.classList.contains('open')) {
-      // Each wrapped subscriber owns its pending queue; dispatching a normal
-      // click is enough to let its timer flush without forcing a rerender here.
-    }
-  }, 0), { passive: true });
 }
 
 function installGlobalInteractions() {
