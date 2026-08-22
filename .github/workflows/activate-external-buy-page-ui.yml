@@ -1,0 +1,57 @@
+name: Show external buy-page integration code
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Add buy-page code UI
+        shell: bash
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('js/pages/PublishExternalPage.js')
+          text=p.read_text(encoding='utf-8')
+          marker='BOOKORA_BUY_PAGE_CODE_UI_V1'
+          if marker in text:
+              print('Buy-page UI already installed.')
+          else:
+              old='const successPageCode=integration.success_page_code||integration.combined_success_code||\'\';'
+              new='''const successPageCode=integration.success_page_code||integration.combined_success_code||\'\';\n      // BOOKORA_BUY_PAGE_CODE_UI_V1\n      const buyPageCode=integration.buy_page_code||\'\';'''
+              if old not in text:
+                  raise SystemExit('Expected success page code variable was not found.')
+              text=text.replace(old,new,1)
+              marker_html='<div style="margin-top:1rem;background:#f8fafc;border:1px solid #cbd5e1;border-radius:12px;padding:1rem"><div style="font-weight:800;color:#0f172a">Payment Success / Thank-you Page Code</div>'
+              buy_html='''<div style="margin-top:1rem;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:1rem"><div style="font-weight:800;color:#065f46">Step 1 — Buy / Checkout Page Code</div><p style="font-size:.8rem;color:#475569;margin:.4rem 0">Paste this code on the seller website's Buy or Checkout page. It captures the Bookora purchase session and carries it through the seller website.</p><textarea id="ext-buy-code-box" readonly rows="3" style="width:100%;margin-top:.5rem;padding:.7rem;font-family:monospace;font-size:.78rem;border:1px solid #cbd5e1;border-radius:8px">${esc(buyPageCode)}</textarea><button type="button" id="ext-copy-buy-code" class="btn" style="margin-top:.6rem">Copy Buy-Page Code</button></div>''' + marker_html
+              if marker_html not in text:
+                  raise SystemExit('Expected success page panel was not found.')
+              text=text.replace(marker_html,buy_html,1)
+              copy_marker="document.getElementById('ext-copy-success-code')?.addEventListener"
+              copy_line="document.getElementById('ext-copy-buy-code')?.addEventListener('click',async()=>{await navigator.clipboard?.writeText(buyPageCode||'');Toast.show('Buy-page code copied.','success');});\n        " + copy_marker
+              text=text.replace(copy_marker,copy_line,1)
+              p.write_text(text,encoding='utf-8')
+          PY
+      - name: Commit UI
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/pages/PublishExternalPage.js
+          if git diff --cached --quiet; then
+            echo "No UI change required."
+          else
+            git commit -m "feat: add external buy-page integration code"
+            git push
+          fi
