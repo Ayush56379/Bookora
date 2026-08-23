@@ -1,15 +1,17 @@
 // Bookora optional runtime loader.
 // Never blocks or replaces the core SPA. Every optional runtime is isolated.
+// IMPORTANT: the first three runtimes are classic scripts, so their URLs must
+// be resolved from the site root (this loader itself is a classic script).
 (() => {
   const modules = [
-    './firestore-book-sync.js?v=8', './google-drive-resumable-bridge.js?v=4',
-    './book-card-direct-navigation-hotfix.js?v=20260820-3', './auth-buyer-only.js?v=20260822-1',
+    './firestore-book-sync.js?v=20260823-9', './google-drive-resumable-bridge.js?v=20260823-5',
+    './book-card-direct-navigation-hotfix.js?v=20260820-3', './auth-buyer-only.js?v=20260823-2',
     './globalInteractions.js?v=20260822-4', './settings-runtime.js', './i18n-runtime-safe.js?v=20260823-4',
     './regional-currency-runtime.js?v=20260822-1', './regional-checkout-hotfix.js?v=20260822-1',
     './checkout-production-runtime.js?v=20260820-2', './admin-coupon-runtime.js?v=20260820-1',
     './purchase-access-runtime.js?v=20260821-6', './payment-runtime.js?v=20260820-3', './backendStateSync.js',
-    './publish-enhancements.js', './subscription-session.js', './backend-token-restore.js?v=20260821-1',
-    './firebase-authenticated-fetch.js?v=20260823-2', './external-auth-submit-bridge.js?v=20260823-2',
+    './publish-enhancements.js', './subscription-session.js', './backend-token-restore.js?v=20260823-2',
+    './firebase-authenticated-fetch.js?v=20260823-3', './external-auth-submit-bridge.js?v=20260823-3',
     './catalog-visibility-hotfix.js?v=1', './auth-session-bridge.js?v=20260821-3',
     './firebase-auth-token-bridge.js?v=20260821-9', './wishlist-permission-fix.js?v=20260820-2',
     './payment-route-stability-hotfix.js?v=20260821-1', './settings-route-sync-hotfix.js?v=20260822-1',
@@ -35,9 +37,12 @@
   const loadOne = async src => {
     try {
       if (src.includes('firestore-book-sync') || src.includes('google-drive-resumable-bridge') || src.includes('auth-buyer-only')) {
+        // These files are classic scripts. Resolve against the site root so
+        // /Bookora/js/<file> is requested instead of /Bookora/<file>.
+        const rootRelativeSrc = src.replace(/^\.\//, './js/');
         await new Promise(resolve => {
           const s = document.createElement('script');
-          s.src = src; s.defer = true; s.onload = s.onerror = resolve;
+          s.src = rootRelativeSrc; s.defer = true; s.onload = s.onerror = resolve;
           document.body.appendChild(s);
         });
       } else {
