@@ -77,12 +77,7 @@ async function prepareExternalPublishAuth() {
   } catch (_) {}
 
   const storedToken = getStoredBackendToken();
-  if (storedToken && !storedToken.split('.').length === 3) {
-    state.token = storedToken;
-    state.isAuthenticated = true;
-    return storedToken;
-  }
-  if (storedToken && storedToken.split('.').length !== 3) {
+  if (storedToken && !storedToken.includes('.')) {
     state.token = storedToken;
     state.isAuthenticated = true;
     return storedToken;
