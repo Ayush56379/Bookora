@@ -16,6 +16,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
   <script>window.BOOKORA_API_URL="https://bookora-backend-x08l.onrender.com";window.BOOKORA_APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycbzUu9SstSp1ONdUOLb6hAeCtDzlxrvymtf_y2c5ISacPNRYXaJThewGzqbIO0vzQqYfnw/exec";</script>
   <script src="js/fast-firebase-init.js?v=20260823-2"></script>
+  <!-- Prevent async review loading on a book page from re-running the whole SPA route. -->
+  <script src="js/detail-no-blink.js?v=20260823-1"></script>
   <link rel="stylesheet" href="css/bookora.css" />
   <link rel="stylesheet" href="css/responsive-fixes.css" />
   <link rel="stylesheet" href="css/universal-responsive.css" />
@@ -46,7 +48,7 @@
 
   <script type="module">
     (() => {
-      const APP_URL = './js/app-safe.js?v=20260823-2';
+      const APP_URL = './js/app-safe.js?v=20260823-3';
       let booted = false;
       let recoveryShown = false;
       const showRecovery = reason => {
@@ -72,8 +74,6 @@
     })();
   </script>
 
-  <!-- Patch the live router after the dynamic module creates its instance. This prevents Firebase/background events from repainting the current page. -->
-  <script src="js/route-stability.js?v=20260823-1" defer></script>
   <script src="js/optional-runtime-loader.js?v=20260823-2" defer></script>
   <script src="js/menu-permanent-fix.js?v=20260823-3" defer></script>
 </body>
