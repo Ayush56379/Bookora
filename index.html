@@ -41,142 +41,39 @@
 </head>
 <body>
   <div id="app" style="display:flex;flex-direction:column;min-height:100vh;"></div>
-  <noscript><div style="padding:3rem;text-align:center;font-family:sans-serif;background:#FFF1F2;color:#9F1239;"><h2>JavaScript Required</h2><p>JavaScript is required to use Bookora.</p></div></noscript>
+  <noscript><div style="padding:3rem;text-align:center;font-family:sans-serif;background:#FFF1F2;color:#9F1239"><h2>JavaScript Required</h2><p>JavaScript is required to use Bookora.</p></div></noscript>
 
-  <!-- Deterministic core boot: dynamic import catches module-graph failures instead of leaving a blank page. -->
+  <!-- Only the safe lazy router is allowed to participate in first paint. -->
   <script type="module">
     (() => {
-      const APP_URL = './js/app.js?v=20260823-6';
+      const APP_URL = './js/app-safe.js?v=20260823-1';
       let booted = false;
       let recoveryShown = false;
-
-      const showRecovery = (reason) => {
+      const showRecovery = reason => {
         if (booted || recoveryShown || document.querySelector('#main-content')) return;
         recoveryShown = true;
+        console.error('[Bookora startup]', reason);
         const app = document.getElementById('app');
         if (!app) return;
-        console.error('[Bookora boot] core startup failed:', reason);
-        app.innerHTML = '<main style="min-height:100vh;display:grid;place-items:center;padding:32px;text-align:center;font-family:Inter,system-ui,sans-serif"><div style="max-width:620px"><div style="font-size:42px;margin-bottom:10px">📚</div><h2 style="margin:0 0 10px;color:#0f172a">Bookora could not start</h2><p style="margin:0 0 18px;color:#64748b;line-height:1.6">The application startup was interrupted. Your account, orders and books were not changed.</p><button type="button" id="bookora-start-retry" style="padding:11px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Try Again</button></div></main>';
-        document.getElementById('bookora-start-retry')?.addEventListener('click', () => location.reload(), { once: true });
+        app.innerHTML = '<main style="min-height:100vh;display:grid;place-items:center;padding:32px;text-align:center;font-family:Inter,system-ui,sans-serif"><div style="max-width:620px"><div style="font-size:42px">📚</div><h2 style="color:#0f172a">Bookora is recovering…</h2><p style="color:#64748b;line-height:1.6">The application did not finish starting. Your account, orders and books were not changed.</p><button id="bookora-start-retry" type="button" style="padding:11px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Try Again</button></div></main>';
+        document.getElementById('bookora-start-retry')?.addEventListener('click', () => location.reload(), { once:true });
       };
-
+      window.addEventListener('error', e => { if (!booted && String(e?.filename || '').includes('/js/')) setTimeout(() => showRecovery(e.error || e.message), 0); });
+      window.addEventListener('unhandledrejection', e => { if (!booted) showRecovery(e.reason); else console.warn('[Bookora runtime rejection]', e.reason); });
       const boot = async () => {
         try {
           await import(APP_URL);
           booted = true;
           window.__BOOKORA_CORE_BOOTED__ = true;
-        } catch (error) {
-          showRecovery(error);
-        }
+        } catch (error) { showRecovery(error); }
       };
-
-      window.addEventListener('error', event => {
-        if (String(event?.filename || '').includes('/js/')) showRecovery(event.error || event.message);
-      });
-      window.addEventListener('unhandledrejection', event => {
-        if (!booted) showRecovery(event.reason);
-        else console.warn('[Bookora runtime rejection]', event.reason);
-      });
-
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
-      else boot();
-
-      setTimeout(() => {
-        if (!booted && !document.querySelector('#main-content')) showRecovery('startup timeout');
-      }, 12000);
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once:true }); else boot();
+      setTimeout(() => { if (!booted && !document.querySelector('#main-content')) showRecovery('startup timeout'); }, 12000);
     })();
   </script>
 
-  <!-- Optional runtimes load only after the core SPA has rendered. A failed optional module is isolated. -->
-  <script>
-    (() => {
-      const modules = [
-        './js/firestore-book-sync.js?v=7',
-        './js/google-drive-resumable-bridge.js?v=3',
-        './js/book-card-direct-navigation-hotfix.js?v=20260820-3',
-        './js/auth-buyer-only.js?v=20260822-1',
-        './js/globalInteractions.js?v=20260822-4',
-        './js/settings-runtime.js',
-        './js/i18n-runtime-safe.js?v=20260823-4',
-        './js/regional-currency-runtime.js?v=20260822-1',
-        './js/regional-checkout-hotfix.js?v=20260822-1',
-        './js/checkout-production-runtime.js?v=20260820-2',
-        './js/admin-coupon-runtime.js?v=20260820-1',
-        './js/purchase-access-runtime.js?v=20260821-6',
-        './js/payment-runtime.js?v=20260820-3',
-        './js/backendStateSync.js',
-        './js/publish-enhancements.js',
-        './js/subscription-session.js',
-        './js/backend-token-restore.js?v=20260821-1',
-        './js/firebase-authenticated-fetch.js?v=20260821-1',
-        './js/external-auth-submit-bridge.js?v=20260821-1',
-        './js/catalog-visibility-hotfix.js?v=1',
-        './js/auth-session-bridge.js?v=20260821-3',
-        './js/firebase-auth-token-bridge.js?v=20260821-9',
-        './js/wishlist-permission-fix.js?v=20260820-2',
-        './js/payment-route-stability-hotfix.js?v=20260821-1',
-        './js/settings-route-sync-hotfix.js?v=20260822-1',
-        './js/profile-menu-stability.js?v=20260822-1',
-        './js/payment-success-verification-hotfix.js?v=20260821-7',
-        './js/payment-success-responsive-hotfix.js?v=20260821-1',
-        './js/orders-page-permanent-fix.js?v=20260821-6',
-        './js/orders-page-render-sync.js?v=20260821-2',
-        './js/homepage-catalog-enhancement.js?v=20260820-1',
-        './js/homepage-catalog-cleanup.js?v=20260823-2',
-        './js/homepage-seller-section-fix.js?v=20260820-1',
-        './js/admin-settings-persistence-fix.js?v=20260820-1',
-        './js/google-profile-photo-fix.js?v=20260819-1',
-        './js/book-detail-loading-fix.js?v=20260819-1',
-        './js/book-detail-media-hotfix.js?v=20260819-2',
-        './js/final-click-safety.js',
-        './js/ai-click-fix.js?v=3',
-        './js/seller-wallet-route.js?v=1',
-        './js/book-detail-complete.js?v=3',
-        './js/book-detail-permanent-fix.js?v=20260819-6',
-        './js/book-detail-reviews-runtime.js?v=20260823-3',
-        './js/book-author-profile-runtime.js?v=20260823-1',
-        './js/book-reviews-runtime.js?v=20260823-5',
-        './js/book-sample-secure-reader.js?v=20260820-5',
-        './js/free-sample-permanent-fix.js?v=20260820-5',
-        './js/book-card-size-fix.js?v=20260820-1',
-        './js/checkout-image-hotfix.js?v=20260820-3',
-        './js/payment-auth-session-fix.js?v=20260820-2',
-        './js/book-cover-display-fix.js?v=20260820-1',
-        './js/mode-specific-menu-fix.js?v=20260820-1',
-        './js/mobile-mode-switcher.js?v=20260823-boot2',
-        './js/book-card-detail-click-fix.js?v=20260820-2',
-        './js/external-bookora-commerce.js?v=20260821-1',
-        './js/external-bookora-detail-ui.js?v=20260822-1',
-        './js/external-purchase-flow.js?v=20260822-1',
-        './js/external-integration-ui.js?v=20260822-1',
-        './js/book-detail-related-mobile-fix.js?v=20260822-1',
-        './js/smart-search-runtime.js?v=20260822-1'
-      ];
-      const load = async () => {
-        if (!window.__BOOKORA_CORE_BOOTED__) return;
-        for (const src of modules) {
-          try {
-            if (src.includes('firestore-book-sync') || src.includes('google-drive-resumable-bridge') || src.includes('auth-buyer-only')) {
-              await new Promise(resolve => {
-                const s = document.createElement('script');
-                s.src = src;
-                s.defer = true;
-                s.onload = s.onerror = resolve;
-                document.body.appendChild(s);
-              });
-            } else {
-              await import(src);
-            }
-          } catch (error) {
-            console.warn('[Bookora optional runtime skipped]', src, error);
-          }
-        }
-      };
-      const start = () => load();
-      if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 2500 });
-      else setTimeout(start, 1500);
-    })();
-  </script>
-  <script src="js/menu-permanent-fix.js?v=20260823-2" defer></script>
+  <!-- All existing feature/hotfix runtimes are isolated from core startup. -->
+  <script src="js/optional-runtime-loader.js?v=20260823-1" defer></script>
+  <script src="js/menu-permanent-fix.js?v=20260823-3" defer></script>
 </body>
 </html>
