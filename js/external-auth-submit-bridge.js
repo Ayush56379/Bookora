@@ -1,10 +1,11 @@
 // Bookora external publish authentication bridge.
 // The external publish form uses the same Bookora session as the header.
-// Firebase Auth is preferred because it produces a fresh, server-verifiable ID token.
+// Firebase Auth is preferred because it provides the real authenticated user;
+// the external-seller session bridge converts its ID token to the backend's
+// server-issued session token immediately before protected requests.
 import { state } from './state.js';
 
 const WRAPPED_LISTENERS = new WeakMap();
-const BACKEND_TOKEN_KEY = 'bookora_auth_token';
 
 function getFirebaseAuth() {
   try {
@@ -14,13 +15,7 @@ function getFirebaseAuth() {
 }
 
 function getStoredBackendToken() {
-  try { return String(localStorage.getItem(BACKEND_TOKEN_KEY) || '').trim(); } catch (_) { return ''; }
-}
-
-function persistBackendToken(token) {
-  const value = String(token || '').trim();
-  if (!value) return;
-  try { localStorage.setItem(BACKEND_TOKEN_KEY, value); } catch (_) {}
+  try { return String(localStorage.getItem('bookora_auth_token') || '').trim(); } catch (_) { return ''; }
 }
 
 function waitForFirebaseUser(timeoutMs = 12000) {
@@ -44,7 +39,8 @@ function waitForFirebaseUser(timeoutMs = 12000) {
 }
 
 async function prepareExternalPublishAuth() {
-  // 1. Always prefer a real Firebase user and a fresh ID token.
+  // 1. Prefer a real Firebase user. Do not store the Firebase ID token as the
+  // Bookora backend session; the external seller bridge handles that exchange.
   const user = await waitForFirebaseUser();
   if (user) {
     try {
@@ -52,10 +48,6 @@ async function prepareExternalPublishAuth() {
       if (!token) throw new Error('Firebase authentication token is unavailable.');
       state.token = token;
       state.isAuthenticated = true;
-      // Keep the existing Bookora session bridge compatible across route changes
-      // and hard reloads. Protected API callers still prefer a fresh Firebase
-      // token whenever Firebase has a current user.
-      persistBackendToken(token);
       if (!state.currentUser || String(state.currentUser.uid || '') !== String(user.uid)) {
         state.currentUser = {
           ...(state.currentUser || {}), uid: user.uid, firebaseUid: user.uid,
@@ -70,22 +62,27 @@ async function prepareExternalPublishAuth() {
     }
   }
 
-  // 2. Compatibility fallback only when Firebase has no current user.
+  // 2. If Firebase is temporarily unavailable, use the already-issued Bookora
+  // backend session. Never synthesize authentication from cached profile data.
   try {
-    const backendSession = window.BookoraBackendSession;
-    if (backendSession?.ensureBackendSession) {
-      const token = await backendSession.ensureBackendSession(false);
+    const externalSellerAuth = window.BookoraExternalSellerAuth;
+    if (externalSellerAuth?.refresh) {
+      const token = await externalSellerAuth.refresh();
       if (token) {
         state.token = token;
         state.isAuthenticated = true;
-        persistBackendToken(token);
         return token;
       }
     }
   } catch (_) {}
 
   const storedToken = getStoredBackendToken();
-  if (storedToken) {
+  if (storedToken && !storedToken.split('.').length === 3) {
+    state.token = storedToken;
+    state.isAuthenticated = true;
+    return storedToken;
+  }
+  if (storedToken && storedToken.split('.').length !== 3) {
     state.token = storedToken;
     state.isAuthenticated = true;
     return storedToken;
