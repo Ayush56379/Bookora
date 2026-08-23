@@ -1,11 +1,7 @@
-// Bookora startup + runtime stability compatibility bridge.
-// Mobile mode switching remains permanently disabled.
-// Never import language-runtime.js from this file.
-//
-// IMPORTANT: this bridge must not synthesize a repeating browser load cycle.
-// It starts the existing SPA once after DOM readiness, then keeps asynchronous
-// catalog synchronization from replacing the live page and destroying the
-// event handlers installed by page/runtime modules.
+// Bookora startup compatibility bridge.
+// Mobile mode switching remains disabled. This file only guarantees that the
+// existing SPA performs its initial route render when DOMContentLoaded occurs.
+// It MUST NOT override state.notify(), fetch(), location.reload(), or Firebase.
 
 const bootBookoraRoute = () => {
   if (window.__BOOKORA_STARTUP_ROUTE_TRIGGERED__) return;
@@ -24,44 +20,10 @@ const bootBookoraRoute = () => {
   }, 0);
 };
 
-const protectLivePageFromSyncRerender = async () => {
-  try {
-    const module = await import('./state.js');
-    const state = module?.state;
-    if (!state || state.__BOOKORA_SYNC_STABILITY_PATCHED__) return;
-
-    const originalNotify = state.notify.bind(state);
-    state.notify = (event, payload = null) => {
-      // DATA_SYNCED previously caused app.js to replace #app wholesale. That
-      // happened after other runtime modules had attached listeners, so the
-      // homepage could look correct while its controls silently stopped
-      // responding. Keep the rendered DOM stable and expose a dedicated event
-      // for components that need to refresh their own catalog UI.
-      if (event === 'DATA_SYNCED') {
-        state.subscribers.forEach(callback => {
-          try { callback('CATALOG_UPDATED', payload, state); }
-          catch (error) { console.error('[Bookora] State subscriber error:', error); }
-        });
-        window.dispatchEvent(new CustomEvent('bookora:catalog-updated', { detail: payload }));
-        return;
-      }
-      originalNotify(event, payload);
-    };
-
-    state.__BOOKORA_SYNC_STABILITY_PATCHED__ = true;
-  } catch (error) {
-    console.warn('[Bookora] Sync stability bridge skipped:', error);
-  }
-};
-
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', bootBookoraRoute, { once: true });
 } else {
   bootBookoraRoute();
 }
-
-// state.js is already loaded by app.js; patch asynchronously without blocking
-// the initial render.
-protectLivePageFromSyncRerender();
 
 export {};
