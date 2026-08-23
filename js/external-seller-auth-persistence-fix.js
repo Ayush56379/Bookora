@@ -15,10 +15,15 @@ function getFirebaseUser() {
   try { return window.firebase?.auth?.()?.currentUser || null; } catch (_) { return null; }
 }
 
+function isFirebaseJwt(token) {
+  const value = String(token || '').trim();
+  return value.split('.').length === 3 && value.length > 200;
+}
+
 function getStoredToken() {
   try {
     const token = String(localStorage.getItem(TOKEN_KEY) || '').trim();
-    if (!token) return '';
+    if (!token || isFirebaseJwt(token)) return '';
     const storedUid = String(localStorage.getItem(UID_KEY) || '').trim();
     const currentUid = String(getFirebaseUser()?.uid || '').trim();
     // Never reuse another Firebase user's backend session.
@@ -29,18 +34,13 @@ function getStoredToken() {
 
 function persistToken(token, uid = '') {
   const value = String(token || '').trim();
-  if (!value) return;
+  if (!value || isFirebaseJwt(value)) return;
   state.token = value;
   state.isAuthenticated = true;
   try {
     localStorage.setItem(TOKEN_KEY, value);
     if (uid) localStorage.setItem(UID_KEY, String(uid));
   } catch (_) {}
-}
-
-function isFirebaseJwt(token) {
-  const value = String(token || '').trim();
-  return value.split('.').length === 3 && value.length > 200;
 }
 
 function isExternalProtectedRequest(input) {
