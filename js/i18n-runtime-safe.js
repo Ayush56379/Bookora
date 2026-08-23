@@ -1,12 +1,12 @@
 // Bookora universal i18n runtime.
 // Translates static UI + dynamically rendered catalog content (book titles,
 // descriptions, author names, categories, reviews, buttons, placeholders, etc.).
-// Original text is retained on every node so switching languages never creates
-// translation-on-translation corruption.
+// Original text is retained per DOM text node so language switching never
+// translates an already translated value again.
 import { state } from './state.js';
 
 const STORAGE_KEY = 'bookora_language';
-const CACHE_KEY = 'bookora_translation_cache_v2';
+const CACHE_KEY = 'bookora_translation_cache_v3';
 const DEFAULT_LANGUAGE = 'en';
 const TRANSLATE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single';
 
@@ -17,10 +17,10 @@ export const BOOKORA_LANGUAGES = {
 let currentLanguage = localStorage.getItem(STORAGE_KEY) || DEFAULT_LANGUAGE;
 let translating = false;
 let observer = null;
-let queuedNodes = new Set();
 let flushTimer = null;
+let queuedNodes = new Set();
+const originalNodes = new WeakMap();
 let cache = {};
-
 try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') || {}; } catch (_) { cache = {}; }
 
 function normalizeLanguage(value) {
@@ -30,9 +30,9 @@ function normalizeLanguage(value) {
 
 function isExcludedElement(el) {
   if (!el || el.nodeType !== Node.ELEMENT_NODE) return true;
-  if (el.closest('[data-no-translate],script,style,noscript,svg,code,pre,textarea')) return true;
-  if (el.matches('input[type="email"],input[type="url"],input[type="password"],input[type="number"],input[type="tel"],input[type="date"],input[type="time"],input[type="file"],input[type="hidden"]')) return true;
-  if (el.matches('.bookora-brand,.site-brand,[data-site-name],[data-no-translate]')) return true;
+  if (el.closest('[data-no-translate],script,style,noscript,svg,code,pre')) return true;
+  if (el.matches('textarea,input[type="password"],input[type="email"],input[type="url"],input[type="number"],input[type="tel"],input[type="date"],input[type="time"],input[type="file"],input[type="hidden"]')) return true;
+  if (el.matches('.bookora-brand,.site-brand,[data-site-name]')) return true;
   return false;
 }
 
@@ -41,40 +41,38 @@ function looksLikeNonNaturalText(text) {
   if (!s || s.length < 2) return true;
   if (/^https?:\/\//i.test(s) || /^mailto:/i.test(s)) return true;
   if (/^[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}$/.test(s)) return true;
-  if (/^[₹$€£¥₩₹]?\s*[\d,.]+(?:\s*[A-Z]{3})?$/.test(s)) return true;
+  if (/^[₹$€£¥₩]?\s*[\d,.]+(?:\s*[A-Z]{3})?$/.test(s)) return true;
   if (/^[#@][\w-]+$/.test(s)) return true;
   if (/^[A-Z0-9_-]{8,}$/.test(s) && !/\s/.test(s)) return true;
   return false;
 }
 
-function originalText(node) {
-  if (!node.dataset.bookoraI18nOriginal) {
-    node.dataset.bookoraI18nOriginal = node.textContent || '';
-  }
-  return node.dataset.bookoraI18nOriginal;
+function getOriginal(node) {
+  if (!originalNodes.has(node)) originalNodes.set(node, node.nodeValue || '');
+  return originalNodes.get(node);
 }
 
-function cacheGet(key) { return cache[`${currentLanguage}|${key}`] || ''; }
-function cacheSet(key, value) {
-  cache[`${currentLanguage}|${key}`] = value;
+function cacheGet(source, target) { return cache[`${target}|${source}`] || ''; }
+function cacheSet(source, target, value) {
+  cache[`${target}|${source}`] = value;
   try {
     const keys = Object.keys(cache);
-    if (keys.length > 1500) delete cache[keys[0]];
+    if (keys.length > 2000) delete cache[keys[0]];
     localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
   } catch (_) {}
 }
 
-async function translateText(text, target) {
-  if (target === 'en') return text;
-  const cached = cacheGet(text);
+async function translateText(source, target) {
+  if (target === 'en') return source;
+  const cached = cacheGet(source, target);
   if (cached) return cached;
-  const url = `${TRANSLATE_ENDPOINT}?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`;
+  const url = `${TRANSLATE_ENDPOINT}?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(source)}`;
   const response = await fetch(url, { method:'GET', mode:'cors', cache:'force-cache' });
   if (!response.ok) throw new Error(`Translation HTTP ${response.status}`);
   const data = await response.json();
   const result = Array.isArray(data?.[0]) ? data[0].map(x => x?.[0] || '').join('') : '';
   if (!result) throw new Error('Empty translation');
-  cacheSet(text, result);
+  cacheSet(source, target, result);
   return result;
 }
 
@@ -86,61 +84,16 @@ function collectTextNodes(root = document.body) {
   while ((node = walker.nextNode())) {
     const parent = node.parentElement;
     if (!parent || isExcludedElement(parent)) continue;
-    const text = originalText(parent);
-    if (looksLikeNonNaturalText(text)) continue;
-    // Do not translate pure whitespace nodes.
-    if (!/[A-Za-zÀ-ÖØ-öø-ÿ\u0900-\u097F\u0980-\u09FF\u0A80-\u0AFF\u0B80-\u0BFF\u0C00-\u0C7F\u0D00-\u0D7F]/.test(text)) continue;
-    out.push({ node, parent, text });
+    const source = getOriginal(node);
+    if (looksLikeNonNaturalText(source)) continue;
+    if (!/[A-Za-zÀ-ÖØ-öø-ÿ\u0900-\u097F\u0980-\u09FF\u0A80-\u0AFF\u0B80-\u0BFF\u0C00-\u0C7F\u0D00-\u0D7F]/.test(source)) continue;
+    out.push({node,source});
   }
   return out;
 }
 
-async function translateNodes(nodes) {
-  if (translating) return;
-  translating = true;
-  try {
-    const target = normalizeLanguage(currentLanguage);
-    if (target === 'en') {
-      nodes.forEach(({node,parent}) => {
-        const original = parent?.dataset?.bookoraI18nOriginal;
-        if (original != null && node.isConnected) node.nodeValue = original;
-      });
-      return;
-    }
-
-    const unique = [...new Set(nodes.map(x => x.text.trim()))];
-    const translated = new Map();
-    const CONCURRENCY = 6;
-    let index = 0;
-    async function worker() {
-      while (index < unique.length) {
-        const text = unique[index++];
-        try { translated.set(text, await translateText(text, target)); }
-        catch (_) { translated.set(text, text); }
-      }
-    }
-    await Promise.all(Array.from({length: Math.min(CONCURRENCY, unique.length)}, worker));
-
-    nodes.forEach(({node, text}) => {
-      if (!node.isConnected) return;
-      const value = translated.get(text.trim()) || text;
-      // Preserve leading/trailing whitespace around the translated value.
-      const leading = text.match(/^\s*/)?.[0] || '';
-      const trailing = text.match(/\s*$/)?.[0] || '';
-      node.nodeValue = leading + value + trailing;
-    });
-
-    translateAttributes(document.body, target);
-  } finally {
-    translating = false;
-  }
-}
-
 async function translateAttributes(root, target) {
-  if (!root || target === 'en') {
-    if (target === 'en') restoreAttributes(root);
-    return;
-  }
+  if (!root) return;
   const elements = root.querySelectorAll('input[placeholder],textarea[placeholder],[title],[aria-label]');
   const jobs = [];
   elements.forEach(el => {
@@ -148,106 +101,103 @@ async function translateAttributes(root, target) {
     for (const attr of ['placeholder','title','aria-label']) {
       const value = el.getAttribute(attr);
       if (!value || looksLikeNonNaturalText(value)) continue;
-      const key = `attr:${attr}:${value}`;
-      if (!el.dataset[`bookoraI18n_${attr.replace('-','_')}`]) el.dataset[`bookoraI18n_${attr.replace('-','_')}`] = value;
-      jobs.push({el,attr,value});
+      const key = `bookoraOriginal${attr === 'aria-label' ? 'AriaLabel' : attr[0].toUpperCase()+attr.slice(1)}`;
+      if (!el.dataset[key]) el.dataset[key] = value;
+      const source = el.dataset[key];
+      jobs.push({el,attr,source});
     }
   });
-  const unique = [...new Set(jobs.map(x => x.value))];
+  if (target === 'en') {
+    jobs.forEach(({el,attr,source}) => el.setAttribute(attr, source));
+    return;
+  }
+  const unique = [...new Set(jobs.map(x => x.source))];
   const translated = new Map();
-  await Promise.all(unique.map(async value => {
-    try { translated.set(value, await translateText(value, target)); } catch (_) { translated.set(value, value); }
-  }));
-  jobs.forEach(({el,attr,value}) => { if (el.isConnected) el.setAttribute(attr, translated.get(value) || value); });
-}
-
-function restoreAttributes(root) {
-  if (!root) return;
-  root.querySelectorAll('[data-bookora-i18n-placeholder],[data-bookora-i18n-title],[data-bookora-i18n-aria_label]').forEach(el => {
-    const map = {placeholder:'data-bookora-i18n-placeholder',title:'data-bookora-i18n-title','aria-label':'data-bookora-i18n-aria_label'};
-    Object.entries(map).forEach(([attr,key]) => { if (el.hasAttribute(key)) el.setAttribute(attr, el.getAttribute(key)); });
-  });
+  let index = 0;
+  async function worker() {
+    while (index < unique.length) {
+      const source = unique[index++];
+      try { translated.set(source, await translateText(source,target)); }
+      catch (_) { translated.set(source,source); }
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(6,unique.length)}, worker));
+  jobs.forEach(({el,attr,source}) => { if (el.isConnected) el.setAttribute(attr, translated.get(source) || source); });
 }
 
 async function applyLanguage() {
-  if (!document.body) return;
-  const nodes = collectTextNodes(document.body);
-  await translateNodes(nodes);
-  document.documentElement.lang = currentLanguage;
-  document.documentElement.dataset.bookoraLanguage = currentLanguage;
-  window.dispatchEvent(new CustomEvent('bookora:language-changed', { detail:{language:currentLanguage} }));
+  if (!document.body || translating) return;
+  translating = true;
+  try {
+    const target = normalizeLanguage(currentLanguage);
+    const nodes = collectTextNodes(document.body);
+    if (target === 'en') {
+      nodes.forEach(({node,source}) => { if (node.isConnected) node.nodeValue = source; });
+    } else {
+      const unique = [...new Set(nodes.map(x => x.source.trim()))];
+      const translated = new Map();
+      let index = 0;
+      async function worker() {
+        while (index < unique.length) {
+          const source = unique[index++];
+          try { translated.set(source, await translateText(source,target)); }
+          catch (_) { translated.set(source,source); }
+        }
+      }
+      await Promise.all(Array.from({length:Math.min(6,unique.length)}, worker));
+      nodes.forEach(({node,source}) => {
+        if (!node.isConnected) return;
+        const raw = source;
+        const value = translated.get(raw.trim()) || raw;
+        const leading = raw.match(/^\s*/)?.[0] || '';
+        const trailing = raw.match(/\s*$/)?.[0] || '';
+        node.nodeValue = leading + value + trailing;
+      });
+    }
+    await translateAttributes(document.body,target);
+    document.documentElement.lang = target;
+    document.documentElement.dataset.bookoraLanguage = target;
+    window.dispatchEvent(new CustomEvent('bookora:language-changed',{detail:{language:target}}));
+  } finally { translating = false; }
 }
 
 function queueAddedNodes(mutations) {
-  if (translating) return;
-  for (const mutation of mutations) {
-    for (const node of mutation.addedNodes || []) {
-      if (node.nodeType === Node.ELEMENT_NODE) queuedNodes.add(node);
-      else if (node.nodeType === Node.TEXT_NODE && node.parentElement) queuedNodes.add(node.parentElement);
-    }
+  for (const mutation of mutations) for (const node of mutation.addedNodes || []) {
+    if (node.nodeType === Node.ELEMENT_NODE) queuedNodes.add(node);
+    else if (node.nodeType === Node.TEXT_NODE && node.parentElement) queuedNodes.add(node.parentElement);
   }
   clearTimeout(flushTimer);
-  flushTimer = setTimeout(async () => {
-    if (!queuedNodes.size) return;
-    queuedNodes.clear();
-    await applyLanguage();
-  }, 80);
+  flushTimer = setTimeout(() => { queuedNodes.clear(); applyLanguage(); }, 100);
 }
 
 function installObserver() {
   if (observer || !document.body) return;
   observer = new MutationObserver(queueAddedNodes);
-  observer.observe(document.body, {childList:true, subtree:true});
+  observer.observe(document.body,{childList:true,subtree:true});
 }
 
 export async function setLanguage(language) {
   currentLanguage = normalizeLanguage(language);
-  localStorage.setItem(STORAGE_KEY, currentLanguage);
+  localStorage.setItem(STORAGE_KEY,currentLanguage);
   await applyLanguage();
 }
-
 export function getLanguage() { return currentLanguage; }
-export function t(text) {
-  const source = String(text ?? '');
-  if (currentLanguage === 'en') return source;
-  return cacheGet(source) || source;
-}
+export function t(text) { return String(text ?? ''); }
 
-window.BookoraI18n = {
-  languages: BOOKORA_LANGUAGES,
-  setLanguage,
-  getLanguage,
-  t,
-  apply: applyLanguage
-};
+window.BookoraI18n = { languages:BOOKORA_LANGUAGES,setLanguage,getLanguage,t,apply:applyLanguage };
 
 function wireLanguageControls() {
-  document.addEventListener('change', e => {
-    const el = e.target instanceof Element ? e.target : null;
-    if (!el) return;
-    if (el.matches('select[data-language],#language-select,#languageSelect,#settings-language')) setLanguage(el.value);
+  document.addEventListener('change',e => {
+    const el=e.target instanceof Element?e.target:null;
+    if (el?.matches('select[data-language],#language-select,#languageSelect,#settings-language')) setLanguage(el.value);
   });
-  document.addEventListener('click', e => {
-    const el = e.target instanceof Element ? e.target : null;
-    const option = el?.closest('[data-language-option]');
-    if (option) {
-      e.preventDefault();
-      setLanguage(option.getAttribute('data-language-option'));
-    }
+  document.addEventListener('click',e => {
+    const el=e.target instanceof Element?e.target:null;
+    const option=el?.closest('[data-language-option]');
+    if(option){e.preventDefault();setLanguage(option.getAttribute('data-language-option'));}
   });
 }
 
-async function boot() {
-  installObserver();
-  wireLanguageControls();
-  await applyLanguage();
-}
-
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once:true});
-else boot();
-
-state?.subscribe?.(event => {
-  if (event === 'DATA_SYNCED' || event === 'USER_LOGGED_IN' || event === 'USER_UPDATED') {
-    setTimeout(() => applyLanguage(), 50);
-  }
-});
+async function boot(){installObserver();wireLanguageControls();await applyLanguage();}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
+state?.subscribe?.(event=>{if(event==='DATA_SYNCED'||event==='USER_LOGGED_IN'||event==='USER_UPDATED')setTimeout(()=>applyLanguage(),50);});
