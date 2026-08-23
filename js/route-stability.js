@@ -1,6 +1,5 @@
-/* Bookora route stability: prevents background state events from re-rendering the current page. */
+/* Bookora permanent route stability + no-loading-flash patch. */
 (() => {
-  let patched = false;
   const install = () => {
     const app = window.__BOOKORA_APP_INSTANCE__;
     if (!app || typeof app.route !== 'function') return false;
@@ -11,22 +10,54 @@
       const hash = window.location.hash || '#/';
       const main = document.querySelector('#main-content');
       const sameRoute = app.lastHash === hash;
-
-      // Firebase auth/mode/load events may call route(true, false).
-      // Never destroy an already-rendered page for those background events.
       if (!navigation && sameRoute && main) return;
 
-      return originalRoute(force, navigation);
+      const root = app.root;
+      let descriptor;
+      let patchedRoot = false;
+      if (root) {
+        let proto = root;
+        while (proto && !descriptor) {
+          descriptor = Object.getOwnPropertyDescriptor(proto, 'innerHTML');
+          proto = Object.getPrototypeOf(proto);
+        }
+        if (descriptor?.set) {
+          const originalSetter = descriptor.set;
+          const originalGetter = descriptor.get;
+          try {
+            Object.defineProperty(root, 'innerHTML', {
+              configurable: true,
+              enumerable: descriptor.enumerable,
+              get: originalGetter ? () => originalGetter.call(root) : undefined,
+              set(value) {
+                const html = String(value ?? '');
+                if (html.includes('Loading Bookora…') || html.includes('Loading Bookora...')) {
+                  if (root.querySelector('#main-content')) return;
+                  const hiddenLoader = '<div aria-hidden="true" style="height:60vh;min-height:420px;visibility:hidden;pointer-events:none"></div>';
+                  originalSetter.call(root, html.replace(/<div[^>]*>Loading Bookora(?:…|\.\.\.)<\/div>/, hiddenLoader));
+                  return;
+                }
+                originalSetter.call(root, value);
+              }
+            });
+            patchedRoot = true;
+          } catch (error) { console.warn('[Bookora route stability] innerHTML guard unavailable', error); }
+        }
+      }
+      try {
+        return await originalRoute(force, navigation);
+      } finally {
+        if (patchedRoot) {
+          try { delete root.innerHTML; } catch (_) {}
+        }
+      }
     };
     app.__stableRoutePatched = true;
-    patched = true;
     return true;
   };
-
-  // app-safe.js is a dynamic module, so wait briefly for its instance.
   const started = performance.now();
   const timer = setInterval(() => {
-    if (install() || performance.now() - started > 10000) clearInterval(timer);
+    if (install() || performance.now() - started > 15000) clearInterval(timer);
   }, 25);
   install();
 })();
