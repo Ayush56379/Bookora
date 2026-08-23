@@ -4,6 +4,7 @@
 // directory explicitly so GitHub Pages never requests /Bookora/<runtime>.
 (() => {
   const modules = [
+    './external-publish-scan-permanent-fix.js?v=20260823-2',
     './firestore-book-sync.js?v=20260823-10', './google-drive-resumable-bridge.js?v=20260823-6',
     './book-card-direct-navigation-hotfix.js?v=20260820-3', './auth-buyer-only.js?v=20260823-3',
     './globalInteractions.js?v=20260822-4', './settings-runtime.js?v=20260823-1', './i18n-runtime-safe.js?v=20260823-5',
@@ -12,7 +13,7 @@
     './purchase-access-runtime.js?v=20260821-6', './payment-runtime.js?v=20260820-3', './backendStateSync.js?v=20260823-1',
     './publish-enhancements.js?v=20260823-1', './subscription-session.js?v=20260823-1', './backend-token-restore.js?v=20260823-3',
     './firebase-authenticated-fetch.js?v=20260823-4', './external-seller-auth-persistence-fix.js?v=20260823-4',
-    './external-publish-scan-permanent-fix.js?v=20260823-1', './external-auth-submit-bridge.js?v=20260823-6', './catalog-visibility-hotfix.js?v=20260823-1', './auth-session-bridge.js?v=20260821-3',
+    './external-auth-submit-bridge.js?v=20260823-6', './catalog-visibility-hotfix.js?v=20260823-1', './auth-session-bridge.js?v=20260821-3',
     './firebase-auth-token-bridge.js?v=20260821-9', './wishlist-permission-fix.js?v=20260820-2',
     './payment-route-stability-hotfix.js?v=20260821-1', './settings-route-sync-hotfix.js?v=20260822-1',
     './profile-menu-stability.js?v=20260822-1', './payment-success-verification-hotfix.js?v=20260821-7',
