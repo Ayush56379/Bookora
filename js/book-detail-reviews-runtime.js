@@ -1,7 +1,5 @@
-// Bookora — Firebase-first review hydration runtime.
-// Reviews collection is the source of truth for the visible review list,
-// average rating and review count. Book-level cached review_count/rating values
-// are never allowed to override the Firebase result.
+// Bookora — lightweight Firebase-first review hydration runtime.
+// Firebase reviews are the source of truth for visible review list, average and count.
 import { state } from './state.js';
 import { formatDate, renderStars } from './utils/formatters.js';
 
@@ -9,8 +7,10 @@ import { formatDate, renderStars } from './utils/formatters.js';
   'use strict';
 
   const loaded = new Map();
-  let requestId = 0;
   let unsubscribe = null;
+  let activeKey = '';
+  let watchTimer = null;
+  let retryTimer = null;
 
   const esc = value => String(value ?? '').replace(/[&<>\"']/g, c => ({
     '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;'
@@ -26,9 +26,7 @@ import { formatDate, renderStars } from './utils/formatters.js';
     return id ? state.getBookBySlug(id) : null;
   }
 
-  function normaliseBookId(value) {
-    return String(value ?? '').trim();
-  }
+  const normaliseBookId = value => String(value ?? '').trim();
 
   function reviewBelongsToBook(review, key) {
     return normaliseBookId(review.book_id ?? review.bookId ?? review.bookID) === key;
@@ -61,7 +59,7 @@ import { formatDate, renderStars } from './utils/formatters.js';
           <p class="bd-review-comment">${esc(review.comment || '')}</p>
           <div class="bd-review-meta">${esc(review.user_name || review.userName || 'Bookora Reader')} ${review.verified_purchase ? '<span class="bd-verified">• ✓ Verified Purchase</span>' : ''}</div>
         </article>`).join('')
-        : '<div class="bd-empty">No customer reviews yet. Be the first verified reader to share your feedback.</div>';
+        : '<div class="bd-empty">No customer reviews yet. Be the first reader to share your feedback.</div>';
     }
 
     const count = reviews.length;
@@ -72,31 +70,21 @@ import { formatDate, renderStars } from './utils/formatters.js';
 
     if (score) score.textContent = count ? average.toFixed(1) : '—';
     if (scoreStars) scoreStars.innerHTML = renderStars(average);
-    if (scoreText) scoreText.textContent = `${count} verified reader ${count === 1 ? 'review' : 'reviews'}`;
+    if (scoreText) scoreText.textContent = `${count} ${count === 1 ? 'reader review' : 'reader reviews'}`;
 
     document.querySelectorAll('.bd-tab[data-tab="reviews"]').forEach(tab => {
       tab.textContent = `Reviews (${count})`;
     });
-
-    // Keep any review-count elements rendered by the book detail/catalog UI in
-    // sync with the same Firebase-derived value.
     document.querySelectorAll('[data-review-count], .bd-review-count').forEach(el => {
       el.textContent = String(count);
     });
-  }
-
-  async function fetchReviews(key) {
-    if (!window.firebase?.apps?.length || !key) return null;
-    const db = window.firebase.firestore();
-    const snapshot = await db.collection('reviews').where('book_id', '==', key).get();
-    return dedupeReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   }
 
   function applyReviews(key, reviews) {
     const book = getBook();
     if (!book || normaliseBookId(book.id) !== key) return;
 
-    const clean = dedupeReviews(reviews.filter(review => reviewBelongsToBook(review, key)));
+    const clean = dedupeReviews((reviews || []).filter(review => reviewBelongsToBook(review, key)));
     const others = Array.isArray(state.reviews)
       ? state.reviews.filter(item => !reviewBelongsToBook(item, key))
       : [];
@@ -108,75 +96,67 @@ import { formatDate, renderStars } from './utils/formatters.js';
   function stopListener() {
     if (typeof unsubscribe === 'function') unsubscribe();
     unsubscribe = null;
+    activeKey = '';
   }
 
-  async function hydrate() {
-    const book = getBook();
-    if (!book || !window.firebase?.apps?.length) return;
+  function attachForBook(key) {
+    if (!window.firebase?.apps?.length || !key) return false;
+    if (activeKey === key && unsubscribe) return true;
 
-    const key = normaliseBookId(book.id);
-    if (!key) return;
-    const id = ++requestId;
-
-    try {
-      const reviews = await fetchReviews(key);
-      if (id !== requestId || !getBook() || normaliseBookId(getBook().id) !== key) return;
-      applyReviews(key, reviews || []);
-    } catch (error) {
-      console.warn('Bookora Firebase review hydration:', error?.message || error);
-      // Do not replace a previously loaded Firebase result with a stale cached
-      // book.review_count value merely because a transient read failed.
-      const cached = loaded.get(key);
-      if (cached) renderList(cached);
-    }
-  }
-
-  function watchCurrentBook() {
     stopListener();
-    const book = getBook();
-    if (!book || !window.firebase?.apps?.length) return;
-
-    const key = normaliseBookId(book.id);
-    if (!key) return;
-
-    // Initial read guarantees correct state even when the realtime listener is
-    // attached after the page has already rendered.
-    hydrate();
+    activeKey = key;
 
     try {
       const db = window.firebase.firestore();
+      // onSnapshot performs the initial read and then remains live. There is no
+      // extra .get() request, which prevents duplicate Firestore work during startup.
       unsubscribe = db.collection('reviews')
         .where('book_id', '==', key)
         .onSnapshot(snapshot => {
           if (!getBook() || normaliseBookId(getBook().id) !== key) return;
-          const reviews = dedupeReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-          applyReviews(key, reviews);
+          applyReviews(key, dedupeReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
         }, error => {
           console.warn('Bookora Firebase review listener:', error?.message || error);
         });
+      return true;
     } catch (error) {
       console.warn('Bookora Firebase review listener setup:', error?.message || error);
+      return false;
     }
   }
 
-  function scheduleWatch() {
-    setTimeout(watchCurrentBook, 0);
-    setTimeout(watchCurrentBook, 250);
-    setTimeout(watchCurrentBook, 1000);
+  function watchCurrentBook() {
+    const book = getBook();
+    if (!book || !window.firebase?.apps?.length) {
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        watchCurrentBook();
+      }, 1500);
+      return;
+    }
+
+    const key = normaliseBookId(book.id);
+    if (!key) return;
+    attachForBook(key);
   }
 
-  window.addEventListener('hashchange', event => {
-    if (!event.isTrusted && bookIdFromHash() && document.querySelector('.bd-page')) {
-      event.stopImmediatePropagation();
-    }
-    scheduleWatch();
-  }, true);
+  function scheduleWatch(delay = 50) {
+    if (watchTimer) clearTimeout(watchTimer);
+    watchTimer = setTimeout(() => {
+      watchTimer = null;
+      watchCurrentBook();
+    }, delay);
+  }
 
-  window.addEventListener('load', scheduleWatch);
+  window.addEventListener('hashchange', () => scheduleWatch(50));
+  window.addEventListener('load', () => scheduleWatch(100));
 
+  // DATA_SYNCED can fire during catalog hydration. Debounce it so it never
+  // repeatedly tears down/recreates the Firestore listener during page startup.
   state.subscribe(event => {
-    if (event === 'DATA_SYNCED' || event === 'USER_LOGGED_IN') scheduleWatch();
+    if (event === 'DATA_SYNCED' || event === 'USER_LOGGED_IN') scheduleWatch(100);
   });
 
-  scheduleWatch();
+  scheduleWatch(100);
 })();
