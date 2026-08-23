@@ -7,7 +7,7 @@ let filter = 'all';
 let search = '';
 
 function esc(v) {
-  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');
 }
 
 function isAdmin() {
@@ -20,22 +20,26 @@ export function renderAdminBooksPage() {
     <section style="min-height:100vh;background:#f8fafc;padding:32px">
       <div style="max-width:1450px;margin:auto">
         <div style="display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:24px">
-          <div><div style="color:#2563eb;font-weight:800;font-size:12px">BOOK MANAGEMENT</div><h1 style="margin:6px 0">Books</h1><p style="color:#64748b">Manage books stored by the Bookora backend.</p></div>
+          <div><div style="color:#2563eb;font-weight:800;font-size:12px">BOOK MANAGEMENT</div><h1 style="margin:6px 0">Books</h1><p style="color:#64748b">Manage internal and external eBooks. Remove any listing from the marketplace with Firebase-backed persistence.</p></div>
           <button id="admin-books-refresh" style="border:0;border-radius:10px;padding:12px 18px;background:#2563eb;color:white;font-weight:700">↻ Refresh</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px">
-          <div class="ab-stat"><small>Total</small><b id="ab-total">0</b></div><div class="ab-stat"><small>Pending</small><b id="ab-pending">0</b></div><div class="ab-stat"><small>Approved</small><b id="ab-approved">0</b></div><div class="ab-stat"><small>Rejected</small><b id="ab-rejected">0</b></div>
+        <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-bottom:18px">
+          <div class="ab-stat"><small>Total</small><b id="ab-total">0</b></div><div class="ab-stat"><small>Pending</small><b id="ab-pending">0</b></div><div class="ab-stat"><small>Approved</small><b id="ab-approved">0</b></div><div class="ab-stat"><small>Rejected</small><b id="ab-rejected">0</b></div><div class="ab-stat"><small>Removed</small><b id="ab-removed">0</b></div>
         </div>
         <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;padding:16px;display:flex;gap:10px;margin-bottom:18px">
-          <input id="ab-search" placeholder="Search title, author..." style="flex:1;padding:12px;border:1px solid #cbd5e1;border-radius:10px">
-          <select id="ab-filter" style="padding:12px;border:1px solid #cbd5e1;border-radius:10px"><option value="all">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+          <input id="ab-search" placeholder="Search title, author, seller..." style="flex:1;padding:12px;border:1px solid #cbd5e1;border-radius:10px">
+          <select id="ab-filter" style="padding:12px;border:1px solid #cbd5e1;border-radius:10px"><option value="all">Active + Removed</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="removed">Removed</option></select>
         </div>
         <div style="background:white;border:1px solid #e2e8f0;border-radius:16px;overflow:auto">
-          <table style="width:100%;min-width:900px;border-collapse:collapse"><thead><tr style="background:#f8fafc"><th>BOOK</th><th>PRICE</th><th>SELLER</th><th>STATUS</th><th>CREATED</th><th>ACTION</th></tr></thead><tbody id="ab-list"><tr><td colspan="6" style="padding:50px;text-align:center">Loading…</td></tr></tbody></table>
+          <table style="width:100%;min-width:1050px;border-collapse:collapse"><thead><tr style="background:#f8fafc"><th>BOOK</th><th>SOURCE</th><th>PRICE</th><th>SELLER</th><th>STATUS</th><th>CREATED</th><th>ACTION</th></tr></thead><tbody id="ab-list"><tr><td colspan="7" style="padding:50px;text-align:center">Loading…</td></tr></tbody></table>
         </div>
       </div>
     </section>
-    <style>.ab-stat{background:white;border:1px solid #e2e8f0;border-radius:14px;padding:18px}.ab-stat small{display:block;color:#64748b}.ab-stat b{display:block;font-size:26px;margin-top:6px}th,td{text-align:left;padding:14px;border-bottom:1px solid #f1f5f9;font-size:13px}.ab-btn{border:0;border-radius:8px;padding:7px 10px;margin:2px;font-weight:700;cursor:pointer}.ab-ok{background:#dcfce7;color:#166534}.ab-no{background:#fee2e2;color:#991b1b}@media(max-width:700px){.ab-stat{padding:12px}}</style>
+    <style>
+      .ab-stat{background:white;border:1px solid #e2e8f0;border-radius:14px;padding:18px}.ab-stat small{display:block;color:#64748b}.ab-stat b{display:block;font-size:26px;margin-top:6px}
+      th,td{text-align:left;padding:14px;border-bottom:1px solid #f1f5f9;font-size:13px}.ab-btn{border:0;border-radius:8px;padding:7px 10px;margin:2px;font-weight:700;cursor:pointer}.ab-ok{background:#dcfce7;color:#166534}.ab-no{background:#fee2e2;color:#991b1b}.ab-remove{background:#111827;color:#fff}.ab-source{display:inline-flex;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:800}.ab-source-internal{background:#eef2ff;color:#3730a3}.ab-source-external{background:#ecfeff;color:#0e7490}.ab-status-removed{color:#64748b!important;text-decoration:line-through}
+      @media(max-width:900px){.ab-stat{padding:12px}.ab-stat b{font-size:20px}}@media(max-width:700px){.ab-stat{padding:10px}}
+    </style>
   `;
 }
 
@@ -59,12 +63,16 @@ function renderTable() {
   document.getElementById('ab-pending')?.replaceChildren(document.createTextNode(count('pending')));
   document.getElementById('ab-approved')?.replaceChildren(document.createTextNode(count('approved')));
   document.getElementById('ab-rejected')?.replaceChildren(document.createTextNode(count('rejected')));
+  document.getElementById('ab-removed')?.replaceChildren(document.createTextNode(count('removed')));
   const tbody = document.getElementById('ab-list');
   if (!tbody) return;
-  if (!visible.length) { tbody.innerHTML = '<tr><td colspan="6" style="padding:50px;text-align:center;color:#64748b">No books found.</td></tr>'; return; }
+  if (!visible.length) { tbody.innerHTML = '<tr><td colspan="7" style="padding:50px;text-align:center;color:#64748b">No books found.</td></tr>'; return; }
   tbody.innerHTML = visible.map(b => {
     const status = String(b.status || 'pending').toLowerCase();
-    return `<tr><td><b>${esc(b.title || 'Untitled')}</b><div style="color:#94a3b8">${esc(b.author || '')}</div></td><td>₹${Number(b.price || 0).toLocaleString('en-IN')}</td><td>${esc(b.seller_name || b.seller_id || '—')}</td><td><b style="color:${status==='approved'?'#15803d':status==='rejected'?'#b91c1c':'#a16207'}">${esc(status.toUpperCase())}</b></td><td>${esc(b.created_at || '—')}</td><td>${status !== 'approved' ? `<button class="ab-btn ab-ok" data-ab-action="approved" data-ab-id="${esc(b.id)}">Approve</button>` : ''}${status !== 'rejected' ? `<button class="ab-btn ab-no" data-ab-action="rejected" data-ab-id="${esc(b.id)}">Reject</button>` : ''}</td></tr>`;
+    const source = String(b.source_type || b.sourceType || 'internal').toLowerCase() === 'external' ? 'external' : 'internal';
+    const statusColor = status==='approved'?'#15803d':status==='rejected'?'#b91c1c':status==='removed'?'#64748b':'#a16207';
+    const action = status === 'removed' ? '<span style="color:#64748b;font-weight:700">Removed</span>' : `<button class="ab-btn ab-remove" data-ab-remove-id="${esc(b.id)}" title="Remove this eBook from Bookora">Remove</button>`;
+    return `<tr><td><b class="${status==='removed'?'ab-status-removed':''}">${esc(b.title || 'Untitled')}</b><div style="color:#94a3b8">${esc(b.author || '')}</div></td><td><span class="ab-source ab-source-${source}">${source.toUpperCase()}</span></td><td>₹${Number(b.price || 0).toLocaleString('en-IN')}</td><td>${esc(b.seller_name || b.seller_id || '—')}</td><td><b style="color:${statusColor}">${esc(status.toUpperCase())}</b></td><td>${esc(b.created_at || b.createdAt || '—')}</td><td>${status !== 'removed' ? `${status !== 'approved' ? `<button class="ab-btn ab-ok" data-ab-action="approved" data-ab-id="${esc(b.id)}">Approve</button>` : ''}${status !== 'rejected' ? `<button class="ab-btn ab-no" data-ab-action="rejected" data-ab-id="${esc(b.id)}">Reject</button>` : ''}` : ''}${action}</td></tr>`;
   }).join('');
 }
 
@@ -74,6 +82,30 @@ export function initAdminBooksEvents() {
   document.getElementById('ab-search')?.addEventListener('input', e => { search=e.target.value; renderTable(); });
   document.getElementById('ab-filter')?.addEventListener('change', e => { filter=e.target.value; renderTable(); });
   document.addEventListener('click', async e => {
+    const removeBtn=e.target.closest('[data-ab-remove-id]');
+    if (removeBtn) {
+      const id=removeBtn.dataset.abRemoveId;
+      if(!id) return;
+      const book=books.find(b=>String(b.id)===String(id));
+      const title=book?.title || 'this eBook';
+      if(!window.confirm(`Remove "${title}" from Bookora?\n\nThe listing will be hidden from the marketplace. Existing paid order/library records will be preserved.`)) return;
+      removeBtn.disabled=true;
+      removeBtn.textContent='Removing…';
+      try {
+        const res=await apiFetch(`/api/admin/books/${encodeURIComponent(id)}/remove`,{method:'POST',headers:{Authorization:`Bearer ${state.token || ''}`}});
+        const data=await res.json();
+        if(!res.ok || !data.success) throw new Error(data.error || 'eBook removal failed.');
+        const index=books.findIndex(b=>String(b.id)===String(id));
+        if(index>=0) books[index]=data.book;
+        renderTable();
+        Toast.show('eBook removed successfully and Firebase record updated.','success');
+      } catch(err) {
+        Toast.show(err.message || 'eBook removal failed.','error');
+        removeBtn.disabled=false;
+        removeBtn.textContent='Remove';
+      }
+      return;
+    }
     const btn=e.target.closest('[data-ab-action]'); if(!btn) return;
     const id=btn.dataset.abId, status=btn.dataset.abAction;
     if(!id) return;
