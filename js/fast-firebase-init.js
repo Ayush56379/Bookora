@@ -44,7 +44,7 @@
       if (!window.firebase?.initializeApp) return false;
       if (!window.firebase.apps?.length) {
         window.firebase.initializeApp({
-          apiKey: 'AIzaSyDgPa6d8gxRhrJEaPyKuki2hbSfAU-94',
+          apiKey: 'AIzaSyDgPa6d8gxRhrJEaPyKuki2hbTbSfAU-94',
           authDomain: 'bookora-676bf.firebaseapp.com',
           projectId: 'bookora-676bf',
           storageBucket: 'bookora-676bf.firebasestorage.app',
