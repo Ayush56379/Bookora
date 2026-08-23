@@ -91,8 +91,9 @@ async function submitVerifiedReview(book, form) {
   const submit = form.querySelector('button[type="submit"]');
   if (submit) { submit.disabled = true; submit.textContent = 'Publishing…'; }
   try {
-    const existing = await db.collection('reviews').where('book_id','==',String(book.id)).where('user_id','==',String(state.currentUser.uid)).limit(1).get();
-    if (!existing.empty) throw new Error('You have already reviewed this eBook.');
+    const snapshot = await db.collection('reviews').where('book_id','==',String(book.id)).get();
+    const duplicate = snapshot.docs.some(doc => String(doc.data()?.user_id || '') === String(state.currentUser.uid));
+    if (duplicate) throw new Error('You have already reviewed this eBook.');
 
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
     const review = {
