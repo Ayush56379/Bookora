@@ -1,4 +1,7 @@
-/* Bookora permanent route stability + no-loading-flash patch. */
+/* Bookora permanent route stability + no-loading-flash patch.
+ * The guard is deliberately local to the SPA router. It never monkey-patches
+ * global hashchange listeners or DOM APIs.
+ */
 (() => {
   const install = () => {
     const app = window.__BOOKORA_APP_INSTANCE__;
@@ -10,7 +13,10 @@
       const hash = window.location.hash || '#/';
       const main = document.querySelector('#main-content');
       const sameRoute = app.lastHash === hash;
-      if (!navigation && sameRoute && main) return;
+
+      // A background/synthetic event for the exact route already on screen
+      // must never repaint the page. This is the key no-blink invariant.
+      if (sameRoute && main) return;
 
       const root = app.root;
       let descriptor;
