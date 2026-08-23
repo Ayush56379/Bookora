@@ -1,0 +1,98 @@
+name: Activate external master code panel
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Add master code renderer
+        shell: bash
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('js/pages/PublishExternalPage.js')
+          s = p.read_text(encoding='utf-8')
+          helper = r'''
+
+function renderMasterIntegrationCode(data, integrationData) {
+  const host = document.getElementById('ext-integration-panel');
+  if (!host) return;
+  const i = data || {};
+  const tag = String(integrationData?.scriptTag || i.scriptTag || '').trim();
+  const webhook = String(integrationData?.webhookUrl || i.webhookUrl || '').trim();
+  if (!tag) return;
+  const safe = (v='') => esc(v).replace(/`/g,'&#96;');
+  host.style.display = 'block';
+  host.innerHTML = `
+    <div style="padding:1rem;border:1px solid #c7d2fe;border-radius:12px;background:#fff">
+      <div style="display:flex;justify-content:space-between;gap:.75rem;align-items:center;flex-wrap:wrap">
+        <div><strong style="font-size:.98rem">Your one-time Bookora Master Code</strong><div style="font-size:.78rem;color:#475569;margin-top:.2rem">Paste this exact code once in the seller website. Do not create a different code for every page.</div></div>
+        <span style="padding:.25rem .55rem;border-radius:999px;background:#dcfce7;color:#166534;font-weight:700;font-size:.72rem">BACKEND CONNECTED</span>
+      </div>
+      <textarea id="ext-master-code" readonly rows="3" style="width:100%;margin-top:.85rem;padding:.75rem;border:1px solid #cbd5e1;border-radius:10px;background:#0f172a;color:#e2e8f0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical">${safe(tag)}</textarea>
+      <div style="display:flex;gap:.55rem;flex-wrap:wrap;margin-top:.65rem">
+        <button type="button" id="ext-copy-master-code" class="btn btn-primary" style="padding:.55rem .9rem">Copy Full Code</button>
+        <button type="button" id="ext-verify-master-code" class="btn" style="padding:.55rem .9rem;border:1px solid #cbd5e1;background:#fff">Verify Installation</button>
+      </div>
+      <div style="margin-top:.8rem;padding:.7rem .8rem;border-radius:9px;background:#f8fafc;color:#334155;font-size:.76rem;line-height:1.55">
+        <strong>Payment & Library:</strong> the public code contains only the integration token. It does not contain Cashfree keys or webhook secrets. The code sends the buyer to Bookora's verified checkout with the external referral attached. Bookora's server-side payment verification remains the authority; library access is granted only after a verified successful payment.
+        ${webhook ? `<br><strong>Seller payment webhook:</strong> ${safe(webhook)} — use this only if the seller keeps a separate payment flow. Never place a webhook secret in the browser code.</br>` : ''}
+      </div>
+      <div id="ext-master-verify-status" style="font-size:.76rem;margin-top:.55rem;color:#475569"></div>
+    </div>`;
+  document.getElementById('ext-copy-master-code')?.addEventListener('click', async () => {
+    const value = document.getElementById('ext-master-code')?.value || '';
+    try { await navigator.clipboard.writeText(value); Toast.show('Full Bookora Master Code copied.','success'); }
+    catch (_) { const el=document.getElementById('ext-master-code'); el?.select(); document.execCommand('copy'); Toast.show('Full Bookora Master Code copied.','success'); }
+  });
+  document.getElementById('ext-verify-master-code')?.addEventListener('click', async () => {
+    const out=document.getElementById('ext-master-verify-status');
+    if (!integrationData?.integrationId) return;
+    try {
+      out.textContent='Checking public website installation…';
+      const t = await authToken();
+      const r = await apiFetch(`/api/external/integrations/${encodeURIComponent(integrationData.integrationId)}/verify`, {method:'POST',headers:{Authorization:`Bearer ${t}`},body:'{}'});
+      const d = await r.json();
+      if (!r.ok || !d.success || !d.verified) throw new Error(d.error || 'Master code was not detected.');
+      out.textContent='✓ Master code verified. Backend connection is active.'; out.style.color='#166534';
+      Toast.show('Bookora Master Code verified successfully.','success');
+    } catch (e) { out.textContent='✕ '+(e.message||'Verification failed.'); out.style.color='#b91c1c'; }
+  });
+}
+'''
+          marker = '\nexport async function initPublishExternalEvents() {'
+          if 'function renderMasterIntegrationCode(' not in s:
+              if marker not in s:
+                  raise SystemExit('init marker not found')
+              s = s.replace(marker, helper + marker, 1)
+          old = 'integration=intData.integration;\n      const scanRes='
+          new = 'integration=intData.integration;\n      renderMasterIntegrationCode(integration, intData);\n      const scanRes='
+          if old in s and new not in s:
+              s = s.replace(old, new, 1)
+          old2 = 'const bind=await apiFetch(`/api/external/integrations/${encodeURIComponent(integration.integrationId)}/bind-book`'
+          if old2 not in s:
+              raise SystemExit('bind-book call marker not found')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit activation
+        shell: bash
+        run: |
+          if git diff --quiet -- js/pages/PublishExternalPage.js; then
+            echo 'Master code panel already active.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/pages/PublishExternalPage.js
+          git commit -m 'feat: show complete external master integration code'
+          git push
