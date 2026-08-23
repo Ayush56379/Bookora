@@ -1,8 +1,6 @@
 // Bookora universal i18n runtime.
-// Translates static UI + dynamically rendered catalog content (book titles,
-// descriptions, author names, categories, reviews, buttons, placeholders, etc.).
-// Original text is retained per DOM text node so language switching never
-// translates an already translated value again.
+// Translates static UI + dynamically rendered catalog content without creating
+// a MutationObserver feedback loop when translated text is written back to DOM.
 import { state } from './state.js';
 
 const STORAGE_KEY = 'bookora_language';
@@ -125,14 +123,23 @@ async function translateAttributes(root, target) {
   jobs.forEach(({el,attr,source}) => { if (el.isConnected) el.setAttribute(attr, translated.get(source) || source); });
 }
 
+function pauseObserver() {
+  if (observer) observer.disconnect();
+}
+
+function resumeObserver() {
+  if (observer && document.body) observer.observe(document.body,{childList:true,subtree:true});
+}
+
 async function applyLanguage() {
   if (!document.body || translating) return;
   translating = true;
+  pauseObserver();
   try {
     const target = normalizeLanguage(currentLanguage);
     const nodes = collectTextNodes(document.body);
     if (target === 'en') {
-      nodes.forEach(({node,source}) => { if (node.isConnected) node.nodeValue = source; });
+      nodes.forEach(({node,source}) => { if (node.isConnected && node.nodeValue !== source) node.nodeValue = source; });
     } else {
       const unique = [...new Set(nodes.map(x => x.source.trim()))];
       const translated = new Map();
@@ -151,23 +158,33 @@ async function applyLanguage() {
         const value = translated.get(raw.trim()) || raw;
         const leading = raw.match(/^\s*/)?.[0] || '';
         const trailing = raw.match(/\s*$/)?.[0] || '';
-        node.nodeValue = leading + value + trailing;
+        const next = leading + value + trailing;
+        if (node.nodeValue !== next) node.nodeValue = next;
       });
     }
     await translateAttributes(document.body,target);
     document.documentElement.lang = target;
     document.documentElement.dataset.bookoraLanguage = target;
     window.dispatchEvent(new CustomEvent('bookora:language-changed',{detail:{language:target}}));
-  } finally { translating = false; }
+  } finally {
+    translating = false;
+    resumeObserver();
+  }
 }
 
 function queueAddedNodes(mutations) {
+  if (translating) return;
+  let added = false;
   for (const mutation of mutations) for (const node of mutation.addedNodes || []) {
-    if (node.nodeType === Node.ELEMENT_NODE) queuedNodes.add(node);
-    else if (node.nodeType === Node.TEXT_NODE && node.parentElement) queuedNodes.add(node.parentElement);
+    if (node.nodeType === Node.ELEMENT_NODE) { queuedNodes.add(node); added = true; }
+    else if (node.nodeType === Node.TEXT_NODE && node.parentElement) { queuedNodes.add(node.parentElement); added = true; }
   }
+  if (!added) return;
   clearTimeout(flushTimer);
-  flushTimer = setTimeout(() => { queuedNodes.clear(); applyLanguage(); }, 100);
+  flushTimer = setTimeout(() => {
+    queuedNodes.clear();
+    applyLanguage();
+  }, 100);
 }
 
 function installObserver() {
@@ -198,6 +215,6 @@ function wireLanguageControls() {
   });
 }
 
-async function boot(){installObserver();wireLanguageControls();await applyLanguage();}
+async function boot(){installObserver();await applyLanguage();wireLanguageControls();}
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
 state?.subscribe?.(event=>{if(event==='DATA_SYNCED'||event==='USER_LOGGED_IN'||event==='USER_UPDATED')setTimeout(()=>applyLanguage(),50);});
