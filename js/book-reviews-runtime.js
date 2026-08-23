@@ -28,18 +28,28 @@ async function ensureFirebaseReader(){
   return firebaseUser || (state.isAuthenticated && state.currentUser?.uid ? { uid: state.currentUser.uid } : null);
 }
 
+function updateHeaderRating(book,reviews){
+  const ratingEl=document.querySelector('.bd-author-line .bd-rating');
+  if(!ratingEl)return;
+  const total=reviews.length;
+  const average=total?reviews.reduce((sum,r)=>sum+Number(r.rating||0),0)/total:Number(book?.rating||0);
+  const display=total?average.toFixed(1):'—';
+  const countText=`(${total} ${total===1?'review':'reviews'})`;
+  ratingEl.innerHTML=`<span class="bd-rating-stars" aria-label="${esc(display)} out of 5 stars">${stars(average)}</span><span class="bd-rating-number">${display}</span><span class="bd-rating-count">${esc(countText)}</span>`;
+}
+
 function renderReviews(bookId,reviews){
   if(!String(window.location.hash||'').startsWith('#/book/')) return;
   const list=document.getElementById('review-list'),summary=document.querySelector('[data-panel="reviews"] .bd-review-summary'),tab=document.querySelector('.bd-tab[data-tab="reviews"]');
-  if(!list||!summary)return;
-  // Defensive de-duplication by stable review id. This prevents duplicate DOM
-  // entries if a realtime snapshot and a local state update overlap.
+  const book=state.getBookBySlug(bookId) || [...(state.books||[])].find(b=>String(b.id)===String(bookId));
   const unique=new Map();
   for(const review of Array.isArray(reviews)?reviews:[]){
     const id=String(review.id||review.review_id||`${review.book_id||review.bookId}|${review.user_id||review.userId||review.uid}`);
     if(!unique.has(id))unique.set(id,review);
   }
   const sorted=[...unique.values()].sort((a,b)=>{const ta=a.created_at?.toDate?a.created_at.toDate().getTime():new Date(a.created_at||a.date||0).getTime();const tb=b.created_at?.toDate?b.created_at.toDate().getTime():new Date(b.created_at||b.date||0).getTime();return tb-ta;});
+  updateHeaderRating(book,sorted);
+  if(!list||!summary)return;
   const total=sorted.length,average=total?sorted.reduce((sum,r)=>sum+Number(r.rating||0),0)/total:0,score=summary.querySelector('.bd-score');
   if(score)score.innerHTML=`<div class="bd-score-number">${total?average.toFixed(1):'—'}</div><div class="bd-rating-stars">${stars(average)}</div><small>${total} reader ${total===1?'review':'reviews'}</small>`;
   if(tab)tab.textContent=`Reviews (${total})`;
@@ -56,9 +66,6 @@ async function submitVerifiedReview(book,form){const firebaseUser=await ensureFi
   const submit=form.querySelector('button[type="submit"]');if(submit){submit.disabled=true;submit.textContent='Publishing…';}
   try{const response=await apiFetch('/api/reviews',{method:'POST',body:JSON.stringify({book_id:String(book.id),rating,title,comment})});let payload={};try{payload=await response.json();}catch(_){}
     if(!response.ok||!payload.success){if(response.status===409)throw new Error(payload.error||'You have already reviewed this eBook.');throw new Error(payload.error||`Review service returned HTTP ${response.status}.`);}
-    // Do not append the created review locally. The Firestore realtime listener
-    // is the single source of truth and will deliver the saved document once.
-    // Appending here as well caused one submitted review to appear twice.
     form.reset();document.getElementById('review-form-container')?.classList.remove('open');Toast.show(payload.review?.verified_purchase?'Your verified review has been published.':'Your review and rating have been published.','success');
   }catch(error){console.error('[Reviews] submit failed:',error);Toast.show(error?.message||'Could not publish your review.','error');}finally{if(submit){submit.disabled=false;submit.textContent='Submit Review';}}
 }
