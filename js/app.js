@@ -48,6 +48,7 @@ class App {
     this.lastRenderedHash = '';
     this.lastRenderedPath = '';
     this.routeRunning = false;
+    this.pendingRoute = null;
     window.__BOOKORA_APP_INSTANCE__ = this;
     this.init();
     try { BookoraAI.init(); } catch (e) { console.warn('BookoraAI init notice:', e); }
@@ -64,15 +65,14 @@ class App {
         return;
       }
 
-      this.updateHeader();
-
-      // DATA_SYNCED is a data update, not a navigation event. Re-rendering the
-      // whole SPA here destroys page-local handlers during user interaction.
-      // Keep the live DOM and let page-specific runtimes update their catalog.
+      // DATA_SYNCED is never a UI/navigation event. Do not even rebuild the
+      // header: replacing it can destroy a menu/input handler mid-interaction.
       if (event === 'DATA_SYNCED') {
         window.dispatchEvent(new CustomEvent('bookora:catalog-updated'));
         return;
       }
+
+      this.updateHeader();
 
       if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) {
         this.route(true, false);
@@ -148,8 +148,20 @@ class App {
     if (c) { c.innerHTML = renderHeader(); initHeaderEvents(); }
   }
 
+  requestRoute(force = false, navigation = false) {
+    if (this.routeRunning) {
+      this.pendingRoute = { force: !!force, navigation: !!navigation };
+      return;
+    }
+    this.route(force, navigation);
+  }
+
   route(force = false, navigation = false) {
-    if (this.routeRunning) return;
+    if (this.routeRunning) {
+      this.pendingRoute = { force: !!force, navigation: !!navigation };
+      return;
+    }
+
     const hash = window.location.hash || '#/';
     const path = this.currentPath();
     if (path.startsWith('/book/') && this.lastRenderedHash === hash && document.querySelector('#main-content')) return;
@@ -247,7 +259,21 @@ class App {
       if (typeof initCallback === 'function') { try { initCallback(); } catch (err) { console.error('Page event initialization error:', err); } }
       this.lastRenderedHash = hash;
       this.lastRenderedPath = path;
-    } finally { this.routeRunning = false; }
+    } catch (error) {
+      console.error('[Bookora] Route render failed:', error);
+      // Never leave the router locked after a render exception. Keep a usable
+      // recovery surface instead of a blank/frozen application.
+      try {
+        this.root = document.getElementById('app') || document.body;
+        this.root.innerHTML = `<main style="min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,sans-serif"><div><h2>Bookora is recovering…</h2><p style="color:#64748B">The page could not be rendered. Please try the action again.</p><button id="bookora-route-retry" type="button" style="padding:10px 18px;border:0;border-radius:10px;cursor:pointer;background:#2563EB;color:#fff;font-weight:700">Retry</button></div></main>`;
+        document.getElementById('bookora-route-retry')?.addEventListener('click', () => this.route(true, false), { once: true });
+      } catch (recoveryError) { console.error('[Bookora] Route recovery failed:', recoveryError); }
+    } finally {
+      this.routeRunning = false;
+      const pending = this.pendingRoute;
+      this.pendingRoute = null;
+      if (pending) queueMicrotask(() => this.route(pending.force, pending.navigation));
+    }
   }
 }
 
