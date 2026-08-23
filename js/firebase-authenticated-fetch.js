@@ -1,10 +1,10 @@
 // Bookora authenticated fetch runtime.
-// Firebase Auth is the single browser authentication authority.
-// Protected backend requests receive a fresh Firebase ID token in memory.
-// No UID/email is trusted from the caller and no token is persisted here.
+// Firebase Auth is the browser authentication authority when available.
+// Existing Bookora backend sessions remain valid during Firebase restoration.
 import { state } from './state.js';
 
 const BACKEND_ORIGIN = 'https://bookora-backend-x08l.onrender.com';
+const BACKEND_TOKEN_KEY = 'bookora_auth_token';
 const PROTECTED_PATHS = [
   '/api/auth/me', '/api/orders', '/api/library', '/api/wishlist', '/api/cart',
   '/api/books/upload-files', '/api/books/create', '/api/publish/',
@@ -21,6 +21,10 @@ function firebaseAuth() {
   } catch (_) {
     return null;
   }
+}
+
+function storedBackendToken() {
+  try { return String(localStorage.getItem(BACKEND_TOKEN_KEY) || '').trim(); } catch (_) { return ''; }
 }
 
 function isBackendRequest(input) {
@@ -62,32 +66,47 @@ function waitForAuthRestoration(timeoutMs = 10000) {
 
 async function getFreshFirebaseIdToken(forceRefresh = false) {
   const auth = firebaseAuth();
-  if (!auth) return '';
-  const user = auth.currentUser || await waitForAuthRestoration();
-  if (!user) return '';
-  const token = await user.getIdToken(!!forceRefresh);
-  if (token) {
-    // Keep the runtime state synchronized for legacy page-level checks.
-    // Firebase remains the authentication authority; this is only an in-memory mirror.
-    state.token = token;
-    state.isAuthenticated = true;
-    if (!state.currentUser) {
-      state.currentUser = {
-        uid: user.uid,
-        firebaseUid: user.uid,
-        email: user.email || '',
-        name: user.displayName || user.email?.split('@')[0] || 'Bookora User',
-        photoURL: user.photoURL || ''
-      };
+  if (auth) {
+    const user = auth.currentUser || await waitForAuthRestoration();
+    if (user) {
+      try {
+        const token = await user.getIdToken(!!forceRefresh);
+        if (token) {
+          state.token = token;
+          state.isAuthenticated = true;
+          if (!state.currentUser) {
+            state.currentUser = {
+              uid: user.uid,
+              firebaseUid: user.uid,
+              email: user.email || '',
+              name: user.displayName || user.email?.split('@')[0] || 'Bookora User',
+              photoURL: user.photoURL || ''
+            };
+          }
+          return token;
+        }
+      } catch (error) {
+        console.warn('[Firebase Auth] ID token unavailable:', error?.message || error);
+      }
     }
   }
-  return token;
+
+  // Important compatibility path: the current Bookora UI may already be
+  // authenticated with its backend session token while Firebase is still
+  // restoring (or when an older login session has no Firebase currentUser).
+  const backendToken = storedBackendToken() || String(state.token || '').trim();
+  if (backendToken) {
+    state.token = backendToken;
+    state.isAuthenticated = true;
+    return backendToken;
+  }
+  return '';
 }
 
 async function withFirebaseAuth(input, init = {}, forceRefresh = false) {
   const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
   const token = await getFreshFirebaseIdToken(forceRefresh);
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
   return { ...init, headers };
 }
 
@@ -116,18 +135,23 @@ function install() {
 
 install();
 
-// Global auth bootstrap: when a Firebase session already exists, hydrate the
-// in-memory Bookora token immediately instead of waiting for a later page action.
-// This prevents individual pages from incorrectly treating a restored session
-// as logged out during the short Firebase restoration window.
 (async function bootstrapRestoredSession() {
   const auth = firebaseAuth();
-  if (!auth) return;
-  try {
-    const user = auth.currentUser || await waitForAuthRestoration(10000);
-    if (user) await getFreshFirebaseIdToken(false);
-  } catch (error) {
-    console.warn('[Firebase Auth] Session bootstrap skipped:', error?.message || error);
+  if (auth) {
+    try {
+      const user = auth.currentUser || await waitForAuthRestoration(10000);
+      if (user) await getFreshFirebaseIdToken(false);
+    } catch (error) {
+      console.warn('[Firebase Auth] Session bootstrap skipped:', error?.message || error);
+    }
+  }
+
+  // Also restore an existing Bookora backend session immediately. This keeps
+  // protected seller/admin pages usable during Firebase restoration.
+  const backendToken = storedBackendToken();
+  if (backendToken && !state.token) {
+    state.token = backendToken;
+    state.isAuthenticated = true;
   }
 })();
 
