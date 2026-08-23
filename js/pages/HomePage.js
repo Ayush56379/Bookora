@@ -3,122 +3,84 @@ import { state } from '../state.js';
 import { renderBookCard } from '../components/BookCard.js';
 import { updateSEO } from '../utils/seo.js';
 
-export function renderHomePage() {
-  updateSEO({
-    title: 'Bookora — Discover. Read. Publish.',
-    description: 'Discover and buy verified eBooks on Bookora. Read instantly and access your purchased books from your library.'
+function newest(books) {
+  return [...books].sort((a, b) => {
+    const ad = new Date(a?.createdAt || a?.created_at || a?.publishedAt || 0).getTime() || 0;
+    const bd = new Date(b?.createdAt || b?.created_at || b?.publishedAt || 0).getTime() || 0;
+    return bd - ad;
   });
+}
 
-  const approved = state.getApprovedBooks();
+export function renderHomePage() {
+  updateSEO({ title: 'Bookora — Discover. Read. Publish.', description: 'Discover, preview and buy verified eBooks on Bookora.' });
+  const books = state.getApprovedBooks();
   const trending = state.getTrendingBooks();
-  const bestSellers = state.getBestSellers();
-
-  // Prefer real catalog books. Never create fake/demo books just to fill the grid.
-  const seen = new Set();
-  const books = [...trending, ...bestSellers, ...approved].filter(book => {
-    const id = String(book?.id ?? book?.bookId ?? book?.slug ?? '');
-    if (!id || seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  }).slice(0, 12);
+  const best = state.getBestSellers();
+  const ordered = trending.length ? trending : best.length ? best : newest(books);
+  const featured = ordered.slice(0, 8);
 
   return `
-    <div class="homepage homepage-clean" style="background:#fff;overflow-x:hidden;">
-      <style>
-        .homepage-clean .home-hero{background:linear-gradient(135deg,#07152f 0%,#102d62 55%,#1d4ed8 100%);border-radius:0 0 28px 28px;color:#fff;overflow:hidden;position:relative}
-        .homepage-clean .home-hero:after{content:"";position:absolute;width:520px;height:520px;right:-160px;top:-210px;border-radius:50%;background:radial-gradient(circle,rgba(96,165,250,.24),transparent 68%);pointer-events:none}
-        .homepage-clean .hero-inner{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(280px,.75fr);gap:2rem;align-items:center;padding:5rem 0 4.5rem}
-        .homepage-clean .hero-copy{max-width:720px}
-        .homepage-clean .hero-badge{display:inline-flex;align-items:center;gap:.45rem;padding:.42rem .8rem;border-radius:999px;background:rgba(59,130,246,.18);border:1px solid rgba(147,197,253,.25);color:#bfdbfe;font-size:.74rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-bottom:1rem}
-        .homepage-clean .hero-title{font-family:var(--font-display);font-size:clamp(2.4rem,5vw,4.6rem);line-height:1.04;letter-spacing:-.045em;font-weight:900;margin:0 0 1.15rem;color:#fff}
-        .homepage-clean .hero-title span{color:#60a5fa}
-        .homepage-clean .hero-text{max-width:620px;color:#dbeafe;font-size:1.05rem;line-height:1.7;margin:0 0 1.6rem}
-        .homepage-clean .hero-actions{display:flex;flex-wrap:wrap;gap:.75rem}
-        .homepage-clean .hero-search{margin-top:1.4rem;display:flex;max-width:600px;background:#fff;border:1px solid rgba(255,255,255,.35);border-radius:14px;padding:5px;box-shadow:0 14px 40px rgba(2,6,23,.2)}
-        .homepage-clean .hero-search input{min-width:0;flex:1;border:0;outline:0;padding:.75rem .9rem;background:transparent;color:#0f172a;font-size:.9rem}
-        .homepage-clean .hero-search button{border:0;border-radius:10px;padding:.7rem 1rem;background:#2563eb;color:#fff;font-weight:800;cursor:pointer}
-        .homepage-clean .hero-art{min-height:330px;display:grid;place-items:center;position:relative}
-        .homepage-clean .hero-books{width:min(390px,100%);height:280px;position:relative;transform:rotate(-3deg)}
-        .homepage-clean .hero-book{position:absolute;left:12%;width:70%;height:92px;border-radius:8px 16px 16px 8px;box-shadow:0 20px 30px rgba(2,6,23,.28);border:1px solid rgba(255,255,255,.18)}
-        .homepage-clean .hero-book:nth-child(1){bottom:18px;background:#0f172a;transform:rotate(-5deg)}
-        .homepage-clean .hero-book:nth-child(2){bottom:82px;background:#2563eb;transform:rotate(2deg)}
-        .homepage-clean .hero-book:nth-child(3){bottom:146px;background:#93c5fd;transform:rotate(-2deg)}
-        .homepage-clean .hero-device{position:absolute;right:0;top:8px;width:150px;height:240px;border:8px solid #0f172a;border-radius:24px;background:#f8fafc;box-shadow:0 25px 50px rgba(2,6,23,.35);transform:rotate(8deg);padding:16px 10px}
-        .homepage-clean .device-bar{height:10px;width:58px;background:#cbd5e1;border-radius:99px;margin:0 auto 20px}
-        .homepage-clean .device-line{height:13px;background:#dbeafe;border-radius:5px;margin:11px 0}.homepage-clean .device-line:nth-child(3){width:70%}.homepage-clean .device-line:nth-child(4){width:88%}.homepage-clean .device-line:nth-child(5){width:58%}
-        .homepage-clean .catalog-section{padding:3.8rem 0 4.5rem;background:#fff}
-        .homepage-clean .section-head{display:flex;align-items:end;justify-content:space-between;gap:1rem;margin-bottom:1.7rem}
-        .homepage-clean .section-title{font-family:var(--font-display);font-size:clamp(1.7rem,3vw,2.3rem);font-weight:900;letter-spacing:-.03em;color:var(--text-primary);margin:0}
-        .homepage-clean .section-subtitle{color:var(--text-secondary);font-size:.92rem;margin:.35rem 0 0}
-        .homepage-clean .home-books-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1.15rem;align-items:start}
-        .homepage-clean .home-books-grid .book-card{min-width:0}
-        .homepage-clean .home-empty{border:1px dashed #cbd5e1;border-radius:18px;padding:3rem 1.5rem;text-align:center;background:#f8fafc;color:#64748b}
-        .homepage-clean .benefits{background:#f5f9ff;border:1px solid #e2e8f0;border-radius:20px;padding:1.25rem;display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
-        .homepage-clean .benefit{display:flex;align-items:center;gap:.75rem;padding:.7rem .8rem}.homepage-clean .benefit-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:50%;background:#fff;color:#2563eb;box-shadow:0 4px 14px rgba(37,99,235,.12);font-weight:900}.homepage-clean .benefit strong{display:block;font-size:.85rem;color:#0f172a}.homepage-clean .benefit span{display:block;font-size:.72rem;color:#64748b;margin-top:2px}
-        .homepage-clean .creator-strip{margin-top:3.5rem;background:linear-gradient(135deg,#0f172a,#172554);border-radius:20px;padding:2.1rem 2.3rem;color:#fff;display:flex;justify-content:space-between;align-items:center;gap:1.5rem}.homepage-clean .creator-strip h3{margin:0 0 .35rem;font-size:1.35rem}.homepage-clean .creator-strip p{margin:0;color:#cbd5e1;font-size:.86rem;line-height:1.5}
-        @media(max-width:1100px){.homepage-clean .home-books-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-        @media(max-width:760px){.homepage-clean .hero-inner{grid-template-columns:1fr;padding:3.5rem 0}.homepage-clean .hero-art{min-height:250px}.homepage-clean .home-books-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.homepage-clean .benefits{grid-template-columns:repeat(2,1fr)}.homepage-clean .creator-strip{flex-direction:column;align-items:flex-start}.homepage-clean .section-head{align-items:flex-start;flex-direction:column}}
-        @media(max-width:430px){.homepage-clean .home-books-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.homepage-clean .benefits{grid-template-columns:1fr}.homepage-clean .hero-search button{padding:.7rem .8rem}.homepage-clean .hero-art{display:none}}
-      </style>
-
-      <section class="home-hero">
-        <div class="container hero-inner">
-          <div class="hero-copy">
-            <div class="hero-badge">📚 Welcome to Bookora</div>
-            <h1 class="hero-title">Discover, Learn &amp;<br><span>Grow with eBooks</span></h1>
-            <p class="hero-text">Find quality eBooks from verified creators, discover useful knowledge, and start reading instantly after purchase.</p>
-            <div class="hero-actions">
-              <a href="#/explore" class="btn btn-primary btn-lg">Explore eBooks →</a>
-              <a href="#/categories" class="btn btn-secondary btn-lg" style="background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.35)">Browse Categories</a>
-            </div>
-            <form id="hero-search-form" class="hero-search">
-              <input id="hero-search-input" type="search" autocomplete="off" placeholder="Search eBooks, authors, topics..." aria-label="Search eBooks">
+    <main class="bookora-home-clean">
+      <section class="home-hero-clean">
+        <div class="home-hero-glow home-hero-glow-a"></div><div class="home-hero-glow home-hero-glow-b"></div>
+        <div class="container home-hero-inner">
+          <div class="home-hero-copy home-reveal">
+            <span class="home-eyebrow">BOOKORA MARKETPLACE</span>
+            <h1>Find your next<br><span>great eBook.</span></h1>
+            <p>Discover inspiring books, practical guides and stories from creators. Preview, choose and buy in a few clicks.</p>
+            <form id="home-search-form" class="home-search-clean">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input id="home-search-input" type="search" autocomplete="off" placeholder="Search books, authors or topics..." aria-label="Search books" />
               <button type="submit">Search</button>
             </form>
+            <div class="home-quick-links"><a href="#/explore">Explore all eBooks <span>→</span></a><a href="#/best-sellers">Best sellers <span>→</span></a></div>
           </div>
-          <div class="hero-art" aria-hidden="true">
-            <div class="hero-books"><div class="hero-book"></div><div class="hero-book"></div><div class="hero-book"></div><div class="hero-device"><div class="device-bar"></div><div class="device-line"></div><div class="device-line"></div><div class="device-line"></div><div class="device-line"></div></div></div>
+          <div class="home-hero-art home-reveal home-reveal-delay" aria-hidden="true">
+            <div class="home-art-card home-art-back"></div><div class="home-art-card home-art-mid"></div>
+            <div class="home-art-card home-art-front"><div class="home-art-label">BOOKORA</div><div class="home-art-title">Read.<br>Learn.<br>Grow.</div><div class="home-art-line"></div><div class="home-art-small">A library made for curious minds.</div></div>
           </div>
         </div>
       </section>
 
-      <section class="catalog-section">
+      <section class="home-catalog-clean">
         <div class="container">
-          <div class="section-head">
-            <div><h2 class="section-title">Featured eBooks</h2><p class="section-subtitle">Real books from the Bookora catalog. Choose a book and start reading.</p></div>
-            <a href="#/explore" class="btn btn-secondary btn-sm">View All eBooks →</a>
+          <div class="home-section-head home-reveal">
+            <div><span class="home-section-kicker">CURATED FOR YOU</span><h2>${featured.length ? 'Featured eBooks' : 'Discover eBooks'}</h2><p>${featured.length ? 'Fresh picks and popular reads from the Bookora catalog.' : 'New books will appear here as soon as they are approved.'}</p></div>
+            <a class="home-view-all" href="#/explore">View all <span>→</span></a>
           </div>
-
-          ${books.length ? `<div class="home-books-grid">${books.map(book => renderBookCard(book)).join('')}</div>` : `
-            <div class="home-empty"><strong>No eBooks are available yet.</strong><p style="margin:.45rem 0 1rem">New approved books will appear here automatically.</p><a href="#/explore" class="btn btn-primary btn-sm">Explore Catalog</a></div>
-          `}
-
-          <div class="benefits" style="margin-top:3rem">
-            <div class="benefit"><div class="benefit-icon">▣</div><div><strong>Wide Collection</strong><span>Books across multiple categories</span></div></div>
-            <div class="benefit"><div class="benefit-icon">✓</div><div><strong>Secure &amp; Safe</strong><span>Protected checkout and access</span></div></div>
-            <div class="benefit"><div class="benefit-icon">↯</div><div><strong>Instant Access</strong><span>Read purchased books instantly</span></div></div>
-            <div class="benefit"><div class="benefit-icon">?</div><div><strong>24/7 Support</strong><span>Help whenever you need it</span></div></div>
-          </div>
-
-          <div class="creator-strip">
-            <div><h3>Have an eBook to sell?</h3><p>Publish your work on Bookora and reach readers directly.</p></div>
-            <a href="#/publish" class="btn btn-primary">Publish Your eBook →</a>
-          </div>
+          ${featured.length ? `<div class="home-book-grid">${featured.map((book, i) => `<div class="home-book-item" style="--home-delay:${Math.min(i * 55, 385)}ms">${renderBookCard(book)}</div>`).join('')}</div>` : `<div class="home-empty-state home-reveal"><div class="home-empty-icon">📚</div><h3>Your next read is coming soon</h3><p>There are no approved eBooks to display yet.</p><a href="#/explore" class="btn btn-primary">Explore Catalog</a></div>`}
         </div>
       </section>
-    </div>
-  `;
+
+      <section class="home-trust-clean"><div class="container home-trust-grid">
+        <div class="home-trust-item home-reveal"><span>01</span><div><strong>Verified books</strong><p>Browse approved publications with trusted metadata.</p></div></div>
+        <div class="home-trust-item home-reveal"><span>02</span><div><strong>Preview before buying</strong><p>Check book details and available samples first.</p></div></div>
+        <div class="home-trust-item home-reveal"><span>03</span><div><strong>Instant digital access</strong><p>Your purchased books stay available in your library.</p></div></div>
+      </div></section>
+
+      <section class="home-creator-clean"><div class="container home-creator-inner"><div><span class="home-section-kicker">FOR CREATORS</span><h2>Have a book to publish?</h2><p>Share your work with readers through Bookora.</p></div><a href="#/publish" class="btn btn-primary btn-lg">Publish your eBook <span>→</span></a></div></section>
+    </main>`;
 }
 
 export function initHomePageEvents() {
-  const searchForm = document.getElementById('hero-search-form');
-  const searchInput = document.getElementById('hero-search-input');
-  if (searchForm && searchInput && !searchForm.dataset.bound) {
-    searchForm.dataset.bound = '1';
-    searchForm.addEventListener('submit', e => {
-      e.preventDefault();
-      const q = searchInput.value.trim();
-      window.location.hash = q ? `#/search?q=${encodeURIComponent(q)}` : '#/explore';
-    });
-  }
+  const form = document.getElementById('home-search-form');
+  const input = document.getElementById('home-search-input');
+  if (form && input) form.addEventListener('submit', event => { event.preventDefault(); const q = input.value.trim(); window.location.hash = q ? `#/search?q=${encodeURIComponent(q)}` : '#/explore'; });
+
+  const reveal = () => document.querySelectorAll('.home-reveal,.home-book-item').forEach(el => {
+    if (el.dataset.homeVisible === '1') return;
+    if (el.getBoundingClientRect().top < window.innerHeight * .94) { el.dataset.homeVisible = '1'; el.classList.add('home-visible'); }
+  });
+  reveal();
+  window.addEventListener('scroll', reveal, { passive: true });
+  window.setTimeout(reveal, 120);
+}
+
+if (!document.getElementById('bookora-clean-home-styles')) {
+  const style = document.createElement('style'); style.id = 'bookora-clean-home-styles';
+  style.textContent = `
+    .bookora-home-clean{background:#fff;color:#0f172a;overflow:hidden}.home-hero-clean{position:relative;min-height:560px;display:flex;align-items:center;background:linear-gradient(180deg,#f8fbff,#fff);border-bottom:1px solid #e8eef7}.home-hero-inner{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr);align-items:center;gap:3rem;padding:5.5rem 1rem 5rem}.home-hero-copy{max-width:720px}.home-eyebrow,.home-section-kicker{display:inline-block;font-size:.7rem;font-weight:800;letter-spacing:.14em;color:#2563eb;margin-bottom:.9rem}.home-hero-copy h1{font-family:var(--font-display);font-size:clamp(3rem,6vw,5.2rem);line-height:1.02;letter-spacing:-.055em;margin:0 0 1.25rem;color:#0b1220}.home-hero-copy h1 span{color:#2563eb}.home-hero-copy>p{max-width:610px;font-size:1.08rem;line-height:1.7;color:#64748b;margin:0 0 1.7rem}.home-search-clean{height:58px;max-width:620px;display:flex;align-items:center;gap:.65rem;padding:.4rem .45rem .4rem 1.1rem;background:#fff;border:1px solid #dbe4f0;border-radius:15px;box-shadow:0 12px 35px rgba(15,23,42,.08)}.home-search-clean svg{color:#64748b;flex:0 0 auto}.home-search-clean input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#0f172a;font-size:.92rem}.home-search-clean button{border:0;background:#2563eb;color:#fff;border-radius:11px;padding:.72rem 1.15rem;font-weight:800;cursor:pointer}.home-search-clean button:hover{background:#1d4ed8}.home-quick-links{display:flex;gap:1.2rem;margin-top:1rem}.home-quick-links a,.home-view-all{font-size:.8rem;font-weight:750;color:#475569;text-decoration:none}.home-quick-links a:hover,.home-view-all:hover{color:#2563eb}.home-quick-links span,.home-view-all span{color:#2563eb}.home-hero-art{height:390px;position:relative;display:flex;justify-content:center;align-items:center}.home-art-card{position:absolute;width:230px;height:310px;border-radius:14px;box-shadow:0 25px 60px rgba(15,23,42,.15)}.home-art-back{transform:translate(70px,-15px) rotate(9deg);background:#dbeafe}.home-art-mid{transform:translate(-45px,18px) rotate(-8deg);background:#bfdbfe}.home-art-front{transform:rotate(1deg);background:linear-gradient(145deg,#172554,#2563eb);color:#fff;padding:2rem;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 30px 70px rgba(37,99,235,.25)}.home-art-label{font-size:.65rem;font-weight:800;letter-spacing:.16em;opacity:.8}.home-art-title{font-family:var(--font-display);font-size:2.35rem;line-height:1.02;font-weight:850}.home-art-line{width:45px;height:3px;background:#93c5fd}.home-art-small{font-size:.68rem;line-height:1.45;opacity:.78}.home-hero-glow{position:absolute;border-radius:50%;pointer-events:none}.home-hero-glow-a{width:420px;height:420px;right:-100px;top:-100px;background:rgba(37,99,235,.07)}.home-hero-glow-b{width:300px;height:300px;left:-150px;bottom:-150px;background:rgba(96,165,250,.07)}.home-catalog-clean{padding:5rem 0 5.5rem;background:#fff}.home-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;margin-bottom:2rem}.home-section-head h2,.home-creator-inner h2{font-family:var(--font-display);font-size:clamp(1.8rem,3vw,2.35rem);line-height:1.1;letter-spacing:-.035em;margin:0 0 .45rem}.home-section-head p,.home-creator-inner p{margin:0;color:#64748b;font-size:.92rem;line-height:1.55}.home-book-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1.25rem}.home-book-item{opacity:0;transform:translateY(20px);transition:opacity .55s ease var(--home-delay),transform .55s cubic-bezier(.2,.75,.25,1) var(--home-delay)}.home-book-item.home-visible{opacity:1;transform:none}.home-empty-state{padding:4rem 1.5rem;text-align:center;border:1px solid #e5eaf2;border-radius:20px;background:#f8fafc}.home-empty-icon{font-size:2.2rem;margin-bottom:.7rem}.home-empty-state h3{margin:.2rem 0 .4rem;font-size:1.15rem}.home-empty-state p{margin:0 0 1.2rem;color:#64748b}.home-trust-clean{padding:3rem 0;border-top:1px solid #e8eef7;border-bottom:1px solid #e8eef7;background:#f8fafc}.home-trust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}.home-trust-item{display:flex;gap:1rem;align-items:flex-start;padding:1.25rem;border-radius:15px}.home-trust-item>span{font-family:var(--font-display);font-size:.75rem;font-weight:850;color:#2563eb}.home-trust-item strong{font-size:.9rem}.home-trust-item p{font-size:.76rem;color:#64748b;line-height:1.5;margin:.3rem 0 0}.home-creator-clean{padding:4rem 0;background:#fff}.home-creator-inner{display:flex;align-items:center;justify-content:space-between;gap:2rem;padding:2.4rem 2.6rem;border-radius:22px;background:linear-gradient(135deg,#0f172a,#172554);color:#fff;box-shadow:0 22px 55px rgba(15,23,42,.15)}.home-creator-inner h2{color:#fff}.home-creator-inner p{color:#cbd5e1}.home-creator-inner .home-section-kicker{color:#93c5fd}.home-reveal{opacity:0;transform:translateY(16px);transition:opacity .6s ease,transform .6s cubic-bezier(.2,.75,.25,1)}.home-reveal.home-visible{opacity:1;transform:none}.home-reveal-delay{transition-delay:.12s}
+    @media(max-width:1050px){.home-book-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.home-hero-inner{gap:1.5rem}}@media(max-width:800px){.home-hero-inner{grid-template-columns:1fr;text-align:center;padding:4rem 1rem}.home-hero-copy{margin:auto}.home-hero-copy>p{margin-left:auto;margin-right:auto}.home-search-clean{margin:auto}.home-quick-links{justify-content:center}.home-hero-art{height:300px}.home-art-card{width:180px;height:245px}.home-art-title{font-size:1.8rem}.home-book-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.home-trust-grid{grid-template-columns:1fr}.home-creator-inner{align-items:flex-start;flex-direction:column}}@media(max-width:520px){.home-hero-inner{padding:3.2rem .85rem 3.6rem}.home-hero-copy h1{font-size:clamp(2.65rem,13vw,3.6rem)}.home-search-clean{height:52px;padding-left:.85rem}.home-search-clean button{padding:.62rem .8rem}.home-search-clean input{font-size:.8rem}.home-hero-art{height:255px}.home-art-card{width:155px;height:215px}.home-art-title{font-size:1.5rem}.home-catalog-clean{padding:3.5rem 0}.home-section-head{align-items:flex-start;flex-direction:column}.home-book-grid{gap:.75rem}.home-creator-inner{padding:2rem 1.4rem}.home-creator-inner .btn{width:100%;justify-content:center}}@media(prefers-reduced-motion:reduce){.home-reveal,.home-book-item{transition:none;opacity:1;transform:none}}
+  `;
+  document.head.appendChild(style);
 }
