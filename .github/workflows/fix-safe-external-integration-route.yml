@@ -1,0 +1,61 @@
+name: Fix safe external integration route
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wire external integration route into safe router
+        shell: bash
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('js/app-safe.js')
+          s = app.read_text(encoding='utf-8')
+
+          route_anchor = "    if (path === '/publish/external') {\n      const m = await safeImport('./pages/PublishExternalPage.js');\n      return { html: m.renderPublishExternalPage(), init: m.initPublishExternalEvents };\n    }"
+          route = "    if (path.startsWith('/publish/external/integration/')) {\n      const m = await safeImport('./pages/ExternalIntegrationPage.js');\n      const bookId = decodeURIComponent(path.replace('/publish/external/integration/','').split('/')[0]);\n      return { html: m.renderExternalIntegrationPage(), init: () => m.initExternalIntegrationPage(bookId) };\n    }\n"
+          if route not in s:
+              if route_anchor not in s:
+                  raise SystemExit('Safe router publish/external anchor not found')
+              s = s.replace(route_anchor, route + route_anchor, 1)
+
+          auth_anchor = "      const PUBLIC_PREFIX = ['/category/','/book/','/author/','/search','/sample/'];"
+          auth_replacement = "      const PUBLIC_PREFIX = ['/category/','/book/','/author/','/search','/sample/'];"
+          if auth_anchor not in s:
+              raise SystemExit('Safe router PUBLIC_PREFIX anchor not found')
+
+          seller_anchor = "      if ((path.startsWith('/seller') || path.startsWith('/creator') || path === '/publish' || path === '/publish/external') && path !== '/seller/apply' && !state.isSeller && !state.isAdmin) { window.location.hash = '#/seller/apply'; return; }"
+          seller_replacement = "      if ((path.startsWith('/seller') || path.startsWith('/creator') || path === '/publish' || path.startsWith('/publish/external')) && path !== '/seller/apply' && !state.isSeller && !state.isAdmin) { window.location.hash = '#/seller/apply'; return; }"
+          if seller_anchor in s:
+              s = s.replace(seller_anchor, seller_replacement, 1)
+          elif seller_replacement not in s:
+              raise SystemExit('Safe router seller authorization anchor not found')
+
+          app.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit route fix
+        shell: bash
+        run: |
+          if git diff --quiet -- js/app-safe.js; then
+            echo 'Safe external integration route already active.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/app-safe.js
+          git commit -m 'fix: wire external integration into safe router'
+          git push
