@@ -1,60 +1,36 @@
-// Bookora startup + runtime stability compatibility bridge.
-// Mobile mode switching remains permanently disabled.
-// Never import language-runtime.js from this file.
-//
-// IMPORTANT: this bridge must not synthesize a repeating browser load cycle.
-// It starts the existing SPA once after DOM readiness, then keeps asynchronous
-// catalog synchronization from replacing the live page and destroying the
-// event handlers installed by page/runtime modules.
+// Bookora startup compatibility bridge.
+// This file never changes application state, Firebase, fetch, or location.
+// Its only job is to guarantee that the SPA performs its first route render.
 
-const bootBookoraRoute = () => {
-  if (window.__BOOKORA_STARTUP_ROUTE_TRIGGERED__) return;
-  window.__BOOKORA_STARTUP_ROUTE_TRIGGERED__ = true;
-
-  setTimeout(() => {
-    try {
-      const appRoot = document.getElementById('app');
-      if (!appRoot) return;
-      if (!appRoot.querySelector('#main-content')) {
-        window.dispatchEvent(new Event('load'));
-      }
-    } catch (error) {
-      console.error('[Bookora] Startup route bridge failed:', error);
-    }
-  }, 0);
-};
-
-const protectLivePageFromSyncRerender = async () => {
+const ensureBookoraRoute = () => {
   try {
-    const module = await import('./state.js');
-    const state = module?.state;
-    if (!state || state.__BOOKORA_SYNC_STABILITY_PATCHED__) return;
+    const appRoot = document.getElementById('app');
+    if (!appRoot) return;
 
-    const originalNotify = state.notify.bind(state);
-    state.notify = (event, payload = null) => {
-      if (event === 'DATA_SYNCED') {
-        state.subscribers.forEach(callback => {
-          try { callback('CATALOG_UPDATED', payload, state); }
-          catch (error) { console.error('[Bookora] State subscriber error:', error); }
-        });
-        window.dispatchEvent(new CustomEvent('bookora:catalog-updated', { detail: payload }));
-        return;
-      }
-      originalNotify(event, payload);
-    };
+    const instance = window.__BOOKORA_APP_INSTANCE__;
+    if (instance && typeof instance.route === 'function') {
+      instance.route(true, false);
+      return;
+    }
 
-    state.__BOOKORA_SYNC_STABILITY_PATCHED__ = true;
+    if (!appRoot.querySelector('#main-content')) {
+      window.dispatchEvent(new Event('load'));
+    }
   } catch (error) {
-    console.warn('[Bookora] Sync stability bridge skipped:', error);
+    console.error('[Bookora] Startup route bridge failed:', error);
   }
 };
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', bootBookoraRoute, { once: true });
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(ensureBookoraRoute, 0);
+  }, { once: true });
 } else {
-  bootBookoraRoute();
+  setTimeout(ensureBookoraRoute, 0);
 }
 
-protectLivePageFromSyncRerender();
+// One delayed safety pass handles slow module initialization without creating
+// a reload loop or repeatedly replacing the live page.
+setTimeout(ensureBookoraRoute, 800);
 
 export {};
