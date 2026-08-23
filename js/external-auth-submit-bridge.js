@@ -1,15 +1,20 @@
 // Bookora external publish authentication bridge.
-// The external publish form uses the same Firebase Auth session as the header.
-// It waits for Firebase restoration and obtains a fresh ID token in memory.
+// The external publish form uses the same Bookora session as the header.
+// It prefers the existing backend session token and falls back to Firebase Auth.
 import { state } from './state.js';
 
 const WRAPPED_LISTENERS = new WeakMap();
+const BACKEND_TOKEN_KEY = 'bookora_auth_token';
 
 function getFirebaseAuth() {
   try {
     if (!window.firebase?.apps?.length || typeof window.firebase.auth !== 'function') return null;
     return window.firebase.auth();
   } catch (_) { return null; }
+}
+
+function getStoredBackendToken() {
+  try { return String(localStorage.getItem(BACKEND_TOKEN_KEY) || '').trim(); } catch (_) { return ''; }
 }
 
 function waitForFirebaseUser(timeoutMs = 12000) {
@@ -33,6 +38,26 @@ function waitForFirebaseUser(timeoutMs = 12000) {
 }
 
 async function prepareExternalPublishAuth() {
+  // Existing Bookora backend session is authoritative for the current UI.
+  try {
+    const backendSession = window.BookoraBackendSession;
+    if (backendSession?.ensureBackendSession) {
+      const token = await backendSession.ensureBackendSession(false);
+      if (token) {
+        state.token = token;
+        state.isAuthenticated = true;
+        return token;
+      }
+    }
+  } catch (_) {}
+
+  const storedToken = getStoredBackendToken();
+  if (storedToken) {
+    state.token = storedToken;
+    state.isAuthenticated = true;
+    return storedToken;
+  }
+
   const user = await waitForFirebaseUser();
   if (!user) return '';
   try {
