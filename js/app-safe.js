@@ -162,6 +162,11 @@ class SafeApp {
       const m = await safeImport('./pages/PublishInternalPage.js');
       return { html: m.renderPublishInternalPage(), init: m.initPublishInternalEvents };
     }
+    if (path.startsWith('/publish/external/integration/')) {
+      const m = await safeImport('./pages/ExternalIntegrationPage.js');
+      const bookId = decodeURIComponent(path.replace('/publish/external/integration/','').split('/')[0]);
+      return { html: m.renderExternalIntegrationPage(), init: () => m.initExternalIntegrationPage(bookId) };
+    }
     if (path === '/publish/external') {
       const m = await safeImport('./pages/PublishExternalPage.js');
       return { html: m.renderPublishExternalPage(), init: m.initPublishExternalEvents };
@@ -210,7 +215,7 @@ class SafeApp {
         return;
       }
       if (path.startsWith('/admin') && !state.isAdmin) { window.location.hash = '#/login'; return; }
-      if ((path.startsWith('/seller') || path.startsWith('/creator') || path === '/publish' || path === '/publish/external') && path !== '/seller/apply' && !state.isSeller && !state.isAdmin) { window.location.hash = '#/seller/apply'; return; }
+      if ((path.startsWith('/seller') || path.startsWith('/creator') || path === '/publish' || path.startsWith('/publish/external')) && path !== '/seller/apply' && !state.isSeller && !state.isAdmin) { window.location.hash = '#/seller/apply'; return; }
 
       const { header, footer } = await this.shell();
       this.root.innerHTML = `${header}<main id="main-content" style="flex:1;min-height:60vh"><div style="padding:60px 20px;text-align:center;color:#64748b">Loading Bookora…</div></main>${footer}`;
