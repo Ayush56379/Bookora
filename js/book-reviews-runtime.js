@@ -1,6 +1,7 @@
 // Bookora Reviews Runtime
-// Keeps the existing Book Detail UI intact while making review reads/writes realtime,
-// duplicate-safe and Firebase-backed. No route re-render is used for review updates.
+// Buyer review/rating permission fix: any signed-in Bookora buyer can review
+// any approved eBook. Purchase status only controls the Verified Purchase badge.
+// Duplicate reviews remain blocked per user + book.
 import { state } from './state.js';
 import { Toast } from './components/Toast.js';
 
@@ -37,7 +38,7 @@ function renderReviews(bookId, reviews) {
   const total = sorted.length;
   const average = total ? sorted.reduce((sum,r) => sum + Number(r.rating || 0), 0) / total : 0;
   const score = summary.querySelector('.bd-score');
-  if (score) score.innerHTML = `<div class="bd-score-number">${total ? average.toFixed(1) : '—'}</div><div class="bd-rating-stars">${stars(average)}</div><small>${total} verified reader ${total === 1 ? 'review' : 'reviews'}</small>`;
+  if (score) score.innerHTML = `<div class="bd-score-number">${total ? average.toFixed(1) : '—'}</div><div class="bd-rating-stars">${stars(average)}</div><small>${total} reader ${total === 1 ? 'review' : 'reviews'}</small>`;
   if (tab) tab.textContent = `Reviews (${total})`;
 
   list.innerHTML = total ? sorted.map(review => {
@@ -47,9 +48,9 @@ function renderReviews(bookId, reviews) {
     return `<article class="bd-review" data-review-id="${esc(review.id || '')}">
       <div class="bd-review-top"><div><div class="bd-rating-stars">${stars(review.rating)}</div><div class="bd-review-title">${esc(review.title || 'Reader review')}</div></div><span class="bd-review-meta">${esc(dateText)}</span></div>
       <p class="bd-review-comment">${esc(review.comment || '')}</p>
-      <div class="bd-review-meta">${esc(name)} ${review.verified_purchase ? '<span class="bd-verified">• ✓ Verified Purchase</span>' : ''}</div>
+      <div class="bd-review-meta">${esc(name)} ${review.verified_purchase ? '<span class="bd-verified">• ✓ Verified Purchase</span>' : '<span class="bd-verified">• Reader Review</span>'}</div>
     </article>`;
-  }).join('') : '<div class="bd-empty">No customer reviews yet. Be the first verified reader to share your feedback.</div>';
+  }).join('') : '<div class="bd-empty">No customer reviews yet. Be the first reader to share your feedback.</div>';
 }
 
 async function watchBook(book) {
@@ -70,6 +71,29 @@ async function watchBook(book) {
   }
 }
 
+function prepareWriteButton(book) {
+  const button = document.querySelector('[data-panel="reviews"] .bd-btn[data-review-write]')
+    || [...document.querySelectorAll('[data-panel="reviews"] .bd-btn')].find(node => /review/i.test(node.textContent || ''));
+  const formBox = document.getElementById('review-form-container');
+  if (!button || button.dataset.buyerReviewBound === '1') return;
+
+  button.dataset.buyerReviewBound = '1';
+  button.textContent = 'Write a Review';
+  button.title = 'Share your rating and review for this eBook';
+  button.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!state.isAuthenticated || !state.currentUser?.uid) {
+      Toast.show('Please sign in to write a review.', 'info');
+      const returnTo = window.location.hash || `#/book/${book.slug || book.id}`;
+      window.location.hash = `#/login?returnTo=${encodeURIComponent(returnTo)}`;
+      return;
+    }
+    formBox?.classList.add('open');
+    formBox?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, true);
+}
+
 async function submitVerifiedReview(book, form) {
   if (!state.isAuthenticated || !state.currentUser?.uid) {
     Toast.show('Please sign in before submitting a review.', 'info');
@@ -77,10 +101,9 @@ async function submitVerifiedReview(book, form) {
     window.location.hash = `#/login?returnTo=${encodeURIComponent(returnTo)}`;
     return;
   }
-  if (!state.hasPurchased(book.id)) {
-    Toast.show('Only verified purchasers can review this eBook.', 'warning');
-    return;
-  }
+
+  // IMPORTANT: purchase is NOT required to leave a review.
+  // A signed-in buyer/reader may review any approved eBook.
   const rating = Math.max(1, Math.min(5, Number(form.querySelector('#review-rating-input')?.value || 5)));
   const title = String(form.querySelector('#review-title-input')?.value || '').trim();
   const comment = String(form.querySelector('#review-comment-input')?.value || '').trim();
@@ -95,6 +118,7 @@ async function submitVerifiedReview(book, form) {
     const duplicate = snapshot.docs.some(doc => String(doc.data()?.user_id || '') === String(state.currentUser.uid));
     if (duplicate) throw new Error('You have already reviewed this eBook.');
 
+    const verifiedPurchase = state.hasPurchased(book.id);
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
     const review = {
       book_id: String(book.id),
@@ -102,15 +126,14 @@ async function submitVerifiedReview(book, form) {
       user_name: state.currentUser.name || state.currentUser.displayName || state.currentUser.email?.split('@')[0] || 'Reader',
       user_email: state.currentUser.email || '',
       rating, title, comment,
-      verified_purchase: true,
+      verified_purchase: Boolean(verifiedPurchase),
       created_at: now,
       date: now
     };
     await db.collection('reviews').add(review);
     form.reset();
     document.getElementById('review-form-container')?.classList.remove('open');
-    Toast.show('Your verified review has been published.', 'success');
-    // onSnapshot updates the list and rating without reloading the entire route.
+    Toast.show(verifiedPurchase ? 'Your verified review has been published.' : 'Your review and rating have been published.', 'success');
   } catch (error) {
     console.error('[Reviews] submit failed:', error);
     Toast.show(error?.message || 'Could not publish your review.', 'error');
@@ -133,6 +156,7 @@ function enhanceReviewForm(book) {
 function refresh() {
   const book = getBook();
   if (!book) return;
+  prepareWriteButton(book);
   enhanceReviewForm(book);
   watchBook(book);
 }
