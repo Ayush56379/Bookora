@@ -1,82 +1,253 @@
-// Bookora safe i18n runtime.
-// IMPORTANT: This module never mutates the DOM from inside its own observer in a way
-// that causes another settings/select rewrite loop. Existing business data is untouched.
+// Bookora universal i18n runtime.
+// Translates static UI + dynamically rendered catalog content (book titles,
+// descriptions, author names, categories, reviews, buttons, placeholders, etc.).
+// Original text is retained on every node so switching languages never creates
+// translation-on-translation corruption.
 import { state } from './state.js';
 
-const STORAGE_KEY='bookora_language';
-const DEFAULT_LANGUAGE='en';
-export const BOOKORA_LANGUAGES={
+const STORAGE_KEY = 'bookora_language';
+const CACHE_KEY = 'bookora_translation_cache_v2';
+const DEFAULT_LANGUAGE = 'en';
+const TRANSLATE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single';
+
+export const BOOKORA_LANGUAGES = {
   en:{name:'English',native:'English'},hi:{name:'Hindi',native:'हिन्दी'},gu:{name:'Gujarati',native:'ગુજરાતી'},mr:{name:'Marathi',native:'मराठी'},bn:{name:'Bengali',native:'বাংলা'},ta:{name:'Tamil',native:'தமிழ்'},te:{name:'Telugu',native:'తెలుగు'},kn:{name:'Kannada',native:'ಕನ್ನಡ'},ml:{name:'Malayalam',native:'മലയാളം'},pa:{name:'Punjabi',native:'ਪੰਜਾਬੀ'},ur:{name:'Urdu',native:'اردو'},es:{name:'Spanish',native:'Español'},fr:{name:'French',native:'Français'},de:{name:'German',native:'Deutsch'},pt:{name:'Portuguese',native:'Português'},ar:{name:'Arabic',native:'العربية'},ja:{name:'Japanese',native:'日本語'},ko:{name:'Korean',native:'한국어'},zh:{name:'Chinese',native:'中文'},ru:{name:'Russian',native:'Русский'}
 };
 
-const COMMON={
-'Home':{hi:'होम',gu:'હોમ',mr:'मुख्यपृष्ठ',es:'Inicio',fr:'Accueil',de:'Startseite',pt:'Início',ar:'الرئيسية',ja:'ホーム',ko:'홈',zh:'首页',ru:'Главная'},
-'Explore':{hi:'एक्सप्लोर',gu:'એક્સપ્લોર',mr:'एक्सप्लोर',es:'Explorar',fr:'Explorer',de:'Entdecken',pt:'Explorar',ar:'استكشف',ja:'探索',ko:'탐색',zh:'探索',ru:'Обзор'},
-'Categories':{hi:'श्रेणियाँ',gu:'શ્રેણીઓ',mr:'श्रेणी',es:'Categorías',fr:'Catégories',de:'Kategorien',pt:'Categorias',ar:'الفئات',ja:'カテゴリー',ko:'카테고리',zh:'分类',ru:'Категории'},
-'Best Sellers':{hi:'बेस्ट सेलर',gu:'બેસ્ટ સેલર',mr:'बेस्ट सेलर',es:'Más vendidos',fr:'Meilleures ventes',de:'Bestseller',pt:'Mais vendidos',ar:'الأكثر مبيعًا',ja:'ベストセラー',ko:'베스트셀러',zh:'畅销书',ru:'Бестселлеры'},
-'New Releases':{hi:'नई रिलीज़',gu:'નવી રિલીઝ',mr:'नवीन प्रकाशने',es:'Novedades',fr:'Nouveautés',de:'Neuerscheinungen',pt:'Novidades',ar:'الإصدارات الجديدة',ja:'新着',ko:'신간',zh:'新书',ru:'Новинки'},
-'Trending':{hi:'ट्रेंडिंग',gu:'ટ્રેન્ડિંગ',mr:'ट्रेंडिंग',es:'Tendencias',fr:'Tendances',de:'Trends',pt:'Tendências',ar:'الرائج',ja:'トレンド',ko:'트렌드',zh:'热门',ru:'В тренде'},
-'Authors':{hi:'लेखक',gu:'લેખકો',mr:'लेखक',es:'Autores',fr:'Auteurs',de:'Autoren',pt:'Autores',ar:'المؤلفون',ja:'著者',ko:'작가',zh:'作者',ru:'Авторы'},
-'Pricing':{hi:'कीमतें',gu:'કિંમતો',mr:'किंमत',es:'Precios',fr:'Tarifs',de:'Preise',pt:'Preços',ar:'الأسعار',ja:'料金',ko:'가격',zh:'价格',ru:'Цены'},
-'Subscription':{hi:'सब्सक्रिप्शन',gu:'સબ્સ્ક્રિપ્શન',mr:'सबस्क्रिप्शन',es:'Suscripción',fr:'Abonnement',de:'Abonnement',pt:'Assinatura',ar:'الاشتراك',ja:'サブスクリプション',ko:'구독',zh:'订阅',ru:'Подписка'},
-'About':{hi:'हमारे बारे में',gu:'અમારા વિશે',mr:'आमच्याबद्दल',es:'Acerca de',fr:'À propos',de:'Über uns',pt:'Sobre nós',ar:'من نحن',ja:'概要',ko:'소개',zh:'关于我们',ru:'О нас'},
-'Contact':{hi:'संपर्क',gu:'સંપર્ક',mr:'संपर्क',es:'Contacto',fr:'Contact',de:'Kontakt',pt:'Contato',ar:'اتصل بنا',ja:'お問い合わせ',ko:'연락처',zh:'联系我们',ru:'Контакты'},
-'Help':{hi:'सहायता',gu:'મદદ',mr:'मदत',es:'Ayuda',fr:'Aide',de:'Hilfe',pt:'Ajuda',ar:'المساعدة',ja:'ヘルプ',ko:'도움말',zh:'帮助',ru:'Помощь'},
-'Login':{hi:'लॉग इन',gu:'લૉગિન',mr:'लॉगिन',es:'Iniciar sesión',fr:'Connexion',de:'Anmelden',pt:'Entrar',ar:'تسجيل الدخول',ja:'ログイン',ko:'로그인',zh:'登录',ru:'Войти'},
-'Sign Up':{hi:'साइन अप',gu:'સાઇન અપ',mr:'साइन अप',es:'Registrarse',fr:'Créer un compte',de:'Registrieren',pt:'Cadastrar',ar:'إنشاء حساب',ja:'新規登録',ko:'회원가입',zh:'注册',ru:'Регистрация'},
-'Logout':{hi:'लॉग आउट',gu:'લૉગઆઉટ',mr:'लॉगआउट',es:'Cerrar sesión',fr:'Déconnexion',de:'Abmelden',pt:'Sair',ar:'تسجيل الخروج',ja:'ログアウト',ko:'로그아웃',zh:'退出登录',ru:'Выйти'},
-'Profile':{hi:'प्रोफ़ाइल',gu:'પ્રોફાઇલ',mr:'प्रोफाइल',es:'Perfil',fr:'Profil',de:'Profil',pt:'Perfil',ar:'الملف الشخصي',ja:'プロフィール',ko:'프로필',zh:'个人资料',ru:'Профиль'},
-'Settings':{hi:'सेटिंग्स',gu:'સેટિંગ્સ',mr:'सेटिंग्ज',es:'Configuración',fr:'Paramètres',de:'Einstellungen',pt:'Configurações',ar:'الإعدادات',ja:'設定',ko:'설정',zh:'设置',ru:'Настройки'},
-'Language':{hi:'भाषा',gu:'ભાષા',mr:'भाषा',es:'Idioma',fr:'Langue',de:'Sprache',pt:'Idioma',ar:'اللغة',ja:'言語',ko:'언어',zh:'语言',ru:'Язык'},
-'Account Settings':{hi:'अकाउंट सेटिंग्स',gu:'એકાઉન્ટ સેટિંગ્સ',mr:'खाते सेटिंग्ज',es:'Configuración de cuenta',fr:'Paramètres du compte',de:'Kontoeinstellungen',pt:'Configurações da conta',ar:'إعدادات الحساب',ja:'アカウント設定',ko:'계정 설정',zh:'账户设置',ru:'Настройки аккаунта'},
-'Full Name':{hi:'पूरा नाम',gu:'પૂરું નામ',mr:'पूर्ण नाव',es:'Nombre completo',fr:'Nom complet',de:'Vollständiger Name',pt:'Nome completo',ar:'الاسم الكامل',ja:'氏名',ko:'전체 이름',zh:'姓名',ru:'Полное имя'},
-'Email Address':{hi:'ईमेल पता',gu:'ઇમેઇલ સરનામું',mr:'ईमेल पत्ता',es:'Correo electrónico',fr:'Adresse e-mail',de:'E-Mail-Adresse',pt:'Endereço de e-mail',ar:'عنوان البريد الإلكتروني',ja:'メールアドレス',ko:'이메일 주소',zh:'电子邮件地址',ru:'Электронная почта'},
-'Country / Region':{hi:'देश / क्षेत्र',gu:'દેશ / પ્રદેશ',mr:'देश / प्रदेश',es:'País / Región',fr:'Pays / Région',de:'Land / Region',pt:'País / Região',ar:'الدولة / المنطقة',ja:'国 / 地域',ko:'국가 / 지역',zh:'国家/地区',ru:'Страна / регион'},
-'Your Currency':{hi:'आपकी मुद्रा',gu:'તમારી ચલણ',mr:'तुमचे चलन',es:'Tu moneda',fr:'Votre devise',de:'Ihre Währung',pt:'Sua moeda',ar:'عملتك',ja:'通貨',ko:'통화',zh:'您的货币',ru:'Ваша валюта'},
-'Detect My Region':{hi:'मेरा क्षेत्र पहचानें',gu:'મારો પ્રદેશ શોધો',mr:'माझा प्रदेश शोधा',es:'Detectar mi región',fr:'Détecter ma région',de:'Meine Region erkennen',pt:'Detectar minha região',ar:'اكتشاف منطقتي',ja:'地域を検出',ko:'지역 감지',zh:'检测我的地区',ru:'Определить мой регион'},
-'Read Free Sample':{hi:'फ्री सैंपल पढ़ें',gu:'મફત સેમ્પલ વાંચો',mr:'मोफत नमुना वाचा',es:'Leer muestra gratis',fr:'Lire un extrait gratuit',de:'Kostenlose Leseprobe',pt:'Ler amostra grátis',ar:'قراءة عينة مجانية',ja:'無料サンプルを読む',ko:'무료 샘플 읽기',zh:'阅读免费样章',ru:'Читать бесплатный образец'},
-'Buy Now':{hi:'अभी खरीदें',gu:'હમણાં ખરીદો',mr:'आता खरेदी करा',es:'Comprar ahora',fr:'Acheter maintenant',de:'Jetzt kaufen',pt:'Comprar agora',ar:'اشتر الآن',ja:'今すぐ購入',ko:'지금 구매',zh:'立即购买',ru:'Купить сейчас'},
-'Add to Cart':{hi:'कार्ट में जोड़ें',gu:'કાર્ટમાં ઉમેરો',mr:'कार्टमध्ये जोडा',es:'Añadir al carrito',fr:'Ajouter au panier',de:'In den Warenkorb',pt:'Adicionar ao carrinho',ar:'أضف إلى السلة',ja:'カートに追加',ko:'장바구니에 추가',zh:'加入购物车',ru:'Добавить в корзину'},
-'Download':{hi:'डाउनलोड',gu:'ડાઉનલોડ',mr:'डाउनलोड',es:'Descargar',fr:'Télécharger',de:'Herunterladen',pt:'Baixar',ar:'تنزيل',ja:'ダウンロード',ko:'다운로드',zh:'下载',ru:'Скачать'},
-'Read':{hi:'पढ़ें',gu:'વાંચો',mr:'वाचा',es:'Leer',fr:'Lire',de:'Lesen',pt:'Ler',ar:'قراءة',ja:'読む',ko:'읽기',zh:'阅读',ru:'Читать'},
-'Search':{hi:'खोजें',gu:'શોધો',mr:'शोधा',es:'Buscar',fr:'Rechercher',de:'Suchen',pt:'Pesquisar',ar:'بحث',ja:'検索',ko:'검색',zh:'搜索',ru:'Поиск'},
-'Save':{hi:'सेव करें',gu:'સાચવો',mr:'जतन करा',es:'Guardar',fr:'Enregistrer',de:'Speichern',pt:'Salvar',ar:'حفظ',ja:'保存',ko:'저장',zh:'保存',ru:'Сохранить'},
-'Cancel':{hi:'रद्द करें',gu:'રદ કરો',mr:'रद्द करा',es:'Cancelar',fr:'Annuler',de:'Abbrechen',pt:'Cancelar',ar:'إلغاء',ja:'キャンセル',ko:'취소',zh:'取消',ru:'Отмена'},
-'Continue':{hi:'जारी रखें',gu:'ચાલુ રાખો',mr:'सुरू ठेवा',es:'Continuar',fr:'Continuer',de:'Weiter',pt:'Continuar',ar:'متابعة',ja:'続行',ko:'계속',zh:'继续',ru:'Продолжить'},
-'Back':{hi:'वापस',gu:'પાછળ',mr:'मागे',es:'Atrás',fr:'Retour',de:'Zurück',pt:'Voltar',ar:'رجوع',ja:'戻る',ko:'뒤로',zh:'返回',ru:'Назад'},
-'Next':{hi:'आगे',gu:'આગળ',mr:'पुढे',es:'Siguiente',fr:'Suivant',de:'Weiter',pt:'Próximo',ar:'التالي',ja:'次へ',ko:'다음',zh:'下一步',ru:'Далее'},
-'Close':{hi:'बंद करें',gu:'બંધ કરો',mr:'बंद करा',es:'Cerrar',fr:'Fermer',de:'Schließen',pt:'Fechar',ar:'إغلاق',ja:'閉じる',ko:'닫기',zh:'关闭',ru:'Закрыть'},
-'Loading...':{hi:'लोड हो रहा है...',gu:'લોડ થઈ રહ્યું છે...',mr:'लोड होत आहे...',es:'Cargando...',fr:'Chargement...',de:'Wird geladen...',pt:'Carregando...',ar:'جارٍ التحميل...',ja:'読み込み中...',ko:'로드 중...',zh:'加载中...',ru:'Загрузка...'}
+let currentLanguage = localStorage.getItem(STORAGE_KEY) || DEFAULT_LANGUAGE;
+let translating = false;
+let observer = null;
+let queuedNodes = new Set();
+let flushTimer = null;
+let cache = {};
+
+try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') || {}; } catch (_) { cache = {}; }
+
+function normalizeLanguage(value) {
+  const v = String(value || '').toLowerCase().split('-')[0];
+  return BOOKORA_LANGUAGES[v] ? v : DEFAULT_LANGUAGE;
+}
+
+function isExcludedElement(el) {
+  if (!el || el.nodeType !== Node.ELEMENT_NODE) return true;
+  if (el.closest('[data-no-translate],script,style,noscript,svg,code,pre,textarea')) return true;
+  if (el.matches('input[type="email"],input[type="url"],input[type="password"],input[type="number"],input[type="tel"],input[type="date"],input[type="time"],input[type="file"],input[type="hidden"]')) return true;
+  if (el.matches('.bookora-brand,.site-brand,[data-site-name],[data-no-translate]')) return true;
+  return false;
+}
+
+function looksLikeNonNaturalText(text) {
+  const s = String(text || '').trim();
+  if (!s || s.length < 2) return true;
+  if (/^https?:\/\//i.test(s) || /^mailto:/i.test(s)) return true;
+  if (/^[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}$/.test(s)) return true;
+  if (/^[₹$€£¥₩₹]?\s*[\d,.]+(?:\s*[A-Z]{3})?$/.test(s)) return true;
+  if (/^[#@][\w-]+$/.test(s)) return true;
+  if (/^[A-Z0-9_-]{8,}$/.test(s) && !/\s/.test(s)) return true;
+  return false;
+}
+
+function originalText(node) {
+  if (!node.dataset.bookoraI18nOriginal) {
+    node.dataset.bookoraI18nOriginal = node.textContent || '';
+  }
+  return node.dataset.bookoraI18nOriginal;
+}
+
+function cacheGet(key) { return cache[`${currentLanguage}|${key}`] || ''; }
+function cacheSet(key, value) {
+  cache[`${currentLanguage}|${key}`] = value;
+  try {
+    const keys = Object.keys(cache);
+    if (keys.length > 1500) delete cache[keys[0]];
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch (_) {}
+}
+
+async function translateText(text, target) {
+  if (target === 'en') return text;
+  const cached = cacheGet(text);
+  if (cached) return cached;
+  const url = `${TRANSLATE_ENDPOINT}?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`;
+  const response = await fetch(url, { method:'GET', mode:'cors', cache:'force-cache' });
+  if (!response.ok) throw new Error(`Translation HTTP ${response.status}`);
+  const data = await response.json();
+  const result = Array.isArray(data?.[0]) ? data[0].map(x => x?.[0] || '').join('') : '';
+  if (!result) throw new Error('Empty translation');
+  cacheSet(text, result);
+  return result;
+}
+
+function collectTextNodes(root = document.body) {
+  const out = [];
+  if (!root) return out;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    const parent = node.parentElement;
+    if (!parent || isExcludedElement(parent)) continue;
+    const text = originalText(parent);
+    if (looksLikeNonNaturalText(text)) continue;
+    // Do not translate pure whitespace nodes.
+    if (!/[A-Za-zÀ-ÖØ-öø-ÿ\u0900-\u097F\u0980-\u09FF\u0A80-\u0AFF\u0B80-\u0BFF\u0C00-\u0C7F\u0D00-\u0D7F]/.test(text)) continue;
+    out.push({ node, parent, text });
+  }
+  return out;
+}
+
+async function translateNodes(nodes) {
+  if (translating) return;
+  translating = true;
+  try {
+    const target = normalizeLanguage(currentLanguage);
+    if (target === 'en') {
+      nodes.forEach(({node,parent}) => {
+        const original = parent?.dataset?.bookoraI18nOriginal;
+        if (original != null && node.isConnected) node.nodeValue = original;
+      });
+      return;
+    }
+
+    const unique = [...new Set(nodes.map(x => x.text.trim()))];
+    const translated = new Map();
+    const CONCURRENCY = 6;
+    let index = 0;
+    async function worker() {
+      while (index < unique.length) {
+        const text = unique[index++];
+        try { translated.set(text, await translateText(text, target)); }
+        catch (_) { translated.set(text, text); }
+      }
+    }
+    await Promise.all(Array.from({length: Math.min(CONCURRENCY, unique.length)}, worker));
+
+    nodes.forEach(({node, text}) => {
+      if (!node.isConnected) return;
+      const value = translated.get(text.trim()) || text;
+      // Preserve leading/trailing whitespace around the translated value.
+      const leading = text.match(/^\s*/)?.[0] || '';
+      const trailing = text.match(/\s*$/)?.[0] || '';
+      node.nodeValue = leading + value + trailing;
+    });
+
+    translateAttributes(document.body, target);
+  } finally {
+    translating = false;
+  }
+}
+
+async function translateAttributes(root, target) {
+  if (!root || target === 'en') {
+    if (target === 'en') restoreAttributes(root);
+    return;
+  }
+  const elements = root.querySelectorAll('input[placeholder],textarea[placeholder],[title],[aria-label]');
+  const jobs = [];
+  elements.forEach(el => {
+    if (isExcludedElement(el)) return;
+    for (const attr of ['placeholder','title','aria-label']) {
+      const value = el.getAttribute(attr);
+      if (!value || looksLikeNonNaturalText(value)) continue;
+      const key = `attr:${attr}:${value}`;
+      if (!el.dataset[`bookoraI18n_${attr.replace('-','_')}`]) el.dataset[`bookoraI18n_${attr.replace('-','_')}`] = value;
+      jobs.push({el,attr,value});
+    }
+  });
+  const unique = [...new Set(jobs.map(x => x.value))];
+  const translated = new Map();
+  await Promise.all(unique.map(async value => {
+    try { translated.set(value, await translateText(value, target)); } catch (_) { translated.set(value, value); }
+  }));
+  jobs.forEach(({el,attr,value}) => { if (el.isConnected) el.setAttribute(attr, translated.get(value) || value); });
+}
+
+function restoreAttributes(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-bookora-i18n-placeholder],[data-bookora-i18n-title],[data-bookora-i18n-aria_label]').forEach(el => {
+    const map = {placeholder:'data-bookora-i18n-placeholder',title:'data-bookora-i18n-title','aria-label':'data-bookora-i18n-aria_label'};
+    Object.entries(map).forEach(([attr,key]) => { if (el.hasAttribute(key)) el.setAttribute(attr, el.getAttribute(key)); });
+  });
+}
+
+async function applyLanguage() {
+  if (!document.body) return;
+  const nodes = collectTextNodes(document.body);
+  await translateNodes(nodes);
+  document.documentElement.lang = currentLanguage;
+  document.documentElement.dataset.bookoraLanguage = currentLanguage;
+  window.dispatchEvent(new CustomEvent('bookora:language-changed', { detail:{language:currentLanguage} }));
+}
+
+function queueAddedNodes(mutations) {
+  if (translating) return;
+  for (const mutation of mutations) {
+    for (const node of mutation.addedNodes || []) {
+      if (node.nodeType === Node.ELEMENT_NODE) queuedNodes.add(node);
+      else if (node.nodeType === Node.TEXT_NODE && node.parentElement) queuedNodes.add(node.parentElement);
+    }
+  }
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(async () => {
+    if (!queuedNodes.size) return;
+    queuedNodes.clear();
+    await applyLanguage();
+  }, 80);
+}
+
+function installObserver() {
+  if (observer || !document.body) return;
+  observer = new MutationObserver(queueAddedNodes);
+  observer.observe(document.body, {childList:true, subtree:true});
+}
+
+export async function setLanguage(language) {
+  currentLanguage = normalizeLanguage(language);
+  localStorage.setItem(STORAGE_KEY, currentLanguage);
+  await applyLanguage();
+}
+
+export function getLanguage() { return currentLanguage; }
+export function t(text) {
+  const source = String(text ?? '');
+  if (currentLanguage === 'en') return source;
+  return cacheGet(source) || source;
+}
+
+window.BookoraI18n = {
+  languages: BOOKORA_LANGUAGES,
+  setLanguage,
+  getLanguage,
+  t,
+  apply: applyLanguage
 };
 
-let currentLanguage=DEFAULT_LANGUAGE;
-const originals=new WeakMap();
-let observer=null;
-let applying=false;
-
-function normalize(v){const x=String(v||'').toLowerCase().split('-')[0];return BOOKORA_LANGUAGES[x]?x:DEFAULT_LANGUAGE;}
-function translated(text){const raw=String(text??'');const key=raw.trim();if(!key||currentLanguage==='en')return raw;const row=COMMON[key];const out=row?.[currentLanguage];return out?raw.replace(key,out):raw;}
-function skip(n){const p=n.parentElement;return !p||['SCRIPT','STYLE','NOSCRIPT','CODE','PRE','TEXTAREA'].includes(p.tagName)||!!p.closest('[data-i18n-ignore]');}
-function translateRoot(root){if(!root||applying)return;applying=true;try{const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);const list=[];let n;while((n=w.nextNode()))list.push(n);for(const t of list){if(skip(t))continue;if(!originals.has(t))originals.set(t,t.nodeValue);const next=translated(originals.get(t));if(t.nodeValue!==next)t.nodeValue=next;}}finally{applying=false;}}
-
-function ensureLanguageSelect(root=document){root.querySelectorAll?.('#user-set-language').forEach(select=>{if(select.dataset.i18nReady==='1'){select.value=currentLanguage;return;}select.dataset.i18nReady='1';select.innerHTML=Object.entries(BOOKORA_LANGUAGES).map(([code,x])=>`<option value="${code}">${x.native} — ${x.name}</option>`).join('');select.value=currentLanguage;select.addEventListener('change',()=>setLanguage(select.value));});}
-
-async function setLanguage(value){
-  currentLanguage=normalize(value);localStorage.setItem(STORAGE_KEY,currentLanguage);
-  document.documentElement.lang=currentLanguage;document.documentElement.dir=(currentLanguage==='ar'||currentLanguage==='ur')?'rtl':'ltr';
-  if(state.currentUser?.uid){try{const {db}=await state.getFirebase();await db.collection('users').doc(state.currentUser.uid).set({language:currentLanguage,languageUpdatedAt:new Date().toISOString()},{merge:true});state.currentUser={...state.currentUser,language:currentLanguage};localStorage.setItem('bookora_user_profile',JSON.stringify(state.currentUser));}catch(e){console.warn('[i18n] language save failed:',e.message);}}
-  const app=document.getElementById('app');translateRoot(app);ensureLanguageSelect(app||document);
+function wireLanguageControls() {
+  document.addEventListener('change', e => {
+    const el = e.target instanceof Element ? e.target : null;
+    if (!el) return;
+    if (el.matches('select[data-language],#language-select,#languageSelect,#settings-language')) setLanguage(el.value);
+  });
+  document.addEventListener('click', e => {
+    const el = e.target instanceof Element ? e.target : null;
+    const option = el?.closest('[data-language-option]');
+    if (option) {
+      e.preventDefault();
+      setLanguage(option.getAttribute('data-language-option'));
+    }
+  });
 }
 
-async function restoreLanguage(){
-  let saved=localStorage.getItem(STORAGE_KEY)||'';
-  if(state.currentUser?.language)saved=state.currentUser.language;
-  else if(state.currentUser?.uid){try{const {db}=await state.getFirebase();const snap=await db.collection('users').doc(state.currentUser.uid).get();if(snap.exists&&snap.data()?.language)saved=snap.data().language;}catch(e){console.warn('[i18n] language load skipped:',e.message);}}
-  currentLanguage=normalize(saved||navigator.language||DEFAULT_LANGUAGE);localStorage.setItem(STORAGE_KEY,currentLanguage);document.documentElement.lang=currentLanguage;document.documentElement.dir=(currentLanguage==='ar'||currentLanguage==='ur')?'rtl':'ltr';
-  const app=document.getElementById('app');translateRoot(app);ensureLanguageSelect(app||document);
+async function boot() {
+  installObserver();
+  wireLanguageControls();
+  await applyLanguage();
 }
 
-function init(){if(observer)return;const app=document.getElementById('app');if(!app)return;observer=new MutationObserver(ms=>{if(applying)return;for(const m of ms){for(const node of m.addedNodes||[]){if(node.nodeType!==Node.ELEMENT_NODE)continue;translateRoot(node);ensureLanguageSelect(node);}}});observer.observe(app,{childList:true,subtree:true});restoreLanguage();}
-state.subscribe((event)=>{if(event==='USER_LOGGED_IN')restoreLanguage();});
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
-window.BookoraI18n={languages:BOOKORA_LANGUAGES,getLanguage:()=>currentLanguage,setLanguage};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once:true});
+else boot();
+
+state?.subscribe?.(event => {
+  if (event === 'DATA_SYNCED' || event === 'USER_LOGGED_IN' || event === 'USER_UPDATED') {
+    setTimeout(() => applyLanguage(), 50);
+  }
+});
