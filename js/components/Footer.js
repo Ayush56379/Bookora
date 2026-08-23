@@ -26,12 +26,12 @@ export function renderFooter() {
 
           <nav class="bookora-footer__column" aria-label="Support and policies">
             <h2>Support & Trust</h2>
-            <a href="#/help">Help Center</a><a href="#/faq">FAQ</a><a href="#/how-it-works">How Bookora Works</a><a href="#/contact">Contact Support</a><a href="#/refund-policy">Refund Policy</a><a href="#/terms">Terms of Service</a><a href="#/privacy">Privacy & Security</a>
+            <a href="#/review-support" class="bookora-footer__support-link">❤️ Review & Support</a><a href="#/help">Help Center</a><a href="#/faq">FAQ</a><a href="#/how-it-works">How Bookora Works</a><a href="#/contact">Contact Support</a><a href="#/refund-policy">Refund Policy</a><a href="#/terms">Terms of Service</a><a href="#/privacy">Privacy & Security</a>
           </nav>
         </div>
         <div class="bookora-footer__bottom">
           <p>© ${year} Bookora. All rights reserved.</p>
-          <div class="bookora-footer__bottom-links"><a href="#/terms">Terms</a><a href="#/privacy">Privacy</a><a href="#/refund-policy">Refunds</a><a href="#/contact">Contact</a></div>
+          <div class="bookora-footer__bottom-links"><a href="#/review-support">Review & Support</a><a href="#/terms">Terms</a><a href="#/privacy">Privacy</a><a href="#/refund-policy">Refunds</a><a href="#/contact">Contact</a></div>
           <p class="bookora-footer__tagline">Discover. Read. Publish.</p>
         </div>
       </div>
