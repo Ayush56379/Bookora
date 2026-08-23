@@ -1,3 +1,5 @@
-// Compatibility entry. Mobile mode switching remains permanently disabled.
-// Cache-busted language runtime import so deployed browsers receive the performance fix.
-import './language-runtime.js?v=20260822-4';
+// Compatibility entry only.
+// Mobile mode switching is permanently disabled.
+// IMPORTANT: do not import language-runtime.js from this compatibility module.
+// That runtime previously caused the SPA's blank/reload startup failure.
+export {};
