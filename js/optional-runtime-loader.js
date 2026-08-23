@@ -12,7 +12,7 @@
     './purchase-access-runtime.js?v=20260821-6', './payment-runtime.js?v=20260820-3', './backendStateSync.js?v=20260823-1',
     './publish-enhancements.js?v=20260823-1', './subscription-session.js?v=20260823-1', './backend-token-restore.js?v=20260823-3',
     './firebase-authenticated-fetch.js?v=20260823-4', './external-seller-auth-persistence-fix.js?v=20260823-4',
-    './external-auth-submit-bridge.js?v=20260823-6', './catalog-visibility-hotfix.js?v=20260823-1', './auth-session-bridge.js?v=20260821-3',
+    './external-publish-scan-permanent-fix.js?v=20260823-1', './external-auth-submit-bridge.js?v=20260823-6', './catalog-visibility-hotfix.js?v=20260823-1', './auth-session-bridge.js?v=20260821-3',
     './firebase-auth-token-bridge.js?v=20260821-9', './wishlist-permission-fix.js?v=20260820-2',
     './payment-route-stability-hotfix.js?v=20260821-1', './settings-route-sync-hotfix.js?v=20260822-1',
     './profile-menu-stability.js?v=20260822-1', './payment-success-verification-hotfix.js?v=20260821-7',
