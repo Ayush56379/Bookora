@@ -1,5 +1,11 @@
 // Bookora homepage catalog enhancement
 // Adds a single clear All eBooks catalog with a user-selectable view.
+//
+// IMPORTANT: the observer below watches only direct children of #app.
+// Watching the whole subtree caused a feedback loop because renderCatalog()
+// replaces the catalog grid's innerHTML, which itself creates mutations.
+// That loop could make the SPA look like it was continuously refreshing and
+// could prevent the catalog from ever settling/loading correctly.
 import './homepage-catalog-reliability.js';
 import { state } from './state.js';
 import { renderBookCard } from './components/BookCard.js';
@@ -50,6 +56,11 @@ function getTargetSection() {
 function renderCatalog(view = 'all') {
   const root = document.getElementById(SECTION_ID);
   if (!root) return;
+  const titleEl = root.querySelector('.bookora-catalog-title');
+  const countEl = root.querySelector('.bookora-catalog-count');
+  const gridEl = root.querySelector('.bookora-catalog-grid');
+  if (!titleEl || !countEl || !gridEl) return;
+
   const books = booksForView(view);
   const titleMap = {
     all: 'All eBooks',
@@ -61,11 +72,15 @@ function renderCatalog(view = 'all') {
   const title = view.startsWith('category:') ? `${view.slice(9)} eBooks` : (titleMap[view] || 'eBooks');
   const count = books.length;
 
-  root.querySelector('.bookora-catalog-title').textContent = title;
-  root.querySelector('.bookora-catalog-count').textContent = `${count} ${count === 1 ? 'book' : 'books'}`;
-  root.querySelector('.bookora-catalog-grid').innerHTML = count
+  titleEl.textContent = title;
+  countEl.textContent = `${count} ${count === 1 ? 'book' : 'books'}`;
+  const nextHtml = count
     ? books.map(renderBookCard).join('')
     : `<div class="bookora-catalog-empty"><strong>No eBooks found</strong><span>Try another category or view.</span></div>`;
+
+  // Avoid unnecessary DOM replacement. This also prevents needless work when
+  // multiple data sources announce the same catalog state.
+  if (gridEl.innerHTML !== nextHtml) gridEl.innerHTML = nextHtml;
 }
 
 function injectCatalog() {
@@ -124,7 +139,9 @@ function scheduleInject() {
 const app = document.getElementById('app');
 if (app) {
   const observer = new MutationObserver(scheduleInject);
-  observer.observe(app, { childList: true, subtree: true });
+  // DO NOT use subtree:true here. renderCatalog() changes descendants inside
+  // the catalog and would otherwise trigger this observer again indefinitely.
+  observer.observe(app, { childList: true, subtree: false });
 }
 
 window.addEventListener('hashchange', () => setTimeout(scheduleInject, 0));
