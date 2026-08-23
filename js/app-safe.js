@@ -89,6 +89,12 @@ class SafeApp {
       const type = path === '/best-sellers' ? 'bestsellers' : path === '/new-releases' ? 'new' : 'trending';
       return { html: m.renderCuratedCatalogPage(type) };
     }
+    // REVIEW_SUPPORT_ROUTE_V1
+    if (path === '/review-support') {
+      const m = await safeImport('./pages/ReviewSupportPage.js');
+      return { html: m.renderReviewSupportPage(), init: m.initReviewSupportEvents };
+    }
+
     if (path === '/pricing' || path === '/subscription') {
       const m = await safeImport('./pages/PricingPage.js');
       return { html: m.renderPricingPage(), init: m.initPricingEvents };
@@ -196,7 +202,7 @@ class SafeApp {
       const params = new URLSearchParams(queryString || '');
       if (navigation) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 
-      const PUBLIC = ['/','/explore','/categories','/best-sellers','/new-releases','/trending','/authors','/pricing','/subscription','/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines','/login','/signup','/register','/forgot-password','/reset-password','/payment/success','/payment/failed'];
+      const PUBLIC = ['/','/explore','/categories','/best-sellers','/new-releases','/trending','/authors','/pricing','/subscription','/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines','/login','/signup','/register','/forgot-password','/reset-password','/payment/success','/payment/failed','/review-support'];
       const PUBLIC_PREFIX = ['/category/','/book/','/author/','/search','/sample/'];
       const isPublic = PUBLIC.includes(path) || PUBLIC_PREFIX.some(p => path.startsWith(p));
       if (!isPublic && !state.isAuthenticated) {
