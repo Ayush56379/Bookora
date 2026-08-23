@@ -140,6 +140,16 @@ function resolveCheckoutBook() {
   return window.__bookoraCheckoutBook || null;
 }
 
+function getExternalReferralId() {
+  try {
+    const hash = window.location.hash || '';
+    const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
+    return new URLSearchParams(query).get('external_ref') || localStorage.getItem('bookora_external_ref') || '';
+  } catch (_) {
+    return '';
+  }
+}
+
 async function startRealCashfree(button) {
   const currentBook = resolveCheckoutBook();
   if (!currentBook) {
@@ -154,18 +164,21 @@ async function startRealCashfree(button) {
 
   try {
     const couponCode = (document.getElementById('coupon-input')?.value || '').trim().toUpperCase();
+    const externalRef = getExternalReferralId();
+    if (externalRef) {
+      try { localStorage.setItem('bookora_external_ref', externalRef); } catch (_) {}
+    }
     const created = await backend('/api/cashfree/create-order', {
       method: 'POST',
       body: JSON.stringify({
         book_id: currentBook.id,
         coupon_code: couponCode,
-        phone: state.currentUser?.phone || state.currentUser?.phoneNumber || ''
+        phone: state.currentUser?.phone || state.currentUser?.phoneNumber || '',
+        external_ref: externalRef
       })
     });
     if (!created.payment_session_id) throw new Error('Cashfree payment session was not returned.');
 
-    // Render/backend chooses SANDBOX vs PRODUCTION from the admin payment setting.
-    // Never hardcode the environment in the browser.
     const Cashfree = await loadCashfreeSdk();
     const environment = String(created.environment || '').toUpperCase();
     const cashfree = Cashfree({ mode: environment === 'PRODUCTION' ? 'production' : 'sandbox' });
@@ -203,5 +216,6 @@ document.addEventListener('click', event => {
     event.preventDefault();
     event.stopImmediatePropagation();
     startRealCashfree(legacyButton);
+    return;
   }
 }, true);
