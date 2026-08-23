@@ -1,0 +1,47 @@
+name: One-click Cashfree mode switch UI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'js/pages/AdminSettingsPage.js'
+      - '.github/workflows/one-click-cashfree-mode.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch admin payment mode UI
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('js/pages/AdminSettingsPage.js')
+          s = p.read_text(encoding='utf-8')
+          marker = '<div class="as-secure">🔐 <b>Cashfree Secret Key:</b>'
+          if 'id=\"cf-mode-sandbox\"' not in s:
+              insert = '''<div class="cf-mode-switch" style="margin-top:14px;padding:14px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff"><b style="display:block;margin-bottom:9px">Quick Payment Mode</b><div style="display:flex;gap:9px;flex-wrap:wrap"><button type="button" id="cf-mode-sandbox" class="as-secondary">🧪 Switch to Sandbox</button><button type="button" id="cf-mode-production" class="as-secondary">🔴 Switch to Production</button></div><p id="cf-mode-status" class="as-note" style="margin:10px 0 0">Choose a mode, then confirm with Save All Settings.</p></div>'''
+              s = s.replace(marker, insert + marker, 1)
+          old = "$('save-all-settings-btn')?.addEventListener('click',saveSettings);"
+          new = old + "$('cf-mode-sandbox')?.addEventListener('click',()=>{const x=$('set-cf-env');if(x){x.value='SANDBOX';$('cf-mode-status').textContent='🧪 Sandbox selected — click Save All Settings to apply.';}});$('cf-mode-production')?.addEventListener('click',()=>{const x=$('set-cf-env');if(x){if(!window.confirm('Switch Cashfree to PRODUCTION? New payments will use live Cashfree credentials.'))return;x.value='PRODUCTION';$('cf-mode-status').textContent='🔴 Production selected — click Save All Settings to apply.';}});"
+          if 'cf-mode-sandbox' in s and "$('cf-mode-sandbox')?.addEventListener" not in s:
+              s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name 'bookora-bot'
+          git config user.email 'bookora-bot@users.noreply.github.com'
+          git add js/pages/AdminSettingsPage.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat: add one-click Cashfree sandbox production switch'
+          git push
+      - name: Remove temporary workflow
+        if: always()
+        shell: bash
+        run: |
+          git rm -f .github/workflows/one-click-cashfree-mode.yml || true
+          git config user.name 'bookora-bot'
+          git config user.email 'bookora-bot@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet || (git commit -m 'chore: remove temporary payment mode patch workflow' && git push)
