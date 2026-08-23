@@ -1,0 +1,127 @@
+/* Bookora ebook catalog / KDP-style card system
+   Applies only to containers that actually contain premium ebook cards. */
+
+#app :where(div,section,main,article):has(> .book-card-premium){
+  display:grid !important;
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:1.5rem !important;
+  align-items:start !important;
+}
+
+#app .book-card-premium{
+  width:100% !important;
+  min-width:0 !important;
+  max-width:none !important;
+  margin:0 !important;
+}
+
+#app .book-card-premium .book-cover-premium{
+  width:100% !important;
+  aspect-ratio:2 / 3 !important;
+  min-height:0 !important;
+  height:auto !important;
+}
+
+#app .book-card-premium .book-cover-image{
+  width:100% !important;
+  height:100% !important;
+  object-fit:cover !important;
+}
+
+#app .book-card-premium .book-card-info{
+  min-width:0 !important;
+}
+
+#app .book-card-premium .book-card-title-link h3{
+  min-height:2.42rem;
+  font-size:clamp(.88rem,1.05vw,.98rem);
+  line-height:1.3;
+}
+
+@media (min-width:1280px){
+  #app :where(div,section,main,article):has(> .book-card-premium){
+    grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+    gap:1.5rem !important;
+  }
+}
+
+@media (min-width:701px) and (max-width:1279px){
+  #app :where(div,section,main,article):has(> .book-card-premium){
+    grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+    gap:1.25rem !important;
+  }
+}
+
+/* Mobile: ALWAYS two ebook cards per row. */
+@media (max-width:700px){
+  #app :where(div,section,main,article):has(> .book-card-premium){
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    gap:.75rem !important;
+    width:100% !important;
+  }
+
+  #app .book-card-premium{
+    border-radius:12px !important;
+  }
+
+  #app .book-card-premium .book-cover-premium{
+    aspect-ratio:2 / 3 !important;
+  }
+
+  #app .book-card-premium .book-card-info{
+    padding:.6rem !important;
+  }
+
+  #app .book-card-premium .book-card-title-link h3{
+    font-size:.78rem !important;
+    line-height:1.28 !important;
+    min-height:2rem !important;
+  }
+
+  #app .book-card-premium .book-card-author{
+    font-size:.64rem !important;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  #app .book-card-premium .book-card-price{
+    font-size:.82rem !important;
+  }
+
+  #app .book-card-premium .book-buy-btn{
+    font-size:.62rem !important;
+    padding:.32rem .48rem !important;
+  }
+
+  #app .book-card-premium .book-wishlist-btn{
+    width:31px !important;
+    height:31px !important;
+    top:.45rem !important;
+    right:.45rem !important;
+  }
+
+  #app .book-card-premium .book-cover-content{
+    left:.65rem !important;
+    right:.65rem !important;
+    bottom:.55rem !important;
+  }
+
+  #app .book-card-premium .book-cover-content h4{
+    font-size:.78rem !important;
+  }
+
+  #app .book-card-premium .book-cover-meta,
+  #app .book-card-premium .book-cover-content p{
+    font-size:.55rem !important;
+  }
+}
+
+@media (max-width:360px){
+  #app :where(div,section,main,article):has(> .book-card-premium){
+    gap:.55rem !important;
+  }
+  #app .book-card-premium .book-card-info{padding:.5rem !important;}
+  #app .book-card-premium .book-card-meta-row{gap:.2rem;}
+  #app .book-card-premium .badge{font-size:.5rem !important;padding:.18rem .3rem !important;}
+}
