@@ -1,0 +1,102 @@
+name: Fix external PDF upload
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch external PDF upload
+        shell: bash
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('js/pages/PublishExternalPage.js')
+          s = p.read_text(encoding='utf-8')
+          marker = 'async function authToken() {'
+          helper = r'''async function uploadPdfResumable(file, authTokenValue) {
+            const headers = {'Content-Type':'application/json', Authorization:`Bearer ${authTokenValue}`};
+            const startRes = await apiFetch('/api/books/upload-session/start', {
+              method:'POST', headers,
+              body:JSON.stringify({name:file.name, mimeType:file.type || 'application/pdf', size:file.size, kind:'pdf'})
+            });
+            const start = await startRes.json();
+            if (!startRes.ok || !start.success || !start.upload_token) throw new Error(start.error || 'Could not start PDF upload.');
+            const uploadToken = start.upload_token;
+            const chunkSize = Number(start.chunk_size || 4 * 1024 * 1024);
+            let offset = Number(start.next_offset || 0);
+            let finalFile = null;
+            while (offset < file.size) {
+              const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
+              const data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const raw = String(reader.result || '');
+                  const comma = raw.indexOf(',');
+                  resolve(comma >= 0 ? raw.slice(comma + 1) : raw);
+                };
+                reader.onerror = () => reject(reader.error || new Error('Could not read PDF chunk.'));
+                reader.readAsDataURL(chunk);
+              });
+              const chunkRes = await apiFetch('/api/books/upload-session/chunk', {
+                method:'POST', headers,
+                body:JSON.stringify({upload_token:uploadToken, offset, data})
+              });
+              const result = await chunkRes.json();
+              if (!chunkRes.ok || !result.success) throw new Error(result.error || 'PDF chunk upload failed.');
+              offset = Number(result.next_offset || offset + chunk.size);
+              if (result.file) finalFile = result.file;
+              if (result.done) break;
+            }
+            if (!finalFile) {
+              const statusRes = await apiFetch('/api/books/upload-session/status', {
+                method:'POST', headers,
+                body:JSON.stringify({upload_token:uploadToken})
+              });
+              const status = await statusRes.json();
+              if (!statusRes.ok || !status.success || !status.done) throw new Error(status.error || 'PDF upload did not complete.');
+              finalFile = status.file || null;
+            }
+            const fileId = String(finalFile?.id || finalFile?.fileId || finalFile?.file_id || '').trim();
+            const fileUrl = String(finalFile?.url || finalFile?.webViewLink || finalFile?.web_view_link || '').trim();
+            if (!fileId) throw new Error('PDF upload completed without a Google Drive file ID.');
+            return {success:true, pdf_file_id:fileId, pdf_url:fileUrl};
+          }
+
+          '''
+          if 'async function uploadPdfResumable(file, authTokenValue)' not in s:
+              if marker not in s:
+                  raise SystemExit('authToken marker not found')
+              s = s.replace(marker, helper + marker, 1)
+          old = "const uploadRes=await apiFetch('/api/books/upload-files',{method:'POST',headers:authHeaders,body:JSON.stringify({pdf:{name:pdf.name,mimeType:'application/pdf',data:pdfData}})});const upload=await uploadRes.json();if(!uploadRes.ok||!upload.success)throw new Error(upload.error||'PDF upload failed.');"
+          new = "const upload=await uploadPdfResumable(pdf, token);"
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif "const upload=await uploadPdfResumable(pdf, token);" not in s:
+              raise SystemExit('legacy external PDF upload call not found')
+          s = s.replace("token=await authToken();const pdfData=await fileToBase64(pdf);const authHeaders=", "token=await authToken();const authHeaders=", 1)
+          s = s.replace("const upload=await uploadPdfResumable(pdf, token);", "const upload=await uploadPdfResumable(pdf, token);", 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit fix
+        shell: bash
+        run: |
+          if git diff --quiet -- js/pages/PublishExternalPage.js; then
+            echo "External PDF resumable upload already active."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/pages/PublishExternalPage.js
+          git commit -m "fix: use resumable Drive upload for external PDF listings"
+          git push
