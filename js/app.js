@@ -48,12 +48,18 @@ class App {
     this.lastRenderedHash = '';
     this.lastRenderedPath = '';
     this.routeRunning = false;
+
+    // Expose the single SPA instance so startup compatibility code can safely
+    // coordinate with it without dispatching synthetic browser load events.
+    window.__BOOKORA_APP_INSTANCE__ = this;
+
     this.init();
     try { BookoraAI.init(); } catch (e) { console.warn('BookoraAI init notice:', e); }
   }
 
   init() {
     window.addEventListener('hashchange', () => this.route(true, true));
+    // Keep load as a compatibility fallback, but do not depend on it for boot.
     window.addEventListener('load', () => this.route(false, false));
 
     state.subscribe((event) => {
@@ -122,6 +128,11 @@ class App {
         window.dispatchEvent(new Event('hashchange'));
       }
     });
+
+    // IMPORTANT: render the current route immediately. Waiting for the browser
+    // load event can leave #app blank indefinitely when any optional resource
+    // is slow or pending. Application rendering must not depend on that event.
+    this.route(false, false);
   }
 
   currentPath() {
@@ -237,5 +248,5 @@ class App {
   }
 }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => new App());
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => new App(), { once: true });
 else new App();
