@@ -1,6 +1,6 @@
 import { apiFetch } from '../config.js';
 import { state } from '../state.js';
-import { getFreshFirebaseIdToken } from '../firebase-authenticated-fetch.js';
+import { getFreshFirebaseIdToken } from '../firebase-authenticated-fetch.js?v=20260823-2';
 import { updateSEO } from '../utils/seo.js';
 import { Toast } from '../components/Toast.js';
 
