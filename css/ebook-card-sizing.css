@@ -1,0 +1,109 @@
+/* Bookora — canonical eBook sizing system
+   One consistent Amazon/KDP-style card geometry everywhere. */
+#app .book-card,
+#app .book-card-premium{
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  box-sizing:border-box !important;
+  flex:0 0 auto !important;
+  transform-origin:center center;
+}
+
+/* Every catalog grid gets real, full-width columns. */
+#app .kdp-book-grid,
+#app #explore-books-grid,
+#app .explore-books-grid,
+#app .books-grid,
+#app .book-grid,
+#app .products-grid,
+#app .catalog-grid,
+#app .related-books-grid{
+  display:grid !important;
+  width:100% !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  align-items:stretch !important;
+}
+
+/* Homepage: 5 desktop cards, naturally reduces as viewport shrinks. */
+#app #home-live-catalog .kdp-book-grid{
+  grid-template-columns:repeat(5,minmax(0,1fr)) !important;
+  gap:22px !important;
+}
+#app #home-live-catalog .kdp-book-item{
+  width:100% !important;
+  min-width:0 !important;
+  max-width:none !important;
+  display:block !important;
+}
+#app #home-live-catalog .kdp-book-item > .book-card{
+  width:100% !important;
+}
+
+/* Explore/category/related catalogs: same visual card size. */
+#app #explore-books-grid,
+#app .explore-books-grid,
+#app .books-grid,
+#app .book-grid,
+#app .products-grid,
+#app .catalog-grid,
+#app .related-books-grid{
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:20px !important;
+}
+
+/* Book cover geometry is always a real book ratio, never a squeezed thumbnail. */
+#app .book-cover-container.book-cover-premium,
+#app .book-cover-premium{
+  width:100% !important;
+  aspect-ratio:2 / 3 !important;
+  min-height:0 !important;
+  height:auto !important;
+  overflow:hidden !important;
+}
+#app .book-cover-image{
+  width:100% !important;
+  height:100% !important;
+  object-fit:cover !important;
+  display:block !important;
+}
+
+/* Card content should fill the card and never inherit tiny widths. */
+#app .book-card-info{width:100% !important;box-sizing:border-box !important;}
+#app .book-card-title-link,#app .book-card-title-link h3{max-width:100% !important;}
+#app .book-card-price-row{width:100% !important;box-sizing:border-box !important;}
+
+@media(max-width:1200px){
+  #app #home-live-catalog .kdp-book-grid{grid-template-columns:repeat(4,minmax(0,1fr)) !important;gap:18px !important;}
+}
+@media(max-width:900px){
+  #app #home-live-catalog .kdp-book-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:14px !important;}
+}
+@media(max-width:600px){
+  #app #home-live-catalog .kdp-book-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:10px !important;}
+  #app .book-card-info{padding:.68rem .7rem !important;}
+  #app .book-card-title-link h3{font-size:.86rem !important;}
+  #app .book-card-author{font-size:.7rem !important;}
+  #app .book-card-price{font-size:.92rem !important;}
+}
+
+/* Prevent old responsive/flex rules from shrinking only the first two cards. */
+@media(min-width:601px){
+  #app #home-live-catalog .kdp-book-item,
+  #app #home-live-catalog .kdp-book-item > .book-card{min-width:0 !important;}
+}
