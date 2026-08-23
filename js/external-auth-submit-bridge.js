@@ -1,6 +1,6 @@
 // Bookora external publish authentication bridge.
 // The external publish form uses the same Bookora session as the header.
-// It prefers the existing backend session token and falls back to Firebase Auth.
+// Firebase Auth is preferred because it produces a fresh, server-verifiable ID token.
 import { state } from './state.js';
 
 const WRAPPED_LISTENERS = new WeakMap();
@@ -38,7 +38,29 @@ function waitForFirebaseUser(timeoutMs = 12000) {
 }
 
 async function prepareExternalPublishAuth() {
-  // Existing Bookora backend session is authoritative for the current UI.
+  // 1. Always prefer a real Firebase user and a fresh ID token.
+  const user = await waitForFirebaseUser();
+  if (user) {
+    try {
+      const token = await user.getIdToken(true);
+      if (!token) throw new Error('Firebase authentication token is unavailable.');
+      state.token = token;
+      state.isAuthenticated = true;
+      if (!state.currentUser || String(state.currentUser.uid || '') !== String(user.uid)) {
+        state.currentUser = {
+          ...(state.currentUser || {}), uid: user.uid, firebaseUid: user.uid,
+          email: user.email || state.currentUser?.email || '',
+          name: user.displayName || state.currentUser?.name || user.email?.split('@')[0] || 'Bookora User',
+          photoURL: user.photoURL || state.currentUser?.photoURL || ''
+        };
+      }
+      return token;
+    } catch (error) {
+      console.warn('[External Publish Auth] Firebase token preparation failed:', error?.message || error);
+    }
+  }
+
+  // 2. Compatibility fallback only when Firebase has no current user.
   try {
     const backendSession = window.BookoraBackendSession;
     if (backendSession?.ensureBackendSession) {
@@ -58,26 +80,7 @@ async function prepareExternalPublishAuth() {
     return storedToken;
   }
 
-  const user = await waitForFirebaseUser();
-  if (!user) return '';
-  try {
-    const token = await user.getIdToken(true);
-    if (!token) return '';
-    state.token = token;
-    state.isAuthenticated = true;
-    if (!state.currentUser || String(state.currentUser.uid || '') !== String(user.uid)) {
-      state.currentUser = {
-        ...(state.currentUser || {}), uid: user.uid, firebaseUid: user.uid,
-        email: user.email || state.currentUser?.email || '',
-        name: user.displayName || state.currentUser?.name || user.email?.split('@')[0] || 'Bookora User',
-        photoURL: user.photoURL || state.currentUser?.photoURL || ''
-      };
-    }
-    return token;
-  } catch (error) {
-    console.warn('[External Publish Auth] Firebase token preparation failed:', error?.message || error);
-    return '';
-  }
+  return '';
 }
 
 function installSubmitGuard() {
@@ -90,7 +93,11 @@ function installSubmitGuard() {
     if (!wrapped) {
       wrapped = async function externalPublishSubmitGuard(event) {
         event.preventDefault();
-        await prepareExternalPublishAuth();
+        const token = await prepareExternalPublishAuth();
+        if (!token) {
+          console.warn('[External Publish Auth] No authenticated Bookora session available.');
+          return;
+        }
         return listener.call(this, event);
       };
       WRAPPED_LISTENERS.set(listener, wrapped);
