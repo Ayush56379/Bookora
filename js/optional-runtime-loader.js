@@ -9,7 +9,7 @@
     './checkout-production-runtime.js?v=20260820-2', './admin-coupon-runtime.js?v=20260820-1',
     './purchase-access-runtime.js?v=20260821-6', './payment-runtime.js?v=20260820-3', './backendStateSync.js',
     './publish-enhancements.js', './subscription-session.js', './backend-token-restore.js?v=20260821-1',
-    './firebase-authenticated-fetch.js?v=20260821-1', './external-auth-submit-bridge.js?v=20260821-1',
+    './firebase-authenticated-fetch.js?v=20260823-2', './external-auth-submit-bridge.js?v=20260823-2',
     './catalog-visibility-hotfix.js?v=1', './auth-session-bridge.js?v=20260821-3',
     './firebase-auth-token-bridge.js?v=20260821-9', './wishlist-permission-fix.js?v=20260820-2',
     './payment-route-stability-hotfix.js?v=20260821-1', './settings-route-sync-hotfix.js?v=20260822-1',
