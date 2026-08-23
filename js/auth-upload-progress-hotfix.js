@@ -2,7 +2,7 @@ import { state } from './state.js';
 
 const API = 'https://bookora-backend-x08l.onrender.com';
 const UPLOAD_PATH = '/api/books/upload-files';
-const CHUNK_BYTES = 2359296; // 2.25 MiB = 9 x 256 KiB, also divisible by 3 for base64 slicing.
+const CHUNK_BYTES = 2 * 1024 * 1024; // Keep frontend and backend chunk limits identical.
 let authPromise = null;
 
 async function exchangeFirebaseSession(forceRefresh = true) {
@@ -95,64 +95,93 @@ async function apiJSON(path, body, token, attempts = 3) {
   throw last || new Error('Upload request failed.');
 }
 
+function base64Size(encoded) {
+  const value = String(encoded || '');
+  if (!value) return 0;
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor(value.length * 3 / 4) - padding);
+}
+
 function base64ChunkChars() { return Math.floor(CHUNK_BYTES / 3) * 4; }
 
 async function uploadBase64File(file, kind, token, completedBefore, totalUploadBytes) {
-  const size = Math.round((String(file.data || '').length * 3) / 4) - (String(file.data || '').endsWith('==') ? 2 : String(file.data || '').endsWith('=') ? 1 : 0);
+  const size = base64Size(file.data);
   if (!size) throw new Error(`${kind === 'pdf' ? 'PDF' : 'Cover'} data is empty.`);
 
-  const start = await apiJSON('/api/books/upload-session/start', { name: file.name, mimeType: file.mimeType, size, kind }, token);
-  const uploadToken = start.upload_token;
-  let offset = 0;
-  const encoded = String(file.data);
-  const chars = base64ChunkChars();
+  // A Google Drive resumable URL can disappear independently of the browser
+  // session. Restart the complete file upload automatically instead of asking
+  // the seller to reselect the PDF.
+  for (let sessionAttempt = 0; sessionAttempt < 3; sessionAttempt++) {
+    try {
+      const start = await apiJSON('/api/books/upload-session/start', { name: file.name, mimeType: file.mimeType, size, kind }, token);
+      const uploadToken = start.upload_token;
+      let offset = 0;
+      const encoded = String(file.data);
+      const chars = base64ChunkChars();
 
-  while (offset < size) {
-    const bytesRemaining = size - offset;
-    const bytesThisChunk = Math.min(CHUNK_BYTES, bytesRemaining);
-    const charStart = Math.floor(offset / 3) * 4;
-    const charEnd = bytesThisChunk === bytesRemaining ? encoded.length : charStart + Math.floor(bytesThisChunk / 3) * 4;
-    const chunk = encoded.slice(charStart, charEnd);
+      while (offset < size) {
+        const bytesRemaining = size - offset;
+        const bytesThisChunk = Math.min(CHUNK_BYTES, bytesRemaining);
+        const charStart = Math.floor(offset / 3) * 4;
+        const charEnd = bytesThisChunk === bytesRemaining ? encoded.length : Math.min(encoded.length, charStart + Math.floor(bytesThisChunk / 3) * 4);
+        const chunk = encoded.slice(charStart, charEnd);
+        if (!chunk) throw new Error('Could not prepare the next upload chunk.');
 
-    let result;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        result = await apiJSON('/api/books/upload-session/chunk', { upload_token: uploadToken, offset, data: chunk }, token, 2);
-        break;
-      } catch (error) {
-        if (error.status === 409 && error.data?.next_offset != null) {
-          offset = Number(error.data.next_offset);
-          break;
+        let result = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            result = await apiJSON('/api/books/upload-session/chunk', { upload_token: uploadToken, offset, data: chunk }, token, 2);
+            break;
+          } catch (error) {
+            if (error.status === 401) {
+              token = await exchangeFirebaseSession(true);
+              continue;
+            }
+            if (error.status === 409 && error.data?.next_offset != null) {
+              offset = Number(error.data.next_offset);
+              result = { success: true, done: offset >= size, next_offset: offset, file: null };
+              break;
+            }
+            if (error.status === 410 || error.data?.code === 'UPLOAD_SESSION_EXPIRED' || error.data?.restart_required) {
+              throw Object.assign(new Error('UPLOAD_SESSION_EXPIRED'), { uploadSessionExpired: true });
+            }
+            if (attempt === 2) throw error;
+            await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
+          }
         }
-        if (attempt === 2) {
-          const status = await apiJSON('/api/books/upload-session/status', { upload_token: uploadToken }, token, 2);
-          offset = Number(status.next_offset || 0);
-          if (status.done) return status.file;
-          if (offset >= size) break;
+
+        if (!result) throw new Error('Upload chunk failed.');
+        offset = Number(result.next_offset ?? (offset + bytesThisChunk));
+        const overall = completedBefore + offset;
+        const pct = 5 + (overall / totalUploadBytes) * 90;
+        updateProgress(pct, `Uploading ${kind === 'pdf' ? 'eBook PDF' : 'cover'}`, `${(overall / 1048576).toFixed(1)} MB of ${(totalUploadBytes / 1048576).toFixed(1)} MB uploaded`);
+        if (result.done) return result.file;
+        if (offset >= size) break;
+      }
+
+      const status = await apiJSON('/api/books/upload-session/status', { upload_token: uploadToken }, token, 2);
+      if (status.done) return status.file;
+      if (Number(status.next_offset || 0) >= size && status.file) return status.file;
+      throw new Error(`Drive did not confirm completion of the ${kind === 'pdf' ? 'PDF' : 'cover'} upload.`);
+    } catch (error) {
+      if (error?.uploadSessionExpired || error?.status === 410 || error?.data?.code === 'UPLOAD_SESSION_EXPIRED') {
+        if (sessionAttempt < 2) {
+          updateProgress(3, 'Refreshing upload session', 'The previous Drive session expired; resuming automatically…');
+          await new Promise(r => setTimeout(r, 700));
           continue;
         }
-        await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
       }
+      throw error;
     }
-
-    if (!result) continue;
-    offset = Number(result.next_offset || (offset + bytesThisChunk));
-    const overall = completedBefore + offset;
-    const pct = 5 + (overall / totalUploadBytes) * 90;
-    updateProgress(pct, `Uploading ${kind === 'pdf' ? 'eBook PDF' : 'cover'}`, `${(overall / 1048576).toFixed(1)} MB of ${(totalUploadBytes / 1048576).toFixed(1)} MB uploaded`);
-    if (result.done) return result.file;
   }
-
-  const status = await apiJSON('/api/books/upload-session/status', { upload_token: uploadToken }, token, 2);
-  if (!status.done) throw new Error(`Drive did not confirm completion of the ${kind === 'pdf' ? 'PDF' : 'cover'} upload.`);
-  return status.file;
+  throw new Error('Upload session could not be recovered. Please try the upload again.');
 }
 
 async function resumableUpload(payload, token) {
   const pdf = payload.pdf || {};
   const cover = payload.cover || {};
-  const pdfSize = Math.round((String(pdf.data || '').length * 3) / 4) - (String(pdf.data || '').endsWith('==') ? 2 : String(pdf.data || '').endsWith('=') ? 1 : 0);
-  const coverSize = cover.data ? Math.round((String(cover.data).length * 3) / 4) - (String(cover.data).endsWith('==') ? 2 : String(cover.data).endsWith('=') ? 1 : 0) : 0;
+  const pdfSize = base64Size(pdf.data);
+  const coverSize = base64Size(cover.data);
   const total = pdfSize + coverSize;
   if (!pdf.data) throw new Error('PDF file is required.');
 
