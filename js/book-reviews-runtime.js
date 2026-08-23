@@ -1,7 +1,8 @@
 // Bookora Reviews Runtime
-// Public/realtime review reads stay in Firestore. Review creation is routed
-// through the server so Firestore client write rules cannot block a valid
-// signed-in reader. Firebase ID token is attached by apiFetch().
+// Firebase reviews are the single source of truth for the public review list,
+// rating and review count. The latest Firestore snapshot is retained so a
+// route/page re-render can immediately restore the correct count instead of
+// falling back to a stale book.review_count value.
 import { state } from './state.js';
 import { Toast } from './components/Toast.js';
 import { apiFetch } from './config.js';
@@ -32,7 +33,7 @@ function updateHeaderRating(book,reviews){
   const ratingEl=document.querySelector('.bd-author-line .bd-rating');
   if(!ratingEl)return;
   const total=reviews.length;
-  const average=total?reviews.reduce((sum,r)=>sum+Number(r.rating||0),0)/total:Number(book?.rating||0);
+  const average=total?reviews.reduce((sum,r)=>sum+Number(r.rating||0),0)/total:0;
   const display=total?average.toFixed(1):'—';
   const countText=`(${total} ${total===1?'review':'reviews'})`;
   ratingEl.innerHTML=`<span class="bd-rating-stars" aria-label="${esc(display)} out of 5 stars">${stars(average)}</span><span class="bd-rating-number">${display}</span><span class="bd-rating-count">${esc(countText)}</span>`;
@@ -44,7 +45,7 @@ function renderReviews(bookId,reviews){
   const book=state.getBookBySlug(bookId) || [...(state.books||[])].find(b=>String(b.id)===String(bookId));
   const unique=new Map();
   for(const review of Array.isArray(reviews)?reviews:[]){
-    const id=String(review.id||review.review_id||`${review.book_id||review.bookId}|${review.user_id||review.userId||review.uid}`);
+    const id=String(review.id||review.review_id||`${review.book_id||review.bookId}|${review.user_id||review.userId||review.uid}|${review.created_at||review.createdAt||review.date||''}`);
     if(!unique.has(id))unique.set(id,review);
   }
   const sorted=[...unique.values()].sort((a,b)=>{const ta=a.created_at?.toDate?a.created_at.toDate().getTime():new Date(a.created_at||a.date||0).getTime();const tb=b.created_at?.toDate?b.created_at.toDate().getTime():new Date(b.created_at||b.date||0).getTime();return tb-ta;});
@@ -56,7 +57,30 @@ function renderReviews(bookId,reviews){
   list.innerHTML=total?sorted.map(review=>{const date=review.created_at?.toDate?review.created_at.toDate():(review.date||review.createdAt||''),dateText=date?new Date(date).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'',name=review.user_name||review.userName||'Bookora Reader';return `<article class="bd-review" data-review-id="${esc(review.id||'')}"><div class="bd-review-top"><div><div class="bd-rating-stars">${stars(review.rating)}</div><div class="bd-review-title">${esc(review.title||'Reader review')}</div></div><span class="bd-review-meta">${esc(dateText)}</span></div><p class="bd-review-comment">${esc(review.comment||'')}</p><div class="bd-review-meta">${esc(name)} ${review.verified_purchase?'<span class="bd-verified">• ✓ Verified Purchase</span>':'<span class="bd-verified">• Reader Review</span>'}</div></article>`;}).join(''):'<div class="bd-empty">No customer reviews yet. Be the first reader to share your feedback.</div>';
 }
 
-async function watchBook(book){const db=getDb();if(!db||!book?.id)return;const key=String(book.id);if(watched.has(key))return;try{const unsubscribe=db.collection('reviews').where('book_id','==',key).onSnapshot(snapshot=>{const reviews=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));state.reviews=[...(Array.isArray(state.reviews)?state.reviews.filter(r=>String(r.book_id||r.bookId)!==key):[]),...reviews];renderReviews(key,reviews);},error=>console.warn('[Reviews] realtime listener unavailable:',error.message));watched.set(key,unsubscribe);}catch(error){console.warn('[Reviews] listener setup failed:',error.message);}}
+async function watchBook(book){
+  const db=getDb();if(!db||!book?.id)return;
+  const key=String(book.id);
+  const existing=watched.get(key);
+  if(existing){
+    renderReviews(key, existing.reviews || []);
+    return;
+  }
+  try{
+    const record={unsubscribe:null,reviews:[]};
+    const unsubscribe=db.collection('reviews').where('book_id','==',key).onSnapshot(snapshot=>{
+      record.reviews=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
+      state.reviews=[...(Array.isArray(state.reviews)?state.reviews.filter(r=>String(r.book_id||r.bookId)!==key):[]),...record.reviews];
+      renderReviews(key,record.reviews);
+    },error=>console.warn('[Reviews] realtime listener unavailable:',error.message));
+    record.unsubscribe=unsubscribe;
+    watched.set(key,record);
+    // Force an immediate server-backed read as well. This makes the first
+    // render deterministic even if the realtime callback is delayed.
+    const snapshot=await db.collection('reviews').where('book_id','==',key).get();
+    record.reviews=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
+    renderReviews(key,record.reviews);
+  }catch(error){console.warn('[Reviews] listener setup failed:',error.message);}
+}
 
 function prepareWriteButton(book){const button=document.querySelector('[data-panel="reviews"] .bd-btn[data-review-write]')||[...document.querySelectorAll('[data-panel="reviews"] .bd-btn')].find(node=>/review/i.test(node.textContent||''));const formBox=document.getElementById('review-form-container');if(!button||button.dataset.buyerReviewBound==='1')return;button.dataset.buyerReviewBound='1';button.textContent='Write a Review';button.title='Share your rating and review for this eBook';button.addEventListener('click',async event=>{event.preventDefault();event.stopImmediatePropagation();const firebaseUser=await ensureFirebaseReader();if(!firebaseUser){Toast.show('Please sign in to write a review.','info');const returnTo=window.location.hash||`#/book/${book.slug||book.id}`;window.location.hash=`#/login?returnTo=${encodeURIComponent(returnTo)}`;return;}formBox?.classList.add('open');formBox?.scrollIntoView({behavior:'smooth',block:'center'});},true);}
 
