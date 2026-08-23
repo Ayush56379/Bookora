@@ -17,6 +17,12 @@ function getStoredBackendToken() {
   try { return String(localStorage.getItem(BACKEND_TOKEN_KEY) || '').trim(); } catch (_) { return ''; }
 }
 
+function persistBackendToken(token) {
+  const value = String(token || '').trim();
+  if (!value) return;
+  try { localStorage.setItem(BACKEND_TOKEN_KEY, value); } catch (_) {}
+}
+
 function waitForFirebaseUser(timeoutMs = 12000) {
   const auth = getFirebaseAuth();
   if (!auth) return Promise.resolve(null);
@@ -46,6 +52,10 @@ async function prepareExternalPublishAuth() {
       if (!token) throw new Error('Firebase authentication token is unavailable.');
       state.token = token;
       state.isAuthenticated = true;
+      // Keep the existing Bookora session bridge compatible across route changes
+      // and hard reloads. Protected API callers still prefer a fresh Firebase
+      // token whenever Firebase has a current user.
+      persistBackendToken(token);
       if (!state.currentUser || String(state.currentUser.uid || '') !== String(user.uid)) {
         state.currentUser = {
           ...(state.currentUser || {}), uid: user.uid, firebaseUid: user.uid,
@@ -68,6 +78,7 @@ async function prepareExternalPublishAuth() {
       if (token) {
         state.token = token;
         state.isAuthenticated = true;
+        persistBackendToken(token);
         return token;
       }
     }
