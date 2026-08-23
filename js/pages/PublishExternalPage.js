@@ -86,6 +86,55 @@ function fileToBase64(file) {
   return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>{try{const result=String(reader.result||'');const comma=result.indexOf(',');const base64=comma>=0?result.slice(comma+1):result;if(!base64)throw new Error('Could not prepare the PDF for upload.');resolve(base64);}catch(e){reject(e);}};reader.onerror=()=>reject(reader.error||new Error('Could not read file.'));reader.readAsDataURL(file);});
 }
 
+async function uploadPdfResumable(file, authTokenValue) {
+  const headers = {'Content-Type':'application/json', Authorization:`Bearer ${authTokenValue}`};
+  const startRes = await apiFetch('/api/books/upload-session/start', {
+    method:'POST', headers,
+    body:JSON.stringify({name:file.name, mimeType:file.type || 'application/pdf', size:file.size, kind:'pdf'})
+  });
+  const start = await startRes.json();
+  if (!startRes.ok || !start.success || !start.upload_token) throw new Error(start.error || 'Could not start PDF upload.');
+  const uploadToken = start.upload_token;
+  const chunkSize = Number(start.chunk_size || 4 * 1024 * 1024);
+  let offset = Number(start.next_offset || 0);
+  let finalFile = null;
+  while (offset < file.size) {
+    const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const raw = String(reader.result || '');
+        const comma = raw.indexOf(',');
+        resolve(comma >= 0 ? raw.slice(comma + 1) : raw);
+      };
+      reader.onerror = () => reject(reader.error || new Error('Could not read PDF chunk.'));
+      reader.readAsDataURL(chunk);
+    });
+    const chunkRes = await apiFetch('/api/books/upload-session/chunk', {
+      method:'POST', headers,
+      body:JSON.stringify({upload_token:uploadToken, offset, data})
+    });
+    const result = await chunkRes.json();
+    if (!chunkRes.ok || !result.success) throw new Error(result.error || 'PDF chunk upload failed.');
+    offset = Number(result.next_offset || offset + chunk.size);
+    if (result.file) finalFile = result.file;
+    if (result.done) break;
+  }
+  if (!finalFile) {
+    const statusRes = await apiFetch('/api/books/upload-session/status', {
+      method:'POST', headers,
+      body:JSON.stringify({upload_token:uploadToken})
+    });
+    const status = await statusRes.json();
+    if (!statusRes.ok || !status.success || !status.done) throw new Error(status.error || 'PDF upload did not complete.');
+    finalFile = status.file || null;
+  }
+  const fileId = String(finalFile?.id || finalFile?.fileId || finalFile?.file_id || '').trim();
+  const fileUrl = String(finalFile?.url || finalFile?.webViewLink || finalFile?.web_view_link || '').trim();
+  if (!fileId) throw new Error('PDF upload completed without a Google Drive file ID.');
+  return {success:true, pdf_file_id:fileId, pdf_url:fileUrl};
+}
+
 async function authToken() {
   // Firebase is the primary authentication authority. Wait for persisted
   // Firebase state before falling back to the Bookora backend session.
@@ -166,8 +215,8 @@ export async function initPublishExternalEvents() {
     const pdf=pdfInput.files?.[0];if(!pdf){Toast.show('Please select the fulfillment PDF.','warning');return;}
     submit.disabled=true;submit.textContent='Uploading PDF…';
     try{
-      token=await authToken();const pdfData=await fileToBase64(pdf);const authHeaders={'Content-Type':'application/json',Authorization:`Bearer ${token}`};
-      const uploadRes=await apiFetch('/api/books/upload-files',{method:'POST',headers:authHeaders,body:JSON.stringify({pdf:{name:pdf.name,mimeType:'application/pdf',data:pdfData}})});const upload=await uploadRes.json();if(!uploadRes.ok||!upload.success)throw new Error(upload.error||'PDF upload failed.');
+      token=await authToken();const authHeaders={'Content-Type':'application/json',Authorization:`Bearer ${token}`};
+      const upload=await uploadPdfResumable(pdf, token);
       submit.textContent='Creating listing…';const price=Number(document.getElementById('ext-price').value);const payload={title:document.getElementById('ext-title').value.trim(),subtitle:document.getElementById('ext-subtitle').value.trim(),author:document.getElementById('ext-author').value.trim(),publisher:document.getElementById('ext-publisher').value.trim(),price,original_price:price,original_currency:document.getElementById('ext-currency').value.trim()||'INR',category:document.getElementById('ext-category').value,language:document.getElementById('ext-language').value.trim(),pages:Number(document.getElementById('ext-pages').value||0),format:document.getElementById('ext-format').value.trim()||'PDF',isbn:document.getElementById('ext-isbn').value.trim(),cover_url:document.getElementById('ext-cover-url').value.trim(),description:document.getElementById('ext-description').value.trim(),source_url:urlInput.value.trim(),canonical_url:imported?.canonical_url||urlInput.value.trim(),source_domain:imported?.source_domain||'',pdf_file_id:upload.pdf_file_id||'',pdf_url:upload.pdf_url||'',rights_confirmed:true};
       const res=await apiFetch('/api/publish/external',{method:'POST',headers:authHeaders,body:JSON.stringify(payload)});const data=await res.json();if(!res.ok||!data.success)throw new Error(data.error||'External listing creation failed.');createdBookId=data.book?.id||'';
       if(integration?.integrationId&&createdBookId){const bind=await apiFetch(`/api/external/integrations/${encodeURIComponent(integration.integrationId)}/bind-book`,{method:'POST',headers:authHeaders,body:JSON.stringify({bookId:createdBookId})});const bd=await bind.json();if(!bind.ok||!bd.success)throw new Error(bd.error||'Could not bind the book to the master integration.');}
