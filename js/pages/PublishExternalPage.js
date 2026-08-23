@@ -1,6 +1,6 @@
 import { apiFetch } from '../config.js';
 import { state } from '../state.js';
-import { getFreshFirebaseIdToken } from '../firebase-authenticated-fetch.js?v=20260823-2';
+import { getFreshFirebaseIdToken } from '../firebase-authenticated-fetch.js?v=20260823-3';
 import { updateSEO } from '../utils/seo.js';
 import { Toast } from '../components/Toast.js';
 
@@ -87,9 +87,29 @@ function fileToBase64(file) {
 }
 
 async function authToken() {
+  // Firebase is the primary authentication authority. Wait for persisted
+  // Firebase state before falling back to the Bookora backend session.
   const token = await getFreshFirebaseIdToken(true).catch(()=>null);
-  if (!token) throw new Error('Please sign in before using External Website Integration.');
-  state.token = token; state.isAuthenticated = true; return token;
+  if (token) {
+    state.token = token;
+    state.isAuthenticated = true;
+    return token;
+  }
+
+  // The header/session bridge can legitimately show a signed-in Bookora user
+  // while Firebase is unavailable or still restoring. In that case reuse the
+  // existing authenticated Bookora backend session rather than incorrectly
+  // showing "Seller authentication required".
+  let backendToken = '';
+  try { backendToken = String(localStorage.getItem('bookora_auth_token') || '').trim(); } catch (_) {}
+  if (!backendToken) backendToken = String(state.token || '').trim();
+  if (backendToken) {
+    state.token = backendToken;
+    state.isAuthenticated = true;
+    return backendToken;
+  }
+
+  throw new Error('Seller authentication required. Please sign in again if your session has expired.');
 }
 
 function renderCurrentIntegration(data) {
@@ -136,15 +156,14 @@ export async function initPublishExternalEvents() {
       const intData=await intRes.json();if(!intRes.ok||!intData.success)throw new Error(intData.error||'Integration creation failed.');integration=intData.integration;
       const scanRes=await apiFetch(`/api/external/integrations/${encodeURIComponent(integration.integrationId)}/scan`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:'{}'});const scan=await scanRes.json();if(!scanRes.ok||!scan.success)throw new Error(scan.error||'Website scan failed.');
       const pagePanel=document.getElementById('ext-pages-panel');if(pagePanel){const pages=scan.pages||[];pagePanel.style.display='block';pagePanel.innerHTML=`<div style="padding:1rem;border:1px solid var(--border-subtle);border-radius:12px;background:#f8fafc"><strong>Discovered ${pages.length} public page(s)</strong><div style="max-height:180px;overflow:auto;margin-top:.6rem;font-size:.78rem;color:#475569">${pages.slice(0,40).map(p=>`<div style="padding:.25rem 0">✓ ${esc(p.title||p.canonicalUrl||p.url)}</div>`).join('')}${pages.length>40?`<div>+ ${pages.length-40} more tracked pages</div>`:''}</div></div>`;}
-      const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v??'';};set('ext-title',imported.title);set('ext-subtitle',imported.subtitle);set('ext-author',imported.author);set('ext-publisher',imported.publisher);set('ext-price',imported.price||'');set('ext-currency',imported.source_currency||'INR');set('ext-pages',imported.pages||'');set('ext-language',imported.language||'English');set('ext-format',imported.format||'PDF');set('ext-isbn',imported.isbn||'');set('ext-cover-url',imported.cover_url||'');set('ext-description',imported.description||'');
-      const cat=document.getElementById('ext-category');if(cat&&imported.category){const opt=[...cat.options].find(o=>o.value.toLowerCase()===String(imported.category).toLowerCase());if(opt)cat.value=opt.value;}
-      const panel=document.getElementById('ext-integration-panel');if(panel){panel.style.display='block';panel.innerHTML=`<div style="background:#fff;border:1px solid #93c5fd;border-radius:12px;padding:1rem"><div style="font-weight:800;color:#1e40af">Master integration code</div><textarea id="ext-code-box" readonly rows="3" style="width:100%;margin-top:.6rem;padding:.7rem;font-family:monospace;font-size:.78rem;border:1px solid #cbd5e1;border-radius:8px">${esc(intData.scriptTag||'')}</textarea><button type="button" id="ext-copy-code" class="btn" style="margin-top:.6rem">Copy Code</button><button type="button" id="ext-verify-site" class="btn btn-primary" style="margin-top:.6rem;margin-left:.5rem">Verify Installation</button><div id="ext-verify-result" style="margin-top:.7rem;font-size:.82rem;color:#475569">Status: ${esc(integration.status||'code_generated')}</div></div>`;document.getElementById('ext-copy-code')?.addEventListener('click',async()=>{await navigator.clipboard?.writeText(intData.scriptTag||'');Toast.show('Single integration code copied.','success');});document.getElementById('ext-verify-site')?.addEventListener('click',async()=>{const btn=document.getElementById('ext-verify-site');const out=document.getElementById('ext-verify-result');btn.disabled=true;btn.textContent='Checking…';try{const vr=await apiFetch(`/api/external/integrations/${encodeURIComponent(integration.integrationId)}/verify`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:'{}'});const vd=await vr.json();if(!vr.ok||!vd.verified)throw new Error(vd.error||'Verification failed.');out.textContent='✓ Connected. The same master code now tracks the registered pages.';out.style.color='#166534';Toast.show('External website verified successfully.','success');}catch(err){out.textContent='✗ '+(err.message||'Verification failed.');out.style.color='#b91c1c';}finally{btn.disabled=false;btn.textContent='Verify Installation';}});}
-      if(progress)progress.style.display='none';if(form)form.style.display='block';Toast.show('Website scanned and public metadata imported.','success');
-    }catch(err){if(progress)progress.style.display='none';Toast.show(err.message||'Could not prepare integration.','error');}finally{fetchBtn.disabled=false;fetchBtn.textContent='Scan Website & Fetch Book Information';}
+      const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v??'';};set('ext-title',imported.title);set('ext-subtitle',imported.subtitle);set('ext-author',imported.author);set('ext-publisher',imported.publisher);set('ext-price',imported.price);set('ext-currency',imported.currency||'INR');set('ext-pages',imported.pages||0);set('ext-language',imported.language);set('ext-format',imported.format||'PDF');set('ext-isbn',imported.isbn);set('ext-cover-url',imported.cover_url);set('ext-description',imported.description);if(form)form.style.display='block';if(progress)progress.style.display='none';fetchBtn.textContent='Website Scanned ✓';
+    }catch(err){if(progress)progress.style.display='none';Toast.show(err.message||'Website scan failed.','error');fetchBtn.disabled=false;fetchBtn.textContent='Scan Website & Fetch Book Information';}
   });
 
   form?.addEventListener('submit',async e=>{
-    e.preventDefault();const pdf=pdfInput?.files?.[0];if(!pdf||pdf.type!=='application/pdf'){Toast.show('Please select a valid PDF file.','warning');return;}if(!confirm.checked){Toast.show('Please confirm authorization.','warning');return;}
+    e.preventDefault();
+    if(!confirm.checked){Toast.show('Please confirm authorization.','warning');return;}
+    const pdf=pdfInput.files?.[0];if(!pdf){Toast.show('Please select the fulfillment PDF.','warning');return;}
     submit.disabled=true;submit.textContent='Uploading PDF…';
     try{
       token=await authToken();const pdfData=await fileToBase64(pdf);const authHeaders={'Content-Type':'application/json',Authorization:`Bearer ${token}`};
