@@ -6,9 +6,8 @@ import { state } from './state.js';
 const BACKEND_ORIGIN = 'https://bookora-backend-x08l.onrender.com';
 const BACKEND_TOKEN_KEY = 'bookora_auth_token';
 const PROTECTED_PATHS = [
-  '/api/auth/me', '/api/orders', '/api/library', '/api/wishlist', '/api/cart',
-  '/api/books/upload-files', '/api/books/create', '/api/publish/',
-  '/api/admin/', '/api/cashfree/'
+  '/api/profile', '/api/auth/me', '/api/orders', '/api/library', '/api/wishlist', '/api/cart',
+  '/api/books/upload-files', '/api/books/create', '/api/publish/', '/api/admin/', '/api/cashfree/'
 ];
 
 let authWaitPromise = null;
@@ -91,9 +90,8 @@ async function getFreshFirebaseIdToken(forceRefresh = false) {
     }
   }
 
-  // Important compatibility path: the current Bookora UI may already be
-  // authenticated with its backend session token while Firebase is still
-  // restoring (or when an older login session has no Firebase currentUser).
+  // Compatibility path for a valid older Bookora backend session while Firebase
+  // is restoring. Firebase is always preferred when a real user is available.
   const backendToken = storedBackendToken() || String(state.token || '').trim();
   if (backendToken) {
     state.token = backendToken;
@@ -146,8 +144,6 @@ install();
     }
   }
 
-  // Also restore an existing Bookora backend session immediately. This keeps
-  // protected seller/admin pages usable during Firebase restoration.
   const backendToken = storedBackendToken();
   if (backendToken && !state.token) {
     state.token = backendToken;
