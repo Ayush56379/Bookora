@@ -5,14 +5,20 @@
 (() => {
   const API = (window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com').replace(/\/$/, '');
   const money = value => `₹${Number(value || 0).toFixed(2)}`;
-  const esc = value => String(value ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
 
   async function post(path) {
     const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-    if (window.BookoraPurchaseAccess?.ensureBackendSession) {
+    let token = '';
+    try {
+      if (window.firebase?.auth) {
+        const current = window.firebase.auth().currentUser;
+        if (current) token = await current.getIdToken(false);
+      }
+    } catch (_) {}
+    if (!token && window.BookoraPurchaseAccess?.ensureBackendSession) {
       try { await window.BookoraPurchaseAccess.ensureBackendSession(false); } catch (_) {}
     }
-    const token = window.BookoraState?.token || window.__BOOKORA_TOKEN__ || '';
+    if (!token) token = window.__BOOKORA_TOKEN__ || '';
     if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetch(`${API}${path}`, { method: 'POST', headers, cache: 'no-store' });
     return response.json().catch(() => ({}));
