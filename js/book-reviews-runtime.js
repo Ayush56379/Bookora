@@ -1,8 +1,7 @@
 // Bookora Reviews Runtime
-// Firebase reviews are the single source of truth for the public review list,
-// rating and review count. The latest Firestore snapshot is retained so a
-// route/page re-render can immediately restore the correct count instead of
-// falling back to a stale book.review_count value.
+// Firebase reviews are the source of truth for Book Detail reviews/rating.
+// This runtime is route-gated: it does no review work outside #/book/* and
+// uses a single realtime listener (onSnapshot already performs the initial read).
 import { state } from './state.js';
 import { Toast } from './components/Toast.js';
 import { apiFetch } from './config.js';
@@ -16,41 +15,31 @@ const getDb = () => window.firebase?.apps?.length ? window.firebase.firestore() 
 
 async function ensureFirebaseReader(){
   let firebaseUser = window.firebase?.auth?.()?.currentUser || null;
-  if(!firebaseUser && window.BookoraAuthReady){
-    try { firebaseUser = await Promise.race([window.BookoraAuthReady, new Promise(resolve => setTimeout(() => resolve(window.firebase?.auth?.()?.currentUser || null), 2500))]); } catch (_) {}
-  }
-  if(!firebaseUser) firebaseUser = window.firebase?.auth?.()?.currentUser || null;
+  if(!firebaseUser && window.BookoraAuthReady){ try { firebaseUser = await Promise.race([window.BookoraAuthReady,new Promise(resolve=>setTimeout(()=>resolve(window.firebase?.auth?.()?.currentUser||null),2500))]); } catch (_) {} }
+  if(!firebaseUser) firebaseUser=window.firebase?.auth?.()?.currentUser||null;
   if(firebaseUser){
     try {
-      if(typeof state.loadAuthenticatedUser === 'function' && (!state.isAuthenticated || String(state.currentUser?.uid||'') !== String(firebaseUser.uid))) await state.loadAuthenticatedUser(firebaseUser);
-      else { state.isAuthenticated = true; state.currentUser = { ...(state.currentUser || {}), uid: firebaseUser.uid, firebaseUid: firebaseUser.uid, email: firebaseUser.email || state.currentUser?.email || '', name: state.currentUser?.name || firebaseUser.displayName || 'Bookora User', photoURL: state.currentUser?.photoURL || firebaseUser.photoURL || '' }; }
-    } catch (error) { console.warn('[Reviews] auth hydration skipped:', error?.message || error); }
+      if(typeof state.loadAuthenticatedUser==='function' && (!state.isAuthenticated || String(state.currentUser?.uid||'')!==String(firebaseUser.uid))) await state.loadAuthenticatedUser(firebaseUser);
+      else { state.isAuthenticated=true; state.currentUser={...(state.currentUser||{}),uid:firebaseUser.uid,firebaseUid:firebaseUser.uid,email:firebaseUser.email||state.currentUser?.email||'',name:state.currentUser?.name||firebaseUser.displayName||'Bookora User',photoURL:state.currentUser?.photoURL||firebaseUser.photoURL||''}; }
+    } catch(error){ console.warn('[Reviews] auth hydration skipped:',error?.message||error); }
   }
-  return firebaseUser || (state.isAuthenticated && state.currentUser?.uid ? { uid: state.currentUser.uid } : null);
+  return firebaseUser||(state.isAuthenticated&&state.currentUser?.uid?{uid:state.currentUser.uid}:null);
 }
 
 function updateHeaderRating(book,reviews){
-  const ratingEl=document.querySelector('.bd-author-line .bd-rating');
-  if(!ratingEl)return;
-  const total=reviews.length;
-  const average=total?reviews.reduce((sum,r)=>sum+Number(r.rating||0),0)/total:0;
-  const display=total?average.toFixed(1):'—';
-  const countText=`(${total} ${total===1?'review':'reviews'})`;
-  ratingEl.innerHTML=`<span class="bd-rating-stars" aria-label="${esc(display)} out of 5 stars">${stars(average)}</span><span class="bd-rating-number">${display}</span><span class="bd-rating-count">${esc(countText)}</span>`;
+  const ratingEl=document.querySelector('.bd-author-line .bd-rating'); if(!ratingEl)return;
+  const total=reviews.length,average=total?reviews.reduce((sum,r)=>sum+Number(r.rating||0),0)/total:0,display=total?average.toFixed(1):'—';
+  ratingEl.innerHTML=`<span class="bd-rating-stars" aria-label="${esc(display)} out of 5 stars">${stars(average)}</span><span class="bd-rating-number">${display}</span><span class="bd-rating-count">(${total} ${total===1?'review':'reviews'})</span>`;
 }
 
 function renderReviews(bookId,reviews){
-  if(!String(window.location.hash||'').startsWith('#/book/')) return;
+  if(!String(window.location.hash||'').startsWith('#/book/'))return;
   const list=document.getElementById('review-list'),summary=document.querySelector('[data-panel="reviews"] .bd-review-summary'),tab=document.querySelector('.bd-tab[data-tab="reviews"]');
-  const book=state.getBookBySlug(bookId) || [...(state.books||[])].find(b=>String(b.id)===String(bookId));
+  const book=state.getBookBySlug(bookId)||[...(state.books||[])].find(b=>String(b.id)===String(bookId));
   const unique=new Map();
-  for(const review of Array.isArray(reviews)?reviews:[]){
-    const id=String(review.id||review.review_id||`${review.book_id||review.bookId}|${review.user_id||review.userId||review.uid}|${review.created_at||review.createdAt||review.date||''}`);
-    if(!unique.has(id))unique.set(id,review);
-  }
-  const sorted=[...unique.values()].sort((a,b)=>{const ta=a.created_at?.toDate?a.created_at.toDate().getTime():new Date(a.created_at||a.date||0).getTime();const tb=b.created_at?.toDate?b.created_at.toDate().getTime():new Date(b.created_at||b.date||0).getTime();return tb-ta;});
-  updateHeaderRating(book,sorted);
-  if(!list||!summary)return;
+  for(const review of Array.isArray(reviews)?reviews:[]){const id=String(review.id||review.review_id||`${review.book_id||review.bookId}|${review.user_id||review.userId||review.uid}|${review.created_at||review.createdAt||review.date||''}`);if(!unique.has(id))unique.set(id,review);}
+  const sorted=[...unique.values()].sort((a,b)=>{const ta=a.created_at?.toDate?a.created_at.toDate().getTime():new Date(a.created_at||a.date||0).getTime(),tb=b.created_at?.toDate?b.created_at.toDate().getTime():new Date(b.created_at||b.date||0).getTime();return tb-ta;});
+  updateHeaderRating(book,sorted); if(!list||!summary)return;
   const total=sorted.length,average=total?sorted.reduce((sum,r)=>sum+Number(r.rating||0),0)/total:0,score=summary.querySelector('.bd-score');
   if(score)score.innerHTML=`<div class="bd-score-number">${total?average.toFixed(1):'—'}</div><div class="bd-rating-stars">${stars(average)}</div><small>${total} reader ${total===1?'review':'reviews'}</small>`;
   if(tab)tab.textContent=`Reviews (${total})`;
@@ -58,27 +47,17 @@ function renderReviews(bookId,reviews){
 }
 
 async function watchBook(book){
-  const db=getDb();if(!db||!book?.id)return;
-  const key=String(book.id);
-  const existing=watched.get(key);
-  if(existing){
-    renderReviews(key, existing.reviews || []);
-    return;
-  }
+  const db=getDb(); if(!db||!book?.id)return;
+  const key=String(book.id),existing=watched.get(key);
+  if(existing){renderReviews(key,existing.reviews||[]);return;}
   try{
     const record={unsubscribe:null,reviews:[]};
-    const unsubscribe=db.collection('reviews').where('book_id','==',key).onSnapshot(snapshot=>{
+    record.unsubscribe=db.collection('reviews').where('book_id','==',key).onSnapshot(snapshot=>{
       record.reviews=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
       state.reviews=[...(Array.isArray(state.reviews)?state.reviews.filter(r=>String(r.book_id||r.bookId)!==key):[]),...record.reviews];
       renderReviews(key,record.reviews);
     },error=>console.warn('[Reviews] realtime listener unavailable:',error.message));
-    record.unsubscribe=unsubscribe;
     watched.set(key,record);
-    // Force an immediate server-backed read as well. This makes the first
-    // render deterministic even if the realtime callback is delayed.
-    const snapshot=await db.collection('reviews').where('book_id','==',key).get();
-    record.reviews=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
-    renderReviews(key,record.reviews);
   }catch(error){console.warn('[Reviews] listener setup failed:',error.message);}
 }
 
@@ -96,5 +75,5 @@ async function submitVerifiedReview(book,form){const firebaseUser=await ensureFi
 
 function enhanceReviewForm(book){const form=document.getElementById('submit-review-form');if(!form||form.dataset.firebaseReviewsBound==='1')return;form.dataset.firebaseReviewsBound='1';form.addEventListener('submit',event=>{event.preventDefault();event.stopImmediatePropagation();submitVerifiedReview(book,form);},true);}
 function refresh(){const book=getBook();if(!book)return;prepareWriteButton(book);enhanceReviewForm(book);watchBook(book);}
-function boot(){if(booted)return;booted=true;const run=()=>setTimeout(refresh,80);window.addEventListener('hashchange',run);state.subscribe(event=>{if(event==='USER_LOGGED_IN'||event==='DATA_SYNCED')run();});run();}
+function boot(){if(booted)return;booted=true;const run=()=>{if(getBook())setTimeout(refresh,80);};window.addEventListener('hashchange',run);state.subscribe(event=>{if((event==='USER_LOGGED_IN'||event==='DATA_SYNCED')&&getBook())run();});run();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
