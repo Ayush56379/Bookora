@@ -4,11 +4,8 @@ import { formatPrice, renderStars } from '../utils/formatters.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
 export function getCoverUrl(book) {
@@ -71,11 +68,11 @@ function renderLiveRatingStars(value) {
   return Array.from({length:5}, (_, index) => `<span aria-hidden="true">${index + 1 <= Math.round(rating) ? '★' : '☆'}</span>`).join('');
 }
 
-function applyLiveBookRating(bookId, reviews) {
+function applyLiveBookRating(bookId) {
   const key = String(bookId);
-  const ratings = reviews.filter(review => String(review.book_id ?? review.bookId ?? review.bookID ?? '') === key && Number(review.rating) > 0);
-  const count = ratings.length;
-  const average = count ? ratings.reduce((sum, review) => sum + Number(review.rating), 0) / count : 0;
+  const summary = window.__BOOKORA_REVIEW_SUMMARIES?.[key];
+  const count = Number(summary?.count || 0);
+  const average = Number(summary?.average || 0);
   document.querySelectorAll(`[data-book-rating="${CSS.escape(key)}"]`).forEach(container => {
     const stars = container.querySelector('[data-book-rating-stars]');
     const value = container.querySelector('[data-book-rating-value]');
@@ -90,39 +87,62 @@ function applyLiveBookRating(bookId, reviews) {
   });
 }
 
+function applyAllLiveRatings() {
+  document.querySelectorAll('[data-book-rating]').forEach(container => applyLiveBookRating(container.getAttribute('data-book-rating') || ''));
+}
+
 function initGlobalBookRatings() {
   if (window.__BOOKORA_GLOBAL_RATINGS_STARTED) return;
   window.__BOOKORA_GLOBAL_RATINGS_STARTED = true;
-  const firebase = window.firebase;
-  if (!firebase?.apps?.length || typeof firebase.firestore !== 'function') return;
-  try {
-    firebase.firestore().collection('reviews').onSnapshot(snapshot => {
-      const reviews = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const byBook = new Map();
-      reviews.forEach(review => {
-        const key = String(review.book_id ?? review.bookId ?? review.bookID ?? '');
-        if (!key) return;
-        if (!byBook.has(key)) byBook.set(key, []);
-        byBook.get(key).push(review);
-      });
-      document.querySelectorAll('[data-book-rating]').forEach(container => {
-        const key = String(container.getAttribute('data-book-rating') || '');
-        applyLiveBookRating(key, byBook.get(key) || []);
-      });
-    }, error => console.warn('[BookCard] global review listener unavailable:', error?.message || error));
-  } catch (error) {
-    console.warn('[BookCard] global review listener setup failed:', error?.message || error);
+  window.__BOOKORA_REVIEW_SUMMARIES = window.__BOOKORA_REVIEW_SUMMARIES || {};
+
+  const start = () => {
+    const firebase = window.firebase;
+    if (!firebase?.apps?.length || typeof firebase.firestore !== 'function') return false;
+    try {
+      firebase.firestore().collection('reviews').onSnapshot(snapshot => {
+        const grouped = new Map();
+        snapshot.docs.forEach(doc => {
+          const review = doc.data() || {};
+          const key = String(review.book_id ?? review.bookId ?? review.bookID ?? '');
+          const rating = Number(review.rating || 0);
+          if (!key || rating <= 0) return;
+          if (!grouped.has(key)) grouped.set(key, {sum:0,count:0});
+          const item = grouped.get(key);
+          item.sum += rating;
+          item.count += 1;
+        });
+        window.__BOOKORA_REVIEW_SUMMARIES = {};
+        grouped.forEach((item, key) => {
+          window.__BOOKORA_REVIEW_SUMMARIES[key] = { average:item.count ? item.sum / item.count : 0, count:item.count };
+        });
+        applyAllLiveRatings();
+        window.dispatchEvent(new CustomEvent('bookora:ratings-updated'));
+      }, error => console.warn('[BookCard] global review listener unavailable:', error?.message || error));
+      return true;
+    } catch (error) {
+      console.warn('[BookCard] global review listener setup failed:', error?.message || error);
+      return false;
+    }
+  };
+
+  if (!start()) {
+    let attempts = 0;
+    const retry = setInterval(() => {
+      attempts += 1;
+      if (start() || attempts >= 20) clearInterval(retry);
+    }, 500);
   }
+
   const observer = new MutationObserver(() => {
-    document.querySelectorAll('[data-book-rating]').forEach(container => {
-      if (!container.dataset.liveRatingSeen) container.dataset.liveRatingSeen = '1';
-    });
+    applyAllLiveRatings();
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(document.body, { childList:true, subtree:true });
+  window.addEventListener('hashchange', applyAllLiveRatings);
 }
 
 function bootLiveRatings() {
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initGlobalBookRatings, { once: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initGlobalBookRatings, { once:true });
   else initGlobalBookRatings();
 }
 
