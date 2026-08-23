@@ -1,26 +1,20 @@
-// Bookora startup compatibility bridge.
+// Bookora startup + runtime stability compatibility bridge.
 // Mobile mode switching remains permanently disabled.
-// IMPORTANT: never import language-runtime.js here.
+// Never import language-runtime.js from this file.
 //
-// app.js historically attached its first route to window "load". If an external
-// resource keeps the browser load lifecycle pending, the SPA shell can remain
-// blank even though the app module itself has initialized. Trigger the existing
-// app route once DOMContentLoaded has completed so the UI does not depend on
-// slow external resources. This does NOT reload the page.
+// IMPORTANT: this bridge must not synthesize a repeating browser load cycle.
+// It starts the existing SPA once after DOM readiness, then keeps asynchronous
+// catalog synchronization from replacing the live page and destroying the
+// event handlers installed by page/runtime modules.
 
 const bootBookoraRoute = () => {
   if (window.__BOOKORA_STARTUP_ROUTE_TRIGGERED__) return;
   window.__BOOKORA_STARTUP_ROUTE_TRIGGERED__ = true;
 
-  // Give the app module's DOMContentLoaded handler a microtask/paint boundary
-  // to construct the App instance and register its route listener.
   setTimeout(() => {
     try {
       const appRoot = document.getElementById('app');
       if (!appRoot) return;
-
-      // Only trigger the existing route when the SPA has not rendered yet.
-      // Never use location.reload(); never create a repeating timer.
       if (!appRoot.querySelector('#main-content')) {
         window.dispatchEvent(new Event('load'));
       }
@@ -30,8 +24,44 @@ const bootBookoraRoute = () => {
   }, 0);
 };
 
+const protectLivePageFromSyncRerender = async () => {
+  try {
+    const module = await import('./state.js');
+    const state = module?.state;
+    if (!state || state.__BOOKORA_SYNC_STABILITY_PATCHED__) return;
+
+    const originalNotify = state.notify.bind(state);
+    state.notify = (event, payload = null) => {
+      // DATA_SYNCED previously caused app.js to replace #app wholesale. That
+      // happened after other runtime modules had attached listeners, so the
+      // homepage could look correct while its controls silently stopped
+      // responding. Keep the rendered DOM stable and expose a dedicated event
+      // for components that need to refresh their own catalog UI.
+      if (event === 'DATA_SYNCED') {
+        state.subscribers.forEach(callback => {
+          try { callback('CATALOG_UPDATED', payload, state); }
+          catch (error) { console.error('[Bookora] State subscriber error:', error); }
+        });
+        window.dispatchEvent(new CustomEvent('bookora:catalog-updated', { detail: payload }));
+        return;
+      }
+      originalNotify(event, payload);
+    };
+
+    state.__BOOKORA_SYNC_STABILITY_PATCHED__ = true;
+  } catch (error) {
+    console.warn('[Bookora] Sync stability bridge skipped:', error);
+  }
+};
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', bootBookoraRoute, { once: true });
 } else {
   bootBookoraRoute();
 }
+
+// state.js is already loaded by app.js; patch asynchronously without blocking
+// the initial render.
+protectLivePageFromSyncRerender();
+
+export {};
