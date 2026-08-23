@@ -13,6 +13,21 @@ const stars = rating => { const r=Math.max(0,Math.min(5,Number(rating)||0)); ret
 const getBook = () => { const hash=window.location.hash||''; const match=hash.match(/^#\/book\/([^?]+)/); return match?state.getBookBySlug(decodeURIComponent(match[1])):null; };
 const getDb = () => window.firebase?.apps?.length ? window.firebase.firestore() : null;
 
+async function ensureFirebaseReader(){
+  let firebaseUser = window.firebase?.auth?.()?.currentUser || null;
+  if(!firebaseUser && window.BookoraAuthReady){
+    try { firebaseUser = await Promise.race([window.BookoraAuthReady, new Promise(resolve => setTimeout(() => resolve(window.firebase?.auth?.()?.currentUser || null), 2500))]); } catch (_) {}
+  }
+  if(!firebaseUser) firebaseUser = window.firebase?.auth?.()?.currentUser || null;
+  if(firebaseUser){
+    try {
+      if(typeof state.loadAuthenticatedUser === 'function' && (!state.isAuthenticated || String(state.currentUser?.uid||'') !== String(firebaseUser.uid))) await state.loadAuthenticatedUser(firebaseUser);
+      else { state.isAuthenticated = true; state.currentUser = { ...(state.currentUser || {}), uid: firebaseUser.uid, firebaseUid: firebaseUser.uid, email: firebaseUser.email || state.currentUser?.email || '', name: state.currentUser?.name || firebaseUser.displayName || 'Bookora User', photoURL: state.currentUser?.photoURL || firebaseUser.photoURL || '' }; }
+    } catch (error) { console.warn('[Reviews] auth hydration skipped:', error?.message || error); }
+  }
+  return firebaseUser || (state.isAuthenticated && state.currentUser?.uid ? { uid: state.currentUser.uid } : null);
+}
+
 function renderReviews(bookId,reviews){
   if(!String(window.location.hash||'').startsWith('#/book/')) return;
   const list=document.getElementById('review-list'),summary=document.querySelector('[data-panel="reviews"] .bd-review-summary'),tab=document.querySelector('.bd-tab[data-tab="reviews"]');
@@ -26,9 +41,9 @@ function renderReviews(bookId,reviews){
 
 async function watchBook(book){const db=getDb();if(!db||!book?.id)return;const key=String(book.id);if(watched.has(key))return;try{const unsubscribe=db.collection('reviews').where('book_id','==',key).onSnapshot(snapshot=>{const reviews=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));state.reviews=[...(Array.isArray(state.reviews)?state.reviews.filter(r=>String(r.book_id||r.bookId)!==key):[]),...reviews];renderReviews(key,reviews);},error=>console.warn('[Reviews] realtime listener unavailable:',error.message));watched.set(key,unsubscribe);}catch(error){console.warn('[Reviews] listener setup failed:',error.message);}}
 
-function prepareWriteButton(book){const button=document.querySelector('[data-panel="reviews"] .bd-btn[data-review-write]')||[...document.querySelectorAll('[data-panel="reviews"] .bd-btn')].find(node=>/review/i.test(node.textContent||''));const formBox=document.getElementById('review-form-container');if(!button||button.dataset.buyerReviewBound==='1')return;button.dataset.buyerReviewBound='1';button.textContent='Write a Review';button.title='Share your rating and review for this eBook';button.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();if(!state.isAuthenticated||!state.currentUser?.uid){Toast.show('Please sign in to write a review.','info');const returnTo=window.location.hash||`#/book/${book.slug||book.id}`;window.location.hash=`#/login?returnTo=${encodeURIComponent(returnTo)}`;return;}formBox?.classList.add('open');formBox?.scrollIntoView({behavior:'smooth',block:'center'});},true);}
+function prepareWriteButton(book){const button=document.querySelector('[data-panel="reviews"] .bd-btn[data-review-write]')||[...document.querySelectorAll('[data-panel="reviews"] .bd-btn')].find(node=>/review/i.test(node.textContent||''));const formBox=document.getElementById('review-form-container');if(!button||button.dataset.buyerReviewBound==='1')return;button.dataset.buyerReviewBound='1';button.textContent='Write a Review';button.title='Share your rating and review for this eBook';button.addEventListener('click',async event=>{event.preventDefault();event.stopImmediatePropagation();const firebaseUser=await ensureFirebaseReader();if(!firebaseUser){Toast.show('Please sign in to write a review.','info');const returnTo=window.location.hash||`#/book/${book.slug||book.id}`;window.location.hash=`#/login?returnTo=${encodeURIComponent(returnTo)}`;return;}formBox?.classList.add('open');formBox?.scrollIntoView({behavior:'smooth',block:'center'});},true);}
 
-async function submitVerifiedReview(book,form){if(!state.isAuthenticated||!state.currentUser?.uid){Toast.show('Please sign in before submitting a review.','info');const returnTo=window.location.hash||`#/book/${book.slug||book.id}`;window.location.hash=`#/login?returnTo=${encodeURIComponent(returnTo)}`;return;}
+async function submitVerifiedReview(book,form){const firebaseUser=await ensureFirebaseReader();if(!firebaseUser){Toast.show('Please sign in before submitting a review.','info');const returnTo=window.location.hash||`#/book/${book.slug||book.id}`;window.location.hash=`#/login?returnTo=${encodeURIComponent(returnTo)}`;return;}
   const rating=Math.max(1,Math.min(5,Number(form.querySelector('#review-rating-input')?.value||5))),title=String(form.querySelector('#review-title-input')?.value||'').trim(),comment=String(form.querySelector('#review-comment-input')?.value||'').trim();
   if(!title||!comment){Toast.show('Please complete the review before submitting.','warning');return;}
   const submit=form.querySelector('button[type="submit"]');if(submit){submit.disabled=true;submit.textContent='Publishing…';}
