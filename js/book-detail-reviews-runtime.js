@@ -1,5 +1,6 @@
-// Bookora — lightweight Firebase-first review hydration runtime.
-// Firebase reviews are the source of truth for visible review list, average and count.
+// Bookora — Firebase-first review hydration runtime.
+// Reviews are active only on a Book Detail route. The runtime never starts
+// Firebase listeners or retry timers on Home/Explore/Settings/etc.
 import { state } from './state.js';
 import { formatDate, renderStars } from './utils/formatters.js';
 
@@ -71,23 +72,15 @@ import { formatDate, renderStars } from './utils/formatters.js';
     if (score) score.textContent = count ? average.toFixed(1) : '—';
     if (scoreStars) scoreStars.innerHTML = renderStars(average);
     if (scoreText) scoreText.textContent = `${count} ${count === 1 ? 'reader review' : 'reader reviews'}`;
-
-    document.querySelectorAll('.bd-tab[data-tab="reviews"]').forEach(tab => {
-      tab.textContent = `Reviews (${count})`;
-    });
-    document.querySelectorAll('[data-review-count], .bd-review-count').forEach(el => {
-      el.textContent = String(count);
-    });
+    document.querySelectorAll('.bd-tab[data-tab="reviews"]').forEach(tab => { tab.textContent = `Reviews (${count})`; });
+    document.querySelectorAll('[data-review-count], .bd-review-count').forEach(el => { el.textContent = String(count); });
   }
 
   function applyReviews(key, reviews) {
     const book = getBook();
     if (!book || normaliseBookId(book.id) !== key) return;
-
     const clean = dedupeReviews((reviews || []).filter(review => reviewBelongsToBook(review, key)));
-    const others = Array.isArray(state.reviews)
-      ? state.reviews.filter(item => !reviewBelongsToBook(item, key))
-      : [];
+    const others = Array.isArray(state.reviews) ? state.reviews.filter(item => !reviewBelongsToBook(item, key)) : [];
     state.reviews = [...others, ...clean];
     loaded.set(key, clean);
     renderList(clean);
@@ -97,65 +90,50 @@ import { formatDate, renderStars } from './utils/formatters.js';
     if (typeof unsubscribe === 'function') unsubscribe();
     unsubscribe = null;
     activeKey = '';
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
   }
 
   function attachForBook(key) {
     if (!window.firebase?.apps?.length || !key) return false;
     if (activeKey === key && unsubscribe) return true;
-
     stopListener();
     activeKey = key;
-
     try {
       const db = window.firebase.firestore();
-      // onSnapshot performs the initial read and then remains live. There is no
-      // extra .get() request, which prevents duplicate Firestore work during startup.
-      unsubscribe = db.collection('reviews')
-        .where('book_id', '==', key)
-        .onSnapshot(snapshot => {
-          if (!getBook() || normaliseBookId(getBook().id) !== key) return;
-          applyReviews(key, dedupeReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-        }, error => {
-          console.warn('Bookora Firebase review listener:', error?.message || error);
-        });
+      unsubscribe = db.collection('reviews').where('book_id', '==', key).onSnapshot(snapshot => {
+        if (!getBook() || normaliseBookId(getBook().id) !== key) return;
+        applyReviews(key, dedupeReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+      }, error => console.warn('Bookora Firebase review listener:', error?.message || error));
       return true;
     } catch (error) {
       console.warn('Bookora Firebase review listener setup:', error?.message || error);
+      unsubscribe = null;
+      activeKey = '';
       return false;
     }
   }
 
   function watchCurrentBook() {
+    if (!bookIdFromHash()) { stopListener(); return; }
     const book = getBook();
     if (!book || !window.firebase?.apps?.length) {
       if (retryTimer) clearTimeout(retryTimer);
-      retryTimer = setTimeout(() => {
-        retryTimer = null;
-        watchCurrentBook();
-      }, 1500);
+      retryTimer = setTimeout(() => { retryTimer = null; watchCurrentBook(); }, 1500);
       return;
     }
-
     const key = normaliseBookId(book.id);
-    if (!key) return;
-    attachForBook(key);
+    if (key) attachForBook(key);
   }
 
   function scheduleWatch(delay = 50) {
     if (watchTimer) clearTimeout(watchTimer);
-    watchTimer = setTimeout(() => {
-      watchTimer = null;
-      watchCurrentBook();
-    }, delay);
+    watchTimer = setTimeout(() => { watchTimer = null; watchCurrentBook(); }, delay);
   }
 
   window.addEventListener('hashchange', () => scheduleWatch(50));
   window.addEventListener('load', () => scheduleWatch(100));
-
-  // DATA_SYNCED can fire during catalog hydration. Debounce it so it never
-  // repeatedly tears down/recreates the Firestore listener during page startup.
   state.subscribe(event => {
-    if (event === 'DATA_SYNCED' || event === 'USER_LOGGED_IN') scheduleWatch(100);
+    if ((event === 'DATA_SYNCED' || event === 'USER_LOGGED_IN') && bookIdFromHash()) scheduleWatch(100);
   });
 
   scheduleWatch(100);
