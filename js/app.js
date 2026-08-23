@@ -24,6 +24,7 @@ import { renderPaymentFailedPage } from './pages/PaymentFailedPage.js';
 import { renderCreatorDashboardPage, initCreatorDashboardEvents } from './pages/CreatorDashboardPage.js';
 import { renderPublishInternalPage, initPublishInternalEvents } from './pages/PublishInternalPage.js';
 import { renderPublishExternalPage, initPublishExternalEvents } from './pages/PublishExternalPage.js';
+import { renderExternalIntegrationPage, initExternalIntegrationPage } from './pages/ExternalIntegrationPage.js';
 import { renderSellerApplyPage, initSellerApplyEvents } from './pages/SellerApplyPage.js';
 import { renderSellerSettingsPage, initSellerSettingsEvents } from './pages/SellerSettingsPage.js';
 import { renderAdminDashboardPage, initAdminDashboardEvents } from './pages/AdminDashboardPage.js';
@@ -240,6 +241,7 @@ class App {
       else if (path === '/payment/failed') pageHtml = renderPaymentFailedPage();
       else if (path === '/seller' || path === '/seller/dashboard' || path === '/creator' || path === '/creator/dashboard') { pageHtml = renderCreatorDashboardPage(); initCallback = () => initCreatorDashboardEvents(); }
       else if (path === '/publish') { pageHtml = renderPublishInternalPage(); initCallback = () => initPublishInternalEvents(); }
+      else if (path.startsWith('/publish/external/integration/')) { const bookId = decodeURIComponent(path.replace('/publish/external/integration/','').split('/')[0]); pageHtml = renderExternalIntegrationPage(); initCallback = () => initExternalIntegrationPage(bookId); }
       else if (path === '/publish/external') { pageHtml = renderPublishExternalPage(); initCallback = () => initPublishExternalEvents(); }
       else if (path === '/seller/apply') { pageHtml = renderSellerApplyPage(); initCallback = () => initSellerApplyEvents(); }
       else if (path === '/seller/settings') { pageHtml = renderSellerSettingsPage(); initCallback = () => initSellerSettingsEvents(); }

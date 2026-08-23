@@ -189,7 +189,7 @@ export async function initPublishExternalEvents() {
       const res=await apiFetch('/api/publish/external',{method:'POST',headers:authHeaders,body:JSON.stringify(payload)});const data=await res.json();if(!res.ok||!data.success)throw new Error(data.error||'External listing creation failed.');createdBookId=data.book?.id||'';
       if(integration?.integrationId&&createdBookId){const bind=await apiFetch(`/api/external/integrations/${encodeURIComponent(integration.integrationId)}/bind-book`,{method:'POST',headers:authHeaders,body:JSON.stringify({bookId:createdBookId})});const bd=await bind.json();if(!bind.ok||!bd.success)throw new Error(bd.error||'Could not bind the book to the master integration.');}
       try{const cur=await apiFetch('/api/external/integrations/current',{headers:{Authorization:`Bearer ${token}`}});renderCurrentIntegration(await cur.json());}catch(_){}
-      submit.textContent='PDF uploaded • Integration linked';Toast.show('External listing created. The same Master Code is now linked to this book. Verified payments can unlock library access.','success');
+      submit.textContent='Integration ready';Toast.show('External listing created. Opening the complete integration setup page.','success');window.location.hash=`#/publish/external/integration/${encodeURIComponent(createdBookId)}`;
     }catch(err){Toast.show(err.message||'Submission failed.','error');submit.disabled=false;submit.textContent='Upload PDF & Create External Listing';}
   });
 }
