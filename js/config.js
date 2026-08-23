@@ -32,10 +32,6 @@ function getFirebaseAuth() {
   }
 }
 
-// Firebase can take a short moment to restore the persisted session. During that
-// window auth.currentUser is null even though the user is actually signed in.
-// Protected API calls must wait for that first auth resolution instead of sending
-// a request without Authorization and incorrectly showing "Sign in required".
 let authReadyPromise = null;
 function waitForFirebaseAuthResolution(auth, timeoutMs = 7000) {
   if (!auth) return Promise.resolve(null);
@@ -72,9 +68,6 @@ async function getFreshFirebaseIdToken(forceRefresh = false) {
   try { return await user.getIdToken(!!forceRefresh); } catch (_) { return ''; }
 }
 
-// Exposed for pages that need to perform an authenticated action before the
-// global state has finished hydrating. It resolves the real Firebase user, not
-// a localStorage-only cached profile.
 export async function waitForAuthenticatedFirebaseUser() {
   const auth = getFirebaseAuth();
   if (!auth) return null;
@@ -87,10 +80,13 @@ export async function apiFetch(endpoint, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
 
-  // Firebase is authoritative whenever a real signed-in Firebase user exists.
-  // Never use a stale/localStorage token.
-  const firebaseToken = await getFreshFirebaseIdToken(false);
-  if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
+  // An explicit Authorization header is authoritative for callers that have
+  // already exchanged Firebase identity for a Bookora server session. Never
+  // overwrite that session with a Firebase JWT.
+  if (!headers.has('Authorization')) {
+    const firebaseToken = await getFreshFirebaseIdToken(false);
+    if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
+  }
 
   if (method !== 'GET' && method !== 'HEAD' && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
@@ -98,11 +94,17 @@ export async function apiFetch(endpoint, options = {}) {
 
   let response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers });
   if (response.status === 401) {
-    const refreshedToken = await getFreshFirebaseIdToken(true);
-    if (refreshedToken) {
-      const retryHeaders = new Headers(headers);
-      retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
-      response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers: retryHeaders });
+    // Only refresh/retry when this request is actually using Firebase auth.
+    // Explicit Bookora session failures must be surfaced to the caller instead
+    // of silently replacing a valid session with an unrelated JWT.
+    const explicitAuth = headers.has('Authorization') && !String(headers.get('Authorization') || '').toLowerCase().startsWith('bearer ey');
+    if (!explicitAuth) {
+      const refreshedToken = await getFreshFirebaseIdToken(true);
+      if (refreshedToken) {
+        const retryHeaders = new Headers(headers);
+        retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
+        response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers: retryHeaders });
+      }
     }
   }
   return response;
