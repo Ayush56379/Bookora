@@ -32,13 +32,53 @@ function getFirebaseAuth() {
   }
 }
 
+// Firebase can take a short moment to restore the persisted session. During that
+// window auth.currentUser is null even though the user is actually signed in.
+// Protected API calls must wait for that first auth resolution instead of sending
+// a request without Authorization and incorrectly showing "Sign in required".
+let authReadyPromise = null;
+function waitForFirebaseAuthResolution(auth, timeoutMs = 7000) {
+  if (!auth) return Promise.resolve(null);
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  if (authReadyPromise) return authReadyPromise;
+
+  authReadyPromise = new Promise(resolve => {
+    let settled = false;
+    let unsubscribe = null;
+    const finish = user => {
+      if (settled) return;
+      settled = true;
+      try { unsubscribe?.(); } catch (_) {}
+      clearTimeout(timer);
+      authReadyPromise = null;
+      resolve(user || null);
+    };
+    const timer = setTimeout(() => finish(auth.currentUser || null), timeoutMs);
+    try {
+      unsubscribe = auth.onAuthStateChanged(user => finish(user));
+    } catch (_) {
+      finish(auth.currentUser || null);
+    }
+  });
+  return authReadyPromise;
+}
+
 async function getFreshFirebaseIdToken(forceRefresh = false) {
   const auth = getFirebaseAuth();
   if (!auth) return '';
   let user = auth.currentUser;
-  if (!user && window.BookoraFirebaseAuth?.waitForAuth) user = await window.BookoraFirebaseAuth.waitForAuth();
+  if (!user) user = await waitForFirebaseAuthResolution(auth);
   if (!user) return '';
   try { return await user.getIdToken(!!forceRefresh); } catch (_) { return ''; }
+}
+
+// Exposed for pages that need to perform an authenticated action before the
+// global state has finished hydrating. It resolves the real Firebase user, not
+// a localStorage-only cached profile.
+export async function waitForAuthenticatedFirebaseUser() {
+  const auth = getFirebaseAuth();
+  if (!auth) return null;
+  return auth.currentUser || await waitForFirebaseAuthResolution(auth);
 }
 
 export async function apiFetch(endpoint, options = {}) {
@@ -47,8 +87,8 @@ export async function apiFetch(endpoint, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
 
-  // Explicit caller headers remain supported, but Firebase is authoritative
-  // whenever a signed-in Firebase user exists. Never use localStorage tokens.
+  // Firebase is authoritative whenever a real signed-in Firebase user exists.
+  // Never use a stale/localStorage token.
   const firebaseToken = await getFreshFirebaseIdToken(false);
   if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
 
