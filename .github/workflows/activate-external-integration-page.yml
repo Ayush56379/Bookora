@@ -1,0 +1,63 @@
+name: Activate external integration setup page
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wire dedicated integration route and redirect
+        shell: bash
+        run: |
+          set -e
+          python - <<'PY'
+          from pathlib import Path
+
+          app = Path('js/app.js')
+          s = app.read_text(encoding='utf-8')
+          imp = "import { renderExternalIntegrationPage, initExternalIntegrationPage } from './pages/ExternalIntegrationPage.js';"
+          anchor = "import { renderPublishExternalPage, initPublishExternalEvents } from './pages/PublishExternalPage.js';"
+          if imp not in s:
+              if anchor not in s:
+                  raise SystemExit('PublishExternal import anchor not found')
+              s = s.replace(anchor, anchor + "\n" + imp, 1)
+          route = "      else if (path.startsWith('/publish/external/integration/')) { const bookId = decodeURIComponent(path.replace('/publish/external/integration/','').split('/')[0]); pageHtml = renderExternalIntegrationPage(); initCallback = () => initExternalIntegrationPage(bookId); }"
+          route_anchor = "      else if (path === '/publish/external') { pageHtml = renderPublishExternalPage(); initCallback = () => initPublishExternalEvents(); }"
+          if route not in s:
+              if route_anchor not in s:
+                  raise SystemExit('PublishExternal route anchor not found')
+              s = s.replace(route_anchor, route + "\n" + route_anchor, 1)
+          app.write_text(s, encoding='utf-8')
+
+          page = Path('js/pages/PublishExternalPage.js')
+          s = page.read_text(encoding='utf-8')
+          old = "submit.textContent='PDF uploaded • Integration linked';Toast.show('External listing created. The same Master Code is now linked to this book. Verified payments can unlock library access.','success');"
+          new = "submit.textContent='Integration ready';Toast.show('External listing created. Opening the complete integration setup page.','success');window.location.hash=`#/publish/external/integration/${encodeURIComponent(createdBookId)}`;"
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif "window.location.hash=`#/publish/external/integration/${encodeURIComponent(createdBookId)}`;" not in s:
+              raise SystemExit('External publish success marker not found')
+          page.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit activation
+        shell: bash
+        run: |
+          if git diff --quiet -- js/app.js js/pages/PublishExternalPage.js; then
+            echo 'External integration page already active.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/app.js js/pages/PublishExternalPage.js
+          git commit -m 'feat: open dedicated external integration setup page'
+          git push
