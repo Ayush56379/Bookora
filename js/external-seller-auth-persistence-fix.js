@@ -11,8 +11,20 @@ const UID_KEY = 'bookora_auth_session_uid';
 const API_BASE = String(window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com').replace(/\/$/, '');
 const PROTECTED_EXTERNAL = ['/api/external/', '/api/publish/external', '/api/books/upload-files'];
 
+function getFirebaseUser() {
+  try { return window.firebase?.auth?.()?.currentUser || null; } catch (_) { return null; }
+}
+
 function getStoredToken() {
-  try { return String(localStorage.getItem(TOKEN_KEY) || '').trim(); } catch (_) { return ''; }
+  try {
+    const token = String(localStorage.getItem(TOKEN_KEY) || '').trim();
+    if (!token) return '';
+    const storedUid = String(localStorage.getItem(UID_KEY) || '').trim();
+    const currentUid = String(getFirebaseUser()?.uid || '').trim();
+    // Never reuse another Firebase user's backend session.
+    if (currentUid && storedUid && currentUid !== storedUid) return '';
+    return token;
+  } catch (_) { return ''; }
 }
 
 function persistToken(token, uid = '') {
@@ -24,10 +36,6 @@ function persistToken(token, uid = '') {
     localStorage.setItem(TOKEN_KEY, value);
     if (uid) localStorage.setItem(UID_KEY, String(uid));
   } catch (_) {}
-}
-
-function getFirebaseUser() {
-  try { return window.firebase?.auth?.()?.currentUser || null; } catch (_) { return null; }
 }
 
 function isFirebaseJwt(token) {
@@ -96,8 +104,7 @@ if (!window.__BOOKORA_EXTERNAL_SELLER_SESSION_BRIDGE__) {
 
     let backendToken = '';
     try {
-      // Prefer the already-issued Bookora session. This avoids an exchange on
-      // every request after the first successful authentication bridge.
+      // Prefer the already-issued Bookora session for the current Firebase user.
       backendToken = getStoredToken();
       if (!backendToken) backendToken = await exchangeFirebaseForBookoraSession(suppliedToken, false);
     } catch (error) {
