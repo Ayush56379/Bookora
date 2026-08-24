@@ -1,4 +1,4 @@
-/* Bookora API auth bridge — Firebase -> durable Bookora backend session. */
+/* Bookora API auth bridge — Firebase -> Bookora backend authentication. */
 (() => {
   if (window.__BOOKORA_API_AUTH_BRIDGE__) return;
   window.__BOOKORA_API_AUTH_BRIDGE__ = true;
@@ -8,12 +8,11 @@
   const originalFetch = window.fetch.bind(window);
   let authUser = null;
   let auth = null;
-  let exchangePromise = null;
   let authListenerInstalled = false;
-  let backendSessionUid = '';
   let firebaseAuthResolved = false;
   let firebaseAuthResolve = null;
-  const firebaseAuthReady = new Promise(resolve => { firebaseAuthResolve = resolve; });
+  let firebaseAuthReady = new Promise(resolve => { firebaseAuthResolve = resolve; });
+  let tokenPromise = null;
 
   const isBackendRequest = input => {
     const raw = typeof input === 'string' ? input : (input?.url || '');
@@ -38,16 +37,8 @@
     catch (_) { return ''; }
   };
 
-  const writeBackendToken = (token, uid = '') => {
-    const value = String(token || '').trim();
-    if (!value) return;
-    try { localStorage.setItem(BACKEND_TOKEN_KEY, value); } catch (_) {}
-    backendSessionUid = String(uid || '');
-  };
-
   const clearBackendToken = () => {
     try { localStorage.removeItem(BACKEND_TOKEN_KEY); } catch (_) {}
-    backendSessionUid = '';
   };
 
   const getAuthInstance = () => {
@@ -75,15 +66,8 @@
     instance.onAuthStateChanged(user => {
       authUser = user || null;
       markAuthResolved();
-      if (!authUser) {
-        clearBackendToken();
-        return;
-      }
-      // Do not trust a stale localStorage session when Firebase has just changed users.
-      if (backendSessionUid && backendSessionUid !== String(authUser.uid || '')) clearBackendToken();
-      exchangeFirebaseForBackendSession(false).catch(error =>
-        console.warn('[Bookora API Auth] Initial backend session sync failed:', error?.message || error)
-      );
+      if (!authUser) clearBackendToken();
+      else getFirebaseIdToken(false).catch(() => {});
     });
     return true;
   };
@@ -116,63 +100,16 @@
     }
   };
 
-  const exchangeFirebaseForBackendSession = async forceRefresh => {
-    if (exchangePromise) return exchangePromise;
-    exchangePromise = (async () => {
-      const user = await waitForFirebaseAuth();
-      if (!user) return '';
-      const uid = String(user.uid || '');
-
-      if (!forceRefresh && backendSessionUid === uid) {
-        const existing = readBackendToken();
-        if (existing) return existing;
-      }
-
-      const idToken = await getFirebaseIdToken(forceRefresh);
-      if (!idToken) return '';
-
-      const profile = (() => {
-        try { return JSON.parse(localStorage.getItem('bookora_user_profile') || '{}'); }
-        catch (_) { return {}; }
-      })();
-      const email = String(user.email || profile.email || '').trim().toLowerCase();
-      const role = email === 'ayushprajpati6@gmail.com' || profile.role === 'admin'
-        ? 'admin'
-        : (profile.role || 'buyer');
-
-      const response = await originalFetch(`${API_ROOT}/api/auth/firebase`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
-        body: JSON.stringify({ role })
-      });
-      let data = {};
-      try { data = await response.json(); } catch (_) {}
-      if (!response.ok || !data?.success || !data?.token) {
-        throw new Error(data?.error || `Backend authentication failed (${response.status})`);
-      }
-      writeBackendToken(data.token, uid);
-      return String(data.token);
-    })().finally(() => { exchangePromise = null; });
-    return exchangePromise;
-  };
-
-  const getBackendToken = async forceRefresh => {
+  const getAuthToken = async forceRefresh => {
     const user = await waitForFirebaseAuth();
-    if (!user) return '';
-    const uid = String(user.uid || '');
-    if (!forceRefresh && backendSessionUid === uid) {
-      const existing = readBackendToken();
-      if (existing) return existing;
+    if (user) {
+      if (tokenPromise && !forceRefresh) return tokenPromise;
+      tokenPromise = getFirebaseIdToken(Boolean(forceRefresh)).finally(() => { tokenPromise = null; });
+      const firebaseToken = await tokenPromise;
+      if (firebaseToken) return firebaseToken;
     }
-    try { return await exchangeFirebaseForBackendSession(Boolean(forceRefresh)); }
-    catch (error) {
-      console.warn('[Bookora API Auth] Backend session exchange failed:', error?.message || error);
-      return '';
-    }
+    // Preserve legacy email/password sessions for flows that do not use Firebase Auth.
+    return readBackendToken();
   };
 
   installAuthListener();
@@ -183,33 +120,33 @@
 
   window.fetch = async (input, init = {}) => {
     if (!isBackendRequest(input)) return originalFetch(input, init);
+    // The Firebase exchange endpoint already receives the raw Firebase ID token.
     if (pathOf(input) === '/api/auth/firebase') return originalFetch(input, init);
 
     const headers = new Headers(
       init?.headers || (input instanceof Request ? input.headers : undefined)
     );
 
-    let backendToken = await getBackendToken(false);
-    if (backendToken) headers.set('Authorization', `Bearer ${backendToken}`);
+    const token = await getAuthToken(false);
+    if (token) headers.set('Authorization', `Bearer ${token}`);
 
     const firstInit = { ...init, headers };
     let response = await originalFetch(input, firstInit);
 
-    // Refresh Firebase/backend session exactly once on 401, then retry once.
-    if (response.status === 401) {
+    // Refresh Firebase ID token exactly once after a 401, then retry exactly once.
+    if (response.status === 401 && authUser) {
       try {
-        clearBackendToken();
-        const freshBackendToken = await getBackendToken(true);
-        if (freshBackendToken) {
-          headers.set('Authorization', `Bearer ${freshBackendToken}`);
+        const freshFirebaseToken = await getAuthToken(true);
+        if (freshFirebaseToken) {
+          headers.set('Authorization', `Bearer ${freshFirebaseToken}`);
           response = await originalFetch(input, { ...firstInit, headers });
         }
       } catch (error) {
-        console.warn('[Bookora API Auth] Backend session refresh failed:', error?.message || error);
+        console.warn('[Bookora API Auth] Firebase token refresh failed:', error?.message || error);
       }
     }
     return response;
   };
 
-  console.info('[Bookora API Auth] Firebase -> Bookora backend session bridge installed.');
+  console.info('[Bookora API Auth] Firebase ID-token bridge installed.');
 })();
