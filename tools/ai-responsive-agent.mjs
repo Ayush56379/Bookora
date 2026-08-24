@@ -18,41 +18,60 @@ const viewports = [
 
 const routes = (process.env.BOOKORA_ROUTES || '/,/explore,/categories,/pricing,/login,/signup,/library,/orders,/profile,/support,/seller,/admin')
   .split(',').map(s => s.trim()).filter(Boolean);
-
 const routeUrl = route => `${baseUrl.replace(/\/$/, '')}/#${route.startsWith('/') ? route : `/${route}`}`;
 
 async function inspect(page) {
   return page.evaluate(() => {
     const all = [...document.querySelectorAll('*')];
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
     const overflow = [];
+    const textProblems = [];
     for (const el of all) {
       const r = el.getBoundingClientRect();
       const cs = getComputedStyle(el);
       if (r.width <= 0 || r.height <= 0) continue;
-      if (r.right > vw + 2 || r.left < -2 || r.bottom > document.documentElement.scrollHeight + 2) {
-        overflow.push({ tag: el.tagName, id: el.id || '', cls: String(el.className || '').slice(0, 160), left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), width: Math.round(r.width), display: cs.display, position: cs.position, text: String(el.textContent || '').replace(/\s+/g, ' ').slice(0, 120) });
+      const text = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (r.right > vw + 2 || r.left < -2) {
+        overflow.push({ tag: el.tagName, id: el.id || '', cls: String(el.className || '').slice(0,160), left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), width: Math.round(r.width), display: cs.display, position: cs.position, text: text.slice(0,160) });
+      }
+      if (text && r.width > 80 && r.height > 15 && r.right <= vw + 2 && /^(visible|clip)$/.test(cs.overflowX) && cs.whiteSpace !== 'nowrap') {
+        const words = text.split(/\s+/);
+        const longWord = words.some(w => w.length >= 22 && !/[./_-]/.test(w));
+        const cramped = r.width < 180 && parseFloat(cs.fontSize) >= 22;
+        const clipped = el.scrollWidth > el.clientWidth + 2 || el.scrollHeight > el.clientHeight + 2;
+        if (longWord || cramped || clipped) textProblems.push({ tag: el.tagName, id: el.id || '', cls: String(el.className || '').slice(0,160), width: Math.round(r.width), fontSize: cs.fontSize, lineHeight: cs.lineHeight, whiteSpace: cs.whiteSpace, overflowX: cs.overflowX, text: text.slice(0,180), longWord, cramped, clipped });
       }
     }
     const horizontalOverflow = document.documentElement.scrollWidth > vw + 2;
-    const fixed = all.filter(el => getComputedStyle(el).position === 'fixed').map(el => {
-      const r = el.getBoundingClientRect();
-      return { tag: el.tagName, id: el.id || '', cls: String(el.className || '').slice(0,120), left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
-    }).slice(0, 30);
-    return { vw, vh, scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight, horizontalOverflow, overflow: overflow.slice(0, 40), fixed };
+    const fixed = all.filter(el => getComputedStyle(el).position === 'fixed').map(el => { const r = el.getBoundingClientRect(); return { tag: el.tagName, id: el.id || '', cls: String(el.className || '').slice(0,120), left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }; }).slice(0,30);
+    return { vw, scrollWidth: document.documentElement.scrollWidth, horizontalOverflow, overflow: overflow.slice(0,50), textProblems: textProblems.slice(0,50), fixed };
   });
 }
 
+async function scan(browser, patch = '') {
+  const results = [];
+  for (const route of routes) for (const viewport of viewports) {
+    const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    const consoleErrors = [];
+    page.on('pageerror', e => consoleErrors.push(String(e.message).slice(0,300)));
+    await page.goto(routeUrl(route), { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await page.waitForTimeout(2200);
+    if (patch) await page.addStyleTag({ content: patch }).catch(() => {});
+    const diagnostics = await inspect(page);
+    const safeName = route.replace(/[^a-z0-9]+/gi, '_') || 'home';
+    const screenshot = `${outDir}/${safeName}-${viewport.name}.png`;
+    await page.screenshot({ path: screenshot, fullPage: true }).catch(() => {});
+    results.push({ route, viewport, diagnostics, consoleErrors, screenshot });
+    await context.close();
+  }
+  return results;
+}
+
 async function callGroqBackend(css, evidence) {
-  const response = await fetch(aiEndpoint, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ css: css.slice(0, 18000), evidence: evidence.slice(0, 24) })
-  });
+  const response = await fetch(aiEndpoint, { method:'POST', headers:{'content-type':'application/json',accept:'application/json'}, body:JSON.stringify({ css:css.slice(0,18000), evidence:evidence.slice(0,40), instructions:'Fix responsive layout AND typography for every viewport. Preserve visual design. You may use @media queries, clamp(), flex/grid wrapping, max-width:100%, min-width:0, overflow-wrap:anywhere, word-break, white-space, responsive font-size/line-height/padding/gap, table/card/button/header adjustments. Return CSS only. Never change application logic, links, payments, auth, data, or JavaScript.' }) });
   const text = await response.text();
-  let data = {};
-  try { data = JSON.parse(text); } catch (_) {}
+  let data = {}; try { data = JSON.parse(text); } catch (_) {}
   if (!response.ok || !data.success) throw new Error(data.error || `Responsive AI endpoint HTTP ${response.status}`);
   return String(data.patch || '');
 }
@@ -60,53 +79,35 @@ async function callGroqBackend(css, evidence) {
 function validateCssPatch(patch) {
   const css = String(patch || '').trim();
   if (!css || css.length > 16000) return false;
-  if (!/@media|overflow|width|max-width|min-width|grid|flex/i.test(css)) return false;
-  if (/<script|javascript:|fetch\(|XMLHttpRequest|document\.|window\./i.test(css)) return false;
+  if (!/@media|clamp\(|font-size|line-height|overflow|width|max-width|min-width|grid|flex|gap|padding|margin|word-break|overflow-wrap|white-space/i.test(css)) return false;
+  if (/<script|javascript:|fetch\(|XMLHttpRequest|document\.|window\.|@import/i.test(css)) return false;
   return true;
 }
 
-await fs.mkdir(outDir, { recursive: true });
-const browser = await chromium.launch({ headless: true });
-const report = { baseUrl, aiEndpoint, generatedAt: new Date().toISOString(), routes: [], aiApplied: false };
-
+await fs.mkdir(outDir, { recursive:true });
+const browser = await chromium.launch({ headless:true });
+const report = { baseUrl, aiEndpoint, generatedAt:new Date().toISOString(), routes, viewports, initial:null, afterPatch:null, aiApplied:false, verification:'NOT_VERIFIED' };
 try {
-  for (const route of routes) {
-    for (const viewport of viewports) {
-      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, deviceScaleFactor: 1 });
-      const page = await context.newPage();
-      const consoleErrors = [];
-      page.on('pageerror', e => consoleErrors.push(String(e.message).slice(0, 300)));
-      await page.goto(routeUrl(route), { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-      await page.waitForTimeout(2200);
-      const diagnostics = await inspect(page);
-      const screenshotPath = `${outDir}/${route.replace(/[^a-z0-9]+/gi, '_') || 'home'}-${viewport.name}.png`;
-      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
-      report.routes.push({ route, viewport, diagnostics, consoleErrors, screenshot: screenshotPath });
-      await context.close();
-    }
-  }
-
-  const failures = report.routes.filter(x => x.diagnostics.horizontalOverflow || x.diagnostics.overflow.length || x.consoleErrors.length);
+  report.initial = await scan(browser);
+  let failures = report.initial.filter(x => x.diagnostics.horizontalOverflow || x.diagnostics.overflow.length || x.diagnostics.textProblems.length || x.consoleErrors.length);
   if (failures.length) {
-    const css = await fs.readFile(cssPath, 'utf8').catch(() => '');
+    const css = await fs.readFile(cssPath,'utf8').catch(()=>'');
     try {
       const patch = await callGroqBackend(css, failures);
-      if (validateCssPatch(patch)) {
-        await fs.appendFile(cssPath, `\n\n/* Groq AI responsive pass ${new Date().toISOString()} */\n${patch}\n`);
-        report.aiApplied = true;
-        report.aiPatch = patch;
-      } else {
-        report.aiError = 'Groq returned an invalid or unsafe CSS-only patch.';
-      }
-    } catch (error) {
-      report.aiError = String(error.message || error).slice(0, 500);
-    }
+      if (!validateCssPatch(patch)) throw new Error('Groq returned an invalid or unsafe CSS-only patch.');
+      await fs.appendFile(cssPath, `\n\n/* Groq AI responsive + typography pass ${new Date().toISOString()} */\n${patch}\n`);
+      report.aiApplied = true;
+      report.aiPatch = patch;
+      report.afterPatch = await scan(browser, patch);
+    } catch (error) { report.aiError = String(error.message || error).slice(0,500); }
+  } else {
+    report.afterPatch = report.initial;
   }
 
-  await fs.writeFile(`${outDir}/report.json`, JSON.stringify(report, null, 2));
-  const summary = { tested: report.routes.length, failures: report.routes.filter(x => x.diagnostics.horizontalOverflow || x.diagnostics.overflow.length).length, aiApplied: report.aiApplied, aiEndpoint: report.aiEndpoint, aiError: report.aiError || null };
-  console.log(JSON.stringify(summary, null, 2));
-  if (report.routes.length === 0) process.exitCode = 2;
-} finally {
-  await browser.close();
-}
+  const finalFailures = (report.afterPatch || []).filter(x => x.diagnostics.horizontalOverflow || x.diagnostics.overflow.length || x.diagnostics.textProblems.length || x.consoleErrors.length);
+  report.finalFailureCount = finalFailures.length;
+  report.verification = finalFailures.length === 0 ? 'PASS' : 'FAIL';
+  await fs.writeFile(`${outDir}/report.json`, JSON.stringify(report,null,2));
+  console.log(JSON.stringify({ tested:report.initial.length, initialFailures:failures.length, aiApplied:report.aiApplied, finalFailures:finalFailures.length, verification:report.verification, aiError:report.aiError || null },null,2));
+  if (report.verification !== 'PASS') process.exitCode = 1;
+} finally { await browser.close(); }
