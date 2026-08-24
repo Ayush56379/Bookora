@@ -4,8 +4,7 @@ import { chromium } from 'playwright';
 const baseUrl = process.env.BOOKORA_BASE_URL || 'https://ayush56379.github.io/Bookora/';
 const outDir = process.env.RESPONSIVE_REPORT_DIR || 'responsive-report';
 const cssPath = 'css/ai-responsive-overrides.css';
-const aiKey = process.env.OPENAI_API_KEY || '';
-const model = process.env.OPENAI_MODEL || 'gpt-5.6-mini';
+const aiEndpoint = process.env.BOOKORA_RESPONSIVE_AI_URL || 'https://bookora-backend-x08l.onrender.com/api/ai/responsive-patch';
 
 const viewports = [
   { name: 'small-phone', width: 320, height: 568 },
@@ -17,16 +16,10 @@ const viewports = [
   { name: 'large-desktop', width: 1920, height: 1080 },
 ];
 
-// Routes are hash routes so the SPA can be inspected without requiring server rewrites.
 const routes = (process.env.BOOKORA_ROUTES || '/,/explore,/categories,/pricing,/login,/signup,/library,/orders,/profile,/support,/seller,/admin')
   .split(',').map(s => s.trim()).filter(Boolean);
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const routeUrl = route => `${baseUrl.replace(/\/$/, '')}/#${route.startsWith('/') ? route : `/${route}`}`;
-
-function visibleTextSample(page) {
-  return page.locator('body').innerText().catch(() => '').then(t => t.replace(/\s+/g, ' ').slice(0, 1800));
-}
 
 async function inspect(page) {
   return page.evaluate(() => {
@@ -39,14 +32,7 @@ async function inspect(page) {
       const cs = getComputedStyle(el);
       if (r.width <= 0 || r.height <= 0) continue;
       if (r.right > vw + 2 || r.left < -2 || r.bottom > document.documentElement.scrollHeight + 2) {
-        overflow.push({
-          tag: el.tagName,
-          id: el.id || '',
-          cls: String(el.className || '').slice(0, 160),
-          left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top),
-          width: Math.round(r.width), display: cs.display, position: cs.position,
-          text: String(el.textContent || '').replace(/\s+/g, ' ').slice(0, 120)
-        });
+        overflow.push({ tag: el.tagName, id: el.id || '', cls: String(el.className || '').slice(0, 160), left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), width: Math.round(r.width), display: cs.display, position: cs.position, text: String(el.textContent || '').replace(/\s+/g, ' ').slice(0, 120) });
       }
     }
     const horizontalOverflow = document.documentElement.scrollWidth > vw + 2;
@@ -58,29 +44,30 @@ async function inspect(page) {
   });
 }
 
-async function callAi(prompt) {
-  if (!aiKey) return null;
-  const response = await fetch('https://api.openai.com/v1/responses', {
+async function callGroqBackend(css, evidence) {
+  const response = await fetch(aiEndpoint, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${aiKey}` },
-    body: JSON.stringify({ model, input: prompt, temperature: 0.1 })
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ css: css.slice(0, 18000), evidence: evidence.slice(0, 24) })
   });
-  if (!response.ok) throw new Error(`AI API ${response.status}: ${await response.text()}`);
-  const data = await response.json();
-  return data.output_text || data.output?.flatMap(x => x.content || []).map(x => x.text || '').join('') || '';
+  const text = await response.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch (_) {}
+  if (!response.ok || !data.success) throw new Error(data.error || `Responsive AI endpoint HTTP ${response.status}`);
+  return String(data.patch || '');
 }
 
-function extractCss(text) {
-  const fenced = text.match(/```css\s*([\s\S]*?)```/i);
-  if (fenced) return fenced[1].trim();
-  const start = text.indexOf('@media');
-  if (start >= 0) return text.slice(start).trim();
-  return '';
+function validateCssPatch(patch) {
+  const css = String(patch || '').trim();
+  if (!css || css.length > 16000) return false;
+  if (!/@media|overflow|width|max-width|min-width|grid|flex/i.test(css)) return false;
+  if (/<script|javascript:|fetch\(|XMLHttpRequest|document\.|window\./i.test(css)) return false;
+  return true;
 }
 
 await fs.mkdir(outDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
-const report = { baseUrl, generatedAt: new Date().toISOString(), routes: [], aiApplied: false };
+const report = { baseUrl, aiEndpoint, generatedAt: new Date().toISOString(), routes: [], aiApplied: false };
 
 try {
   for (const route of routes) {
@@ -100,22 +87,24 @@ try {
   }
 
   const failures = report.routes.filter(x => x.diagnostics.horizontalOverflow || x.diagnostics.overflow.length || x.consoleErrors.length);
-  if (failures.length && aiKey) {
+  if (failures.length) {
     const css = await fs.readFile(cssPath, 'utf8').catch(() => '');
-    const evidence = failures.slice(0, 24).map(x => ({ route: x.route, viewport: x.viewport, diagnostics: x.diagnostics, consoleErrors: x.consoleErrors })).
-      map(x => JSON.stringify(x)).join('\n');
-    const prompt = `You are Bookora's responsive UI engineer. Fix ONLY responsive presentation problems. Do not change application logic, routes, authentication, Firebase, payments, API calls, data, or functionality.\n\nCurrent responsive override CSS:\n${css}\n\nDiagnostics from real browser viewport tests:\n${evidence}\n\nReturn ONLY a CSS patch suitable for appending to css/ai-responsive-overrides.css. Use media queries, fluid sizing, flex/grid minmax, max-width, overflow containment, and safe wrapping. Do not use JavaScript. Do not hide essential content. Do not use !important unless necessary to override an existing fixed width. Keep the existing visual identity. Make the patch general enough to work at unusual phone, tablet, desktop and TV widths.`;
-    const aiText = await callAi(prompt);
-    const patch = extractCss(aiText || '');
-    if (patch && patch.length < 16000 && /@media|overflow|width|max-width|min-width|grid|flex/i.test(patch)) {
-      await fs.appendFile(cssPath, `\n\n/* AI responsive pass ${new Date().toISOString()} */\n${patch}\n`);
-      report.aiApplied = true;
-      report.aiPatch = patch;
+    try {
+      const patch = await callGroqBackend(css, failures);
+      if (validateCssPatch(patch)) {
+        await fs.appendFile(cssPath, `\n\n/* Groq AI responsive pass ${new Date().toISOString()} */\n${patch}\n`);
+        report.aiApplied = true;
+        report.aiPatch = patch;
+      } else {
+        report.aiError = 'Groq returned an invalid or unsafe CSS-only patch.';
+      }
+    } catch (error) {
+      report.aiError = String(error.message || error).slice(0, 500);
     }
   }
 
   await fs.writeFile(`${outDir}/report.json`, JSON.stringify(report, null, 2));
-  const summary = { tested: report.routes.length, failures: report.routes.filter(x => x.diagnostics.horizontalOverflow || x.diagnostics.overflow.length).length, aiApplied: report.aiApplied };
+  const summary = { tested: report.routes.length, failures: report.routes.filter(x => x.diagnostics.horizontalOverflow || x.diagnostics.overflow.length).length, aiApplied: report.aiApplied, aiEndpoint: report.aiEndpoint, aiError: report.aiError || null };
   console.log(JSON.stringify(summary, null, 2));
   if (report.routes.length === 0) process.exitCode = 2;
 } finally {
