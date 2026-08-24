@@ -35,11 +35,10 @@ jobs:
           npm install --no-save playwright@1.55.0
           npx playwright install --with-deps chromium
 
-      - name: Run responsive scan and AI repair
+      - name: Run responsive scan and Groq AI repair
         env:
           BOOKORA_BASE_URL: https://ayush56379.github.io/Bookora/
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_RESPONSIVE_MODEL }}
+          BOOKORA_RESPONSIVE_AI_URL: https://bookora-backend-x08l.onrender.com/api/ai/responsive-patch
         run: node tools/ai-responsive-agent.mjs
 
       - name: Publish generated responsive patch as PR
@@ -58,4 +57,4 @@ jobs:
           git add css/ai-responsive-overrides.css responsive-report || true
           git commit -m "fix: AI responsive layout corrections"
           git push --set-upstream origin "$BRANCH"
-          gh pr create --base main --head "$BRANCH" --title "AI responsive layout corrections" --body "Automated Bookora responsive-design pass. The agent tested real browser viewports from 320px phones through 1920px large displays and limited changes to the responsive override layer. Review before merging."
+          gh pr create --base main --head "$BRANCH" --title "AI responsive layout corrections" --body "Automated Bookora responsive-design pass using the existing Render Groq AI backend. The agent tests real browser viewports from 320px phones through 1920px large displays and limits generated changes to the responsive override layer. Review before merging."
