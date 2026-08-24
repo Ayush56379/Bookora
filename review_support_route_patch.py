@@ -3,7 +3,9 @@ from pathlib import Path
 P=Path(__file__).parent/'js'/'app-safe.js'
 s=P.read_text(encoding='utf-8')
 MARK='// REVIEW_SUPPORT_ROUTE_V1'
-if MARK in s: raise SystemExit('already patched')
+if MARK in s:
+    print('already patched; nothing to do')
+    raise SystemExit(0)
 needle="    if (path === '/pricing' || path === '/subscription') {"
 insert="""    // REVIEW_SUPPORT_ROUTE_V1
     if (path === '/review-support') {
