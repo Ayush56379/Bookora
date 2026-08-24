@@ -1,0 +1,61 @@
+name: Bookora AI Responsive Design Agent
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 2 * * *'
+  push:
+    branches: [main]
+    paths:
+      - '**/*.html'
+      - '**/*.css'
+      - '**/*.js'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  responsive-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Bookora
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install browser test runtime
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run responsive scan and AI repair
+        env:
+          BOOKORA_BASE_URL: https://ayush56379.github.io/Bookora/
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_RESPONSIVE_MODEL }}
+        run: node tools/ai-responsive-agent.mjs
+
+      - name: Publish generated responsive patch as PR
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && hashFiles('css/ai-responsive-overrides.css') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- css/ai-responsive-overrides.css; then
+            echo 'No AI responsive changes were generated.'
+            exit 0
+          fi
+          BRANCH="ai/responsive-${GITHUB_RUN_ID}"
+          git config user.name "bookora-ai"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add css/ai-responsive-overrides.css responsive-report || true
+          git commit -m "fix: AI responsive layout corrections"
+          git push --set-upstream origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" --title "AI responsive layout corrections" --body "Automated Bookora responsive-design pass. The agent tested real browser viewports from 320px phones through 1920px large displays and limited changes to the responsive override layer. Review before merging."
