@@ -31,6 +31,7 @@ import { renderAdminDashboardPage, initAdminDashboardEvents } from './pages/Admi
 import { renderAdminUsersPage, initAdminUsersEvents } from './pages/AdminUsersPage.js';
 import { renderAdminSellersPage, initAdminSellersEvents } from './pages/AdminSellersPage.js';
 import { renderAdminBooksPage, initAdminBooksEvents } from './pages/AdminBooksBackendPage.js';
+import { initAdminBooksDeleteHotfix } from './admin-books-delete-hotfix.js';
 import { renderAdminOrdersPage, initAdminOrdersEvents } from './pages/AdminOrdersPage.js';
 import { renderAdminPlansPage, initAdminPlansEvents } from './pages/AdminPlansPage.js';
 import { renderAdminSettingsPage, initAdminSettingsEvents } from './pages/AdminSettingsPage.js';
@@ -137,6 +138,7 @@ class App {
     });
 
     this.route(false, false);
+    try { initAdminBooksDeleteHotfix(); } catch (_) {}
   }
 
   currentPath() {
