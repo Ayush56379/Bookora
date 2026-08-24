@@ -95,7 +95,7 @@ function decorateRemovedRows() {
     actions.querySelectorAll('[data-ab-delete-hotfix],[data-ab-restore-hotfix]').forEach(x => x.remove());
     if (!actions.querySelector('[data-action="restore"]')) {
       const restore = document.createElement('button');
-      restore.className = 'ab-btn ab-restore';
+      restore.className = 'ab-btn ab-restore'; restore.style.cssText = 'background:#dcfce7;color:#166534;border:0;border-radius:8px;padding:7px 10px;margin:2px;font-weight:700;cursor:pointer';
       restore.textContent = 'Restore';
       restore.dataset.abRestoreHotfix = book.id;
       restore.title = 'Restore this eBook as approved';
@@ -103,7 +103,7 @@ function decorateRemovedRows() {
     }
     if (!actions.querySelector('[data-action="delete"]') && !actions.querySelector('[data-ab-delete-hotfix]')) {
       const del = document.createElement('button');
-      del.className = 'ab-btn ab-delete';
+      del.className = 'ab-btn ab-delete'; del.style.cssText = 'background:#fee2e2;color:#991b1b;border:0;border-radius:8px;padding:7px 10px;margin:2px;font-weight:700;cursor:pointer';
       del.textContent = 'Delete';
       del.dataset.abDeleteHotfix = book.id;
       del.title = 'Permanently delete this eBook from Firebase and Bookora database';
@@ -159,7 +159,23 @@ export function initAdminBooksDeleteHotfix() {
     }
   };
   start();
-  document.addEventListener('click', async event => {
+  // The hotfix is initialized before the SPA renders the Admin Books route.
+  // Watch the document so removed-row controls are added when #ab-list is created.
+  let tableSeen = false;
+  const bodyObserver = new MutationObserver(() => {
+    const tbody = document.getElementById('admin-books-list') || document.getElementById('ab-list');
+    if (!tbody) return;
+    addActionGuide();
+    if (!tableSeen) {
+      tableSeen = true;
+      refreshCache().then(() => decorateRemovedRows()).catch(() => decorateRemovedRows());
+    } else {
+      decorateRemovedRows();
+    }
+  });
+  bodyObserver.observe(document.body, { childList: true, subtree: true });
+
+  document.addEventListener('click' , async event => {
     const deleteBtn = event.target instanceof Element ? event.target.closest('[data-ab-delete-hotfix]') : null;
     const restoreBtn = event.target instanceof Element ? event.target.closest('[data-ab-restore-hotfix]') : null;
     if (!deleteBtn && !restoreBtn) return;
