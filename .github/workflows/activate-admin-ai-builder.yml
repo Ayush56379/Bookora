@@ -1,0 +1,35 @@
+name: Activate Admin AI Builder UI
+on:
+  push:
+    branches: [main]
+    paths:
+      - js/admin-ai-builder.js
+      - .github/workflows/activate-admin-ai-builder.yml
+permissions:
+  contents: write
+jobs:
+  activate:
+    if: "!contains(github.event.head_commit.message, '[skip ai-builder]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add runtime bootstrap
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html');s=p.read_text()
+          tag='<script src="js/admin-ai-builder.js?v=20260824-1" defer></script>'
+          if tag not in s:
+              marker='<script src="js/route-stability.js?v=20260823-3" defer></script>'
+              if marker not in s: raise SystemExit('index bootstrap marker not found')
+              s=s.replace(marker,tag+'\n  '+marker,1)
+              p.write_text(s)
+          PY
+      - name: Commit activation
+        run: |
+          git config user.name bookora-ai
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add index.html js/admin-ai-builder.js
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: activate admin AI builder UI [skip ai-builder]"
+          git push
