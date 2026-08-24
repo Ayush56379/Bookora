@@ -1,17 +1,66 @@
-import { apiFetch } from '../config.js';
+import { apiFetch, waitForAuthenticatedFirebaseUser } from '../config.js';
 import { state } from '../state.js';
 import { Toast } from '../components/Toast.js';
 
 let books = [];
 let filter = 'all';
 let search = '';
+let eventsBound = false;
+let serverSessionReady = false;
 
 function esc(v) {
-  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');
+  return String(v ?? '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/\"/g,'&quot;')
+    .replace(/'/g,'&#039;');
 }
 
 function isAdmin() {
   return !!state.isAdmin;
+}
+
+async function ensureServerAdminSession() {
+  if (!isAdmin()) throw new Error('Administrator authorization required.');
+
+  // Firebase is the identity authority, but admin APIs intentionally use the
+  // server-issued Bookora session token. This is an authentication exchange,
+  // not a client-side authorization bypass.
+  const firebaseUser = await waitForAuthenticatedFirebaseUser();
+  if (!firebaseUser) throw new Error('Firebase administrator session is not ready. Please sign in again.');
+
+  const firebaseToken = await firebaseUser.getIdToken(false);
+  if (!firebaseToken) throw new Error('Firebase administrator token is unavailable. Please sign in again.');
+
+  // Always exchange the verified Firebase identity when the current token is
+  // missing or is still a Firebase JWT. This fixes the reload case where the
+  // global state is hydrated with a Firebase token instead of the Bookora
+  // server session token.
+  const current = String(state.token || '');
+  if (serverSessionReady && current && !current.split('.')[0].includes('ey')) return current;
+
+  const res = await apiFetch('/api/auth/firebase', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${firebaseToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success || !data.token) {
+    throw new Error(data.error || 'Server could not verify the administrator session. Please sign in again.');
+  }
+
+  if (data.is_admin !== true) {
+    throw new Error('Forbidden: Server-verified Admin authorization required.');
+  }
+
+  state.token = data.token;
+  state.currentUser = data.user || state.currentUser;
+  state.isAdmin = true;
+  state.isAuthenticated = true;
+  localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser));
+  serverSessionReady = true;
+  return data.token;
 }
 
 export function renderAdminBooksPage() {
@@ -20,7 +69,7 @@ export function renderAdminBooksPage() {
     <section style="min-height:100vh;background:#f8fafc;padding:32px">
       <div style="max-width:1450px;margin:auto">
         <div style="display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:24px">
-          <div><div style="color:#2563eb;font-weight:800;font-size:12px">BOOK MANAGEMENT</div><h1 style="margin:6px 0">Books</h1><p style="color:#64748b">Manage internal and external eBooks. Remove any listing from the marketplace with Firebase-backed persistence.</p></div>
+          <div><div style="color:#2563eb;font-weight:800;font-size:12px">BOOK MANAGEMENT</div><h1 style="margin:6px 0">Books</h1><p style="color:#64748b">Manage internal and external eBooks with server-verified admin authorization and Firebase persistence.</p></div>
           <button id="admin-books-refresh" style="border:0;border-radius:10px;padding:12px 18px;background:#2563eb;color:white;font-weight:700">↻ Refresh</button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-bottom:18px">
@@ -44,10 +93,13 @@ export function renderAdminBooksPage() {
 }
 
 async function loadBooks() {
-  const res = await apiFetch('/api/admin/books', { headers: { Authorization: `Bearer ${state.token || ''}` } });
-  const data = await res.json();
+  await ensureServerAdminSession();
+  const res = await apiFetch('/api/admin/books', {
+    headers: { Authorization: `Bearer ${state.token}` }
+  });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Unable to load books.');
-  books = Array.isArray(data) ? data : [];
+  books = Array.isArray(data) ? data : (Array.isArray(data.books) ? data.books : []);
   renderTable();
 }
 
@@ -55,8 +107,9 @@ function renderTable() {
   const term = search.trim().toLowerCase();
   const visible = books.filter(b => {
     const status = String(b.status || 'pending').toLowerCase();
-    const text = `${b.title || ''} ${b.author || ''} ${b.seller_name || ''}`.toLowerCase();
-    return (filter === 'all' || status === filter) && (!term || text.includes(term));
+    const text = `${b.title || ''} ${b.author || ''} ${b.seller_name || ''} ${b.seller_id || ''} ${b.id || ''}`.toLowerCase();
+    const statusOk = filter === 'all' || filter === 'active' ? (filter === 'active' ? status !== 'removed' : true) : status === filter;
+    return statusOk && (!term || text.includes(term));
   });
   const count = s => books.filter(b => String(b.status || 'pending').toLowerCase() === s).length;
   document.getElementById('ab-total')?.replaceChildren(document.createTextNode(books.length));
@@ -77,8 +130,9 @@ function renderTable() {
 }
 
 export function initAdminBooksEvents() {
-  if (!isAdmin()) return;
-  document.getElementById('admin-books-refresh')?.addEventListener('click', async e => { e.currentTarget.disabled=true; try { await loadBooks(); Toast.show('Books refreshed.','success'); } catch(err) { Toast.show(err.message,'error'); } finally { e.currentTarget.disabled=false; } });
+  if (!isAdmin() || eventsBound) return;
+  eventsBound = true;
+  document.getElementById('admin-books-refresh')?.addEventListener('click', async e => { e.currentTarget.disabled=true; try { serverSessionReady=false; await loadBooks(); Toast.show('Books refreshed.','success'); } catch(err) { Toast.show(err.message,'error'); } finally { e.currentTarget.disabled=false; } });
   document.getElementById('ab-search')?.addEventListener('input', e => { search=e.target.value; renderTable(); });
   document.getElementById('ab-filter')?.addEventListener('change', e => { filter=e.target.value; renderTable(); });
   document.addEventListener('click', async e => {
@@ -92,8 +146,9 @@ export function initAdminBooksEvents() {
       removeBtn.disabled=true;
       removeBtn.textContent='Removing…';
       try {
-        const res=await apiFetch(`/api/admin/books/${encodeURIComponent(id)}/remove`,{method:'POST',headers:{Authorization:`Bearer ${state.token || ''}`}});
-        const data=await res.json();
+        await ensureServerAdminSession();
+        const res=await apiFetch(`/api/admin/books/${encodeURIComponent(id)}/remove`,{method:'POST',headers:{Authorization:`Bearer ${state.token}`}});
+        const data=await res.json().catch(() => ({}));
         if(!res.ok || !data.success) throw new Error(data.error || 'eBook removal failed.');
         const index=books.findIndex(b=>String(b.id)===String(id));
         if(index>=0) books[index]=data.book;
@@ -111,9 +166,10 @@ export function initAdminBooksEvents() {
     if(!id) return;
     btn.disabled=true;
     try {
-      const res=await apiFetch(`/api/admin/books/${encodeURIComponent(id)}/status`,{method:'POST',headers:{Authorization:`Bearer ${state.token || ''}`},body:JSON.stringify({status})});
-      const data=await res.json(); if(!res.ok) throw new Error(data.error || 'Update failed.');
-      const index=books.findIndex(b=>b.id===id); if(index>=0) books[index]=data.book;
+      await ensureServerAdminSession();
+      const res=await apiFetch(`/api/admin/books/${encodeURIComponent(id)}/status`,{method:'POST',headers:{Authorization:`Bearer ${state.token}`},body:JSON.stringify({status})});
+      const data=await res.json().catch(() => ({})); if(!res.ok) throw new Error(data.error || 'Update failed.');
+      const index=books.findIndex(b=>String(b.id)===String(id)); if(index>=0) books[index]=data.book;
       renderTable(); Toast.show(status==='approved'?'Book approved.':'Book rejected.', 'success');
     } catch(err) { Toast.show(err.message,'error'); } finally { btn.disabled=false; }
   });
