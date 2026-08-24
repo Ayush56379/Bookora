@@ -10,6 +10,10 @@
   let auth = null;
   let exchangePromise = null;
   let authListenerInstalled = false;
+  let backendSessionUid = '';
+  let firebaseAuthResolved = false;
+  let firebaseAuthResolve = null;
+  const firebaseAuthReady = new Promise(resolve => { firebaseAuthResolve = resolve; });
 
   const isBackendRequest = input => {
     const raw = typeof input === 'string' ? input : (input?.url || '');
@@ -34,14 +38,16 @@
     catch (_) { return ''; }
   };
 
-  const writeBackendToken = token => {
+  const writeBackendToken = (token, uid = '') => {
     const value = String(token || '').trim();
     if (!value) return;
     try { localStorage.setItem(BACKEND_TOKEN_KEY, value); } catch (_) {}
+    backendSessionUid = String(uid || '');
   };
 
   const clearBackendToken = () => {
     try { localStorage.removeItem(BACKEND_TOKEN_KEY); } catch (_) {}
+    backendSessionUid = '';
   };
 
   const getAuthInstance = () => {
@@ -55,6 +61,12 @@
     return null;
   };
 
+  const markAuthResolved = () => {
+    if (firebaseAuthResolved) return;
+    firebaseAuthResolved = true;
+    try { firebaseAuthResolve(); } catch (_) {}
+  };
+
   const installAuthListener = () => {
     if (authListenerInstalled) return true;
     const instance = getAuthInstance();
@@ -62,20 +74,21 @@
     authListenerInstalled = true;
     instance.onAuthStateChanged(user => {
       authUser = user || null;
-      if (!authUser) clearBackendToken();
-      else {
-        // Keep the backend session synchronized as soon as Firebase auth becomes available.
-        exchangeFirebaseForBackendSession(false).catch(error =>
-          console.warn('[Bookora API Auth] Initial backend session sync failed:', error?.message || error)
-        );
+      markAuthResolved();
+      if (!authUser) {
+        clearBackendToken();
+        return;
       }
+      // Do not trust a stale localStorage session when Firebase has just changed users.
+      if (backendSessionUid && backendSessionUid !== String(authUser.uid || '')) clearBackendToken();
+      exchangeFirebaseForBackendSession(false).catch(error =>
+        console.warn('[Bookora API Auth] Initial backend session sync failed:', error?.message || error)
+      );
     });
     return true;
   };
 
   const waitForFirebaseAuth = async () => {
-    // Firebase can load after this bridge script. Retry discovery instead of permanently
-    // deciding that authentication is unavailable.
     for (let i = 0; i < 40; i++) {
       installAuthListener();
       const instance = getAuthInstance();
@@ -84,9 +97,13 @@
         authUser = user;
         return user;
       }
-      await new Promise(resolve => setTimeout(resolve, 250));
+      if (firebaseAuthResolved) return null;
+      await Promise.race([
+        firebaseAuthReady,
+        new Promise(resolve => setTimeout(resolve, 250))
+      ]);
     }
-    return null;
+    return authUser || getAuthInstance()?.currentUser || null;
   };
 
   const getFirebaseIdToken = async forceRefresh => {
@@ -104,6 +121,12 @@
     exchangePromise = (async () => {
       const user = await waitForFirebaseAuth();
       if (!user) return '';
+      const uid = String(user.uid || '');
+
+      if (!forceRefresh && backendSessionUid === uid) {
+        const existing = readBackendToken();
+        if (existing) return existing;
+      }
 
       const idToken = await getFirebaseIdToken(forceRefresh);
       if (!idToken) return '';
@@ -131,14 +154,17 @@
       if (!response.ok || !data?.success || !data?.token) {
         throw new Error(data?.error || `Backend authentication failed (${response.status})`);
       }
-      writeBackendToken(data.token);
+      writeBackendToken(data.token, uid);
       return String(data.token);
     })().finally(() => { exchangePromise = null; });
     return exchangePromise;
   };
 
   const getBackendToken = async forceRefresh => {
-    if (!forceRefresh) {
+    const user = await waitForFirebaseAuth();
+    if (!user) return '';
+    const uid = String(user.uid || '');
+    if (!forceRefresh && backendSessionUid === uid) {
       const existing = readBackendToken();
       if (existing) return existing;
     }
@@ -149,36 +175,27 @@
     }
   };
 
-  // Firebase may not yet exist when this script is parsed. Poll briefly and then
-  // keep the fetch interceptor capable of discovering it later.
   installAuthListener();
   const firebaseBootstrapTimer = setInterval(() => {
     if (installAuthListener()) clearInterval(firebaseBootstrapTimer);
   }, 250);
-  setTimeout(() => clearInterval(firebaseBootstrapTimer), 15000);
+  setTimeout(() => { clearInterval(firebaseBootstrapTimer); markAuthResolved(); }, 15000);
 
   window.fetch = async (input, init = {}) => {
     if (!isBackendRequest(input)) return originalFetch(input, init);
-
-    // Firebase -> backend exchange must receive the Firebase ID token directly.
     if (pathOf(input) === '/api/auth/firebase') return originalFetch(input, init);
 
     const headers = new Headers(
       init?.headers || (input instanceof Request ? input.headers : undefined)
     );
 
-    let backendToken = readBackendToken();
-    if (!backendToken) backendToken = await getBackendToken(false);
-    if (backendToken && !headers.has('Authorization')) {
-      headers.set('Authorization', `Bearer ${backendToken}`);
-    }
+    let backendToken = await getBackendToken(false);
+    if (backendToken) headers.set('Authorization', `Bearer ${backendToken}`);
 
     const firstInit = { ...init, headers };
     let response = await originalFetch(input, firstInit);
 
-    // Retry every protected 401 after obtaining the current Firebase user, even if
-    // the auth listener was installed late. This fixes stale/missing sessions on
-    // admin settings, orders, library and other protected APIs.
+    // Refresh Firebase/backend session exactly once on 401, then retry once.
     if (response.status === 401) {
       try {
         clearBackendToken();
@@ -194,5 +211,5 @@
     return response;
   };
 
-  console.info('[Bookora API Auth] Firebase → Bookora backend session bridge installed.');
+  console.info('[Bookora API Auth] Firebase -> Bookora backend session bridge installed.');
 })();
