@@ -1,0 +1,39 @@
+name: Fix admin books removed controls
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make removed controls render after SPA routing
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('js/admin-books-delete-hotfix.js')
+          s = p.read_text(encoding='utf-8')
+          marker = 'const bodyObserver = new MutationObserver(() => {'
+          if marker not in s:
+              anchor = '  start();\n  document.addEventListener(\'click\''
+              if anchor not in s:
+                  raise SystemExit('Admin books hotfix startup anchor not found.')
+              replacement = '''  start();\n  // The hotfix is initialized before the SPA renders the Admin Books route.\n  // Watch the document so removed-row controls are added when #ab-list is created.\n  let tableSeen = false;\n  const bodyObserver = new MutationObserver(() => {\n    const tbody = document.getElementById('admin-books-list') || document.getElementById('ab-list');\n    if (!tbody) return;\n    addActionGuide();\n    if (!tableSeen) {\n      tableSeen = true;\n      refreshCache().then(() => decorateRemovedRows()).catch(() => decorateRemovedRows());\n    } else {\n      decorateRemovedRows();\n    }\n  });\n  bodyObserver.observe(document.body, { childList: true, subtree: true });\n\n  document.addEventListener('click' '''
+              s = s.replace(anchor, replacement, 1)
+          s = s.replace("restore.className = 'ab-btn ab-restore';", "restore.className = 'ab-btn ab-restore'; restore.style.cssText = 'background:#dcfce7;color:#166534;border:0;border-radius:8px;padding:7px 10px;margin:2px;font-weight:700;cursor:pointer';", 1)
+          s = s.replace("del.className = 'ab-btn ab-delete';", "del.className = 'ab-btn ab-delete'; del.style.cssText = 'background:#fee2e2;color:#991b1b;border:0;border-radius:8px;padding:7px 10px;margin:2px;font-weight:700;cursor:pointer';", 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/admin-books-delete-hotfix.js
+          git diff --cached --quiet || git commit -m "fix: render admin books restore and delete controls"
+          git push
