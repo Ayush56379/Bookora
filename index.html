@@ -17,9 +17,7 @@
   <script>window.BOOKORA_API_URL="https://bookora-backend-x08l.onrender.com";window.BOOKORA_APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycbzUu9SstSp1ONdUOLb6hAeCtDzlxrvymtf_y2c5ISacPNRYXaJThewGzqbIO0vzQqYfnw/exec";</script>
   <script src="js/fast-firebase-init.js?v=20260823-4"></script>
   <script src="js/api-auth-bridge.js?v=20260823-1"></script>
-  <!-- Critical external publish bootstrap: no module dependency and loaded before the SPA. -->
   <script src="js/external-publish-auth-scan-bootstrap.js?v=20260823-2"></script>
-  <!-- Existing external-seller auth/session bridges remain active for all protected publish requests. -->
   <script type="module">import './js/external-seller-auth-persistence-fix.js?v=20260823-6';</script>
   <script type="module">import './js/external-auth-submit-bridge.js?v=20260823-8';</script>
   <script type="module">import './js/external-publish-scan-permanent-fix.js?v=20260823-4';</script>
@@ -74,7 +72,7 @@
       setTimeout(() => { if (!booted && !document.querySelector('#main-content')) showRecovery('startup timeout'); }, 12000);
     })();
   </script>
-  <script src="js/admin-ai-builder.js?v=20260824-1" defer></script>
+  <script src="js/admin-ai-builder.js?v=20260824-2" defer></script>
   <script src="js/route-stability.js?v=20260823-3" defer></script>
   <script src="js/optional-runtime-loader.js?v=20260823-5" defer></script>
   <script src="js/menu-permanent-fix.js?v=20260823-4" defer></script>
