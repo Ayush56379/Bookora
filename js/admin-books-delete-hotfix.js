@@ -36,7 +36,7 @@ async function refreshCache() {
   resolving = true;
   try {
     const token = await ensureAdminToken();
-    const res = await apiFetch('/api/admin/books', { headers: { Authorization: `Bearer ${token}` } });
+    const res = await apiFetch('/api/admin/books', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) bookCache = Array.isArray(data.books) ? data.books : [];
   } finally {
@@ -44,36 +44,71 @@ async function refreshCache() {
   }
 }
 
+function addActionGuide() {
+  const toolbar = document.querySelector('.admin-books-page .ab-toolbar');
+  if (!toolbar || document.getElementById('ab-action-guide')) return;
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:230px';
+  wrap.innerHTML = `
+    <select id="ab-action-guide" aria-label="Admin book action guide" style="width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;background:#fff;outline:none">
+      <option value="">Admin Actions — what to do?</option>
+      <option value="edit">✏️ Edit — change book details/PDF/price</option>
+      <option value="approve">✅ Approve — publish/allow the book</option>
+      <option value="reject">⛔ Reject — keep it out of marketplace</option>
+      <option value="remove">🗑️ Remove — hide it without permanent deletion</option>
+      <option value="restore">♻️ Restore — bring a removed book back</option>
+      <option value="delete">❌ Delete — permanently remove from Firebase</option>
+    </select>`;
+  toolbar.appendChild(wrap);
+  document.getElementById('ab-action-guide')?.addEventListener('change', e => {
+    const value = e.target.value;
+    e.target.value = '';
+    if (!value) return;
+    const messages = {
+      edit: 'Edit: use the Edit button on the book row. Changes are saved to Firebase.',
+      approve: 'Approve: publishes the book to the marketplace when the book is otherwise valid.',
+      reject: 'Reject: marks the book rejected; it remains in Admin Books for review.',
+      remove: 'Remove: soft-removes the book. It stays in Firebase and can be restored later.',
+      restore: 'Restore: opens the Removed filter; click Restore to bring the book back as approved.',
+      delete: 'Delete: permanently deletes the book from Firebase and Bookora database. This cannot be undone.'
+    };
+    Toast.show(messages[value], 'info');
+  });
+}
+
 function decorateRemovedRows() {
-  const tbody = document.getElementById('ab-list');
+  const tbody = document.getElementById('admin-books-list') || document.getElementById('ab-list');
   if (!tbody) return;
   [...tbody.querySelectorAll('tr')].forEach(row => {
-    if (row.dataset.abDeleteDecorated === '1') return;
     const cells = row.querySelectorAll('td');
     if (cells.length < 7) return;
     const status = String(cells[4]?.textContent || '').trim().toLowerCase();
     if (status !== 'removed') return;
-    const title = String(cells[0]?.querySelector('b')?.textContent || '').trim();
-    const author = String(cells[0]?.querySelector('div')?.textContent || '').trim();
+    const title = String(cells[0]?.querySelector('.ab-title, b')?.textContent || '').trim();
+    const author = String(cells[0]?.querySelector('.ab-sub + div, div')?.textContent || '').trim();
     const created = String(cells[5]?.textContent || '').trim();
     const book = bookCache.find(b => key(b) === [title, author, created].join('|').toLowerCase())
-      || bookCache.find(b => String(b.title || '').trim() === title && String(b.author || '').trim() === author);
+      || bookCache.find(b => String(b.title || '').trim() === title);
     if (!book?.id) return;
     const actions = cells[6];
+    if (!actions) return;
     actions.querySelectorAll('[data-ab-delete-hotfix],[data-ab-restore-hotfix]').forEach(x => x.remove());
-    const restore = document.createElement('button');
-    restore.className = 'ab-btn';
-    restore.style.cssText = 'background:#dcfce7;color:#166534';
-    restore.textContent = 'Restore';
-    restore.dataset.abRestoreHotfix = book.id;
-    restore.title = 'Restore this eBook as approved';
-    const del = document.createElement('button');
-    del.className = 'ab-btn';
-    del.style.cssText = 'background:#b91c1c;color:#fff';
-    del.textContent = 'Delete';
-    del.dataset.abDeleteHotfix = book.id;
-    del.title = 'Permanently delete this eBook from Firebase and Bookora database';
-    actions.append(restore, del);
+    if (!actions.querySelector('[data-action="restore"]')) {
+      const restore = document.createElement('button');
+      restore.className = 'ab-btn ab-restore';
+      restore.textContent = 'Restore';
+      restore.dataset.abRestoreHotfix = book.id;
+      restore.title = 'Restore this eBook as approved';
+      actions.appendChild(restore);
+    }
+    if (!actions.querySelector('[data-action="delete"]') && !actions.querySelector('[data-ab-delete-hotfix]')) {
+      const del = document.createElement('button');
+      del.className = 'ab-btn ab-delete';
+      del.textContent = 'Delete';
+      del.dataset.abDeleteHotfix = book.id;
+      del.title = 'Permanently delete this eBook from Firebase and Bookora database';
+      actions.appendChild(del);
+    }
     row.dataset.abDeleteDecorated = '1';
   });
 }
@@ -103,7 +138,7 @@ async function handleRestore(id, button) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.success) throw new Error(data.error || 'Restore failed.');
-  Toast.show('eBook restored and Firebase status set to approved.', 'success');
+  Toast.show('eBook restored as APPROVED and saved to Firebase.', 'success');
   window.dispatchEvent(new Event('hashchange'));
 }
 
@@ -112,10 +147,14 @@ export function initAdminBooksDeleteHotfix() {
   observerStarted = true;
   const start = async () => {
     await refreshCache().catch(() => {});
+    addActionGuide();
     decorateRemovedRows();
-    const tbody = document.getElementById('ab-list');
+    const tbody = document.getElementById('admin-books-list') || document.getElementById('ab-list');
     if (tbody) {
-      const observer = new MutationObserver(() => decorateRemovedRows());
+      const observer = new MutationObserver(() => {
+        addActionGuide();
+        decorateRemovedRows();
+      });
       observer.observe(tbody, { childList: true, subtree: true });
     }
   };
