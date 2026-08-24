@@ -1,0 +1,37 @@
+/* Bookora AI Responsive Agent — generated overrides only.
+   The agent may update this file to fix responsive presentation without
+   changing application logic, authentication, payments, library data, or routes. */
+
+:root{--bookora-ai-safe-inline:clamp(12px,3vw,32px)}
+html,body{max-width:100%;overflow-x:hidden}
+#app{width:100%;min-width:0;max-width:100%}
+#app>*{min-width:0}
+#app [class*="grid"]{min-width:0}
+#app [class*="card"]{min-width:0}
+#app img,#app video,#app canvas,#app svg{max-width:100%}
+#app input,#app select,#app textarea,#app button{max-width:100%}
+
+/* Fluid typography for unusual screen widths. */
+#app h1{font-size:clamp(1.65rem,3.2vw,3.5rem)}
+#app h2{font-size:clamp(1.35rem,2.4vw,2.4rem)}
+#app h3{font-size:clamp(1.05rem,1.8vw,1.55rem)}
+
+/* Prevent long labels, URLs and IDs from breaking the layout. */
+#app a,#app button,#app p,#app span,#app td,#app th{overflow-wrap:anywhere}
+
+@media (min-width:1600px){
+  #app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{max-width:1440px}
+}
+
+@media (max-width:600px){
+  #app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{padding-inline:clamp(10px,4vw,18px)}
+}
+
+@media (max-width:360px){
+  #app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{padding-inline:10px}
+  #app button{min-height:40px}
+}
+
+@media (orientation:landscape) and (max-height:600px){
+  #app{min-height:100%}
+}
