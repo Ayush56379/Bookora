@@ -1,1512 +1,203 @@
-// Bookora - Admin Books Management
-// Firebase Firestore
-// ------------------------------------------------------------
-
-import { getFirestoreInstance } from '../services/firebase.js';
+// Bookora — Admin Books Control Center
+// Fast Firestore-first admin management for internal + external books.
+import { getFirestoreInstance, getAuthInstance } from '../services/firebase.js';
 import { state } from '../state.js';
 import { Toast } from '../components/Toast.js';
 
 const MASTER_ADMIN_EMAIL = 'ayushprajpati6@gmail.com';
-
 let booksCache = [];
 let unsubscribeBooks = null;
+let eventsBound = false;
 let searchTerm = '';
-let statusFilter = 'all';
-
-
-// ------------------------------------------------------------
-// SECURITY
-// ------------------------------------------------------------
+let statusFilter = 'active';
 
 function isAdmin() {
-  const user = state.currentUser;
-
-  return (
-    state.isAdmin === true ||
-    user?.role === 'admin' ||
-    user?.isMasterAdmin === true ||
-    String(user?.email || '').toLowerCase() ===
-      MASTER_ADMIN_EMAIL
-  );
+  const firebaseUser = getAuthInstance()?.currentUser;
+  const user = state.currentUser || {};
+  return String(firebaseUser?.email || user.email || '').toLowerCase() === MASTER_ADMIN_EMAIL ||
+    state.isAdmin === true || user.role === 'admin' || user.isMasterAdmin === true;
 }
 
-
-// ------------------------------------------------------------
-// HTML ESCAPE
-// ------------------------------------------------------------
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+function db() {
+  const value = getFirestoreInstance();
+  if (!value) throw new Error('Firebase Firestore is not ready. Please refresh once.');
+  return value;
 }
 
+function esc(value) {
+  return String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
 
-// ------------------------------------------------------------
-// DATE
-// ------------------------------------------------------------
+function val(book, ...keys) {
+  for (const key of keys) if (book?.[key] !== undefined && book?.[key] !== null && book?.[key] !== '') return book[key];
+  return '';
+}
 
-function formatDate(value) {
-
-  if (!value) {
-    return '—';
-  }
-
+function dateText(value) {
   try {
-
-    if (typeof value.toDate === 'function') {
-      return value.toDate().toLocaleString();
-    }
-
-    const date = new Date(value);
-
-    if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleString();
-    }
-
-  } catch (error) {
-    console.warn('Date formatting error:', error);
-  }
-
-  return '—';
+    const d = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('en-IN', {dateStyle:'medium', timeStyle:'short'});
+  } catch (_) { return '—'; }
 }
-
-
-// ------------------------------------------------------------
-// STATUS BADGE
-// ------------------------------------------------------------
 
 function statusBadge(status) {
-
-  const value =
-    String(status || 'pending').toLowerCase();
-
-  let background = '#fef3c7';
-  let color = '#92400e';
-
-  if (value === 'approved') {
-    background = '#dcfce7';
-    color = '#166534';
-  }
-
-  if (value === 'rejected') {
-    background = '#fee2e2';
-    color = '#991b1b';
-  }
-
-  return `
-    <span style="
-      display:inline-flex;
-      align-items:center;
-      padding:5px 10px;
-      border-radius:999px;
-      background:${background};
-      color:${color};
-      font-size:11px;
-      font-weight:800;
-      text-transform:uppercase;
-    ">
-      ${escapeHtml(value)}
-    </span>
-  `;
+  const s = String(status || 'pending').toLowerCase();
+  const map = {approved:['#dcfce7','#166534'], pending:['#fef3c7','#92400e'], rejected:['#fee2e2','#991b1b'], removed:['#e2e8f0','#475569']};
+  const [bg,color] = map[s] || map.pending;
+  return `<span class="ab-status" style="background:${bg};color:${color}">${esc(s)}</span>`;
 }
-
-
-// ------------------------------------------------------------
-// RENDER PAGE
-// ------------------------------------------------------------
 
 export function renderAdminBooksPage() {
-
-  if (!isAdmin()) {
-
-    return `
-      <section style="
-        min-height:70vh;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        padding:30px;
-        background:#f8fafc;
-      ">
-
-        <div style="
-          max-width:500px;
-          width:100%;
-          background:#fff;
-          border:1px solid #e2e8f0;
-          border-radius:20px;
-          padding:40px;
-          text-align:center;
-        ">
-
-          <div style="
-            font-size:40px;
-            margin-bottom:15px;
-          ">
-            🔒
-          </div>
-
-          <h2 style="
-            margin:0 0 10px;
-            color:#0f172a;
-          ">
-            Access Denied
-          </h2>
-
-          <p style="
-            margin:0;
-            color:#64748b;
-          ">
-            Administrator authorization is required.
-          </p>
-
-        </div>
-
-      </section>
-    `;
-  }
-
-
+  if (!isAdmin()) return `<section class="ab-denied"><div><div style="font-size:42px">🔒</div><h2>Access Denied</h2><p>Administrator authorization is required.</p></div></section>`;
   return `
+  <section class="admin-books-page">
+    <div class="ab-wrap">
+      <header class="ab-header">
+        <div><div class="ab-kicker">BOOK MANAGEMENT</div><h1>Books</h1><p>Manage every internal and external eBook directly from Firebase.</p></div>
+        <button id="admin-books-refresh" class="ab-primary">↻ Refresh</button>
+      </header>
 
-    <section
-      class="admin-books-page"
-      style="
-        min-height:100vh;
-        background:#f8fafc;
-        padding:32px;
-      "
-    >
-
-      <div style="
-        max-width:1450px;
-        margin:0 auto;
-      ">
-
-        <!-- HEADER -->
-
-        <div style="
-          display:flex;
-          justify-content:space-between;
-          align-items:flex-start;
-          gap:20px;
-          flex-wrap:wrap;
-          margin-bottom:25px;
-        ">
-
-          <div>
-
-            <div style="
-              display:inline-flex;
-              padding:7px 12px;
-              border-radius:999px;
-              background:#eff6ff;
-              color:#2563eb;
-              font-size:12px;
-              font-weight:800;
-              margin-bottom:10px;
-            ">
-              📚 BOOK MANAGEMENT
-            </div>
-
-            <h1 style="
-              margin:0;
-              color:#0f172a;
-              font-size:32px;
-              font-weight:800;
-            ">
-              Books
-            </h1>
-
-            <p style="
-              margin:8px 0 0;
-              color:#64748b;
-            ">
-              Review, approve and manage Bookora books.
-            </p>
-
-          </div>
-
-
-          <button
-            id="admin-books-refresh"
-            type="button"
-            style="
-              border:0;
-              border-radius:12px;
-              padding:13px 18px;
-              background:#2563eb;
-              color:#fff;
-              font-weight:700;
-              cursor:pointer;
-            "
-          >
-            ↻ Refresh
-          </button>
-
-        </div>
-
-
-        <!-- STATS -->
-
-        <div style="
-          display:grid;
-          grid-template-columns:
-            repeat(auto-fit,minmax(170px,1fr));
-          gap:15px;
-          margin-bottom:20px;
-        ">
-
-          <div class="book-stat-card">
-            <span>Total</span>
-            <strong id="books-total">0</strong>
-          </div>
-
-          <div class="book-stat-card">
-            <span>Pending</span>
-            <strong id="books-pending">0</strong>
-          </div>
-
-          <div class="book-stat-card">
-            <span>Approved</span>
-            <strong id="books-approved">0</strong>
-          </div>
-
-          <div class="book-stat-card">
-            <span>Rejected</span>
-            <strong id="books-rejected">0</strong>
-          </div>
-
-        </div>
-
-
-        <!-- FILTERS -->
-
-        <div style="
-          background:#fff;
-          border:1px solid #e2e8f0;
-          border-radius:18px;
-          padding:18px;
-          margin-bottom:20px;
-          display:flex;
-          gap:12px;
-          flex-wrap:wrap;
-        ">
-
-          <input
-            id="admin-books-search"
-            type="search"
-            placeholder="Search book title..."
-            style="
-              flex:1;
-              min-width:220px;
-              padding:13px 15px;
-              border:1px solid #cbd5e1;
-              border-radius:11px;
-              background:#f8fafc;
-              color:#0f172a;
-              outline:none;
-            "
-          >
-
-          <select
-            id="admin-books-status"
-            style="
-              padding:13px 15px;
-              border:1px solid #cbd5e1;
-              border-radius:11px;
-              background:#fff;
-              color:#0f172a;
-            "
-          >
-
-            <option value="all">
-              All Status
-            </option>
-
-            <option value="pending">
-              Pending
-            </option>
-
-            <option value="approved">
-              Approved
-            </option>
-
-            <option value="rejected">
-              Rejected
-            </option>
-
-          </select>
-
-        </div>
-
-
-        <!-- TABLE -->
-
-        <div style="
-          background:#fff;
-          border:1px solid #e2e8f0;
-          border-radius:18px;
-          overflow:hidden;
-        ">
-
-          <div style="
-            overflow-x:auto;
-          ">
-
-            <table style="
-              width:100%;
-              min-width:1150px;
-              border-collapse:collapse;
-            ">
-
-              <thead>
-
-                <tr style="
-                  background:#f8fafc;
-                  border-bottom:1px solid #e2e8f0;
-                ">
-
-                  <th class="admin-book-th">
-                    BOOK
-                  </th>
-
-                  <th class="admin-book-th">
-                    PRICE
-                  </th>
-
-                  <th class="admin-book-th">
-                    SELLER
-                  </th>
-
-                  <th class="admin-book-th">
-                    STATUS
-                  </th>
-
-                  <th class="admin-book-th">
-                    FLAGS
-                  </th>
-
-                  <th class="admin-book-th">
-                    CREATED
-                  </th>
-
-                  <th class="admin-book-th">
-                    ACTIONS
-                  </th>
-
-                </tr>
-
-              </thead>
-
-              <tbody id="admin-books-list">
-
-                <tr>
-
-                  <td
-                    colspan="7"
-                    style="
-                      padding:50px;
-                      text-align:center;
-                      color:#64748b;
-                    "
-                  >
-                    Loading books...
-                  </td>
-
-                </tr>
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-        </div>
-
+      <div class="ab-stats">
+        <div><span>Total</span><b id="books-total">0</b></div><div><span>Pending</span><b id="books-pending">0</b></div>
+        <div><span>Approved</span><b id="books-approved">0</b></div><div><span>Rejected</span><b id="books-rejected">0</b></div><div><span>Removed</span><b id="books-removed">0</b></div>
       </div>
 
-    </section>
+      <div class="ab-toolbar">
+        <input id="admin-books-search" type="search" placeholder="Search title, author, seller, book ID...">
+        <select id="admin-books-status"><option value="active">Active + Removed</option><option value="all">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="removed">Removed</option></select>
+      </div>
 
+      <div class="ab-table-wrap"><table class="ab-table"><thead><tr><th>BOOK</th><th>SOURCE</th><th>PRICE</th><th>SELLER</th><th>STATUS</th><th>FLAGS</th><th>CREATED</th><th>ACTIONS</th></tr></thead><tbody id="admin-books-list"><tr><td colspan="8" class="ab-loading">Loading from Firebase…</td></tr></tbody></table></div>
+    </div>
+  </section>
 
-    <style>
+  <div id="ab-edit-modal" class="ab-modal hidden"><div class="ab-modal-card"><div class="ab-modal-head"><div><b>Edit Book</b><small id="ab-edit-id"></small></div><button data-modal-close>×</button></div><form id="ab-edit-form"><input type="hidden" id="ab-edit-book-id"><div class="ab-grid">
+    <label>Title<input id="ab-edit-title" required></label><label>Author<input id="ab-edit-author"></label><label>Price (₹)<input id="ab-edit-price" type="number" min="0" step="0.01"></label><label>Sale Price (₹)<input id="ab-edit-sale-price" type="number" min="0" step="0.01"></label>
+    <label>Category<input id="ab-edit-category"></label><label>Language<input id="ab-edit-language"></label><label>Pages<input id="ab-edit-pages" type="number" min="0"></label><label>Status<select id="ab-edit-status"><option>pending</option><option>approved</option><option>rejected</option><option>removed</option></select></label>
+    <label class="ab-full">Subtitle<input id="ab-edit-subtitle"></label><label class="ab-full">Cover URL<input id="ab-edit-cover"></label><label class="ab-full">PDF URL<input id="ab-edit-pdf-url"></label><label class="ab-full">Description<textarea id="ab-edit-description" rows="5"></textarea></label>
+  </div><div class="ab-checks"><label><input id="ab-edit-trending" type="checkbox"> Trending</label><label><input id="ab-edit-bestseller" type="checkbox"> Bestseller</label><label><input id="ab-edit-new" type="checkbox"> New</label><label><input id="ab-edit-featured" type="checkbox"> Featured</label></div><div class="ab-modal-actions"><button type="button" data-modal-close class="ab-secondary">Cancel</button><button class="ab-primary" type="submit">Save Changes</button></div></form></div></div>
 
-      .book-stat-card {
-        background:#fff;
-        border:1px solid #e2e8f0;
-        border-radius:16px;
-        padding:20px;
-      }
-
-      .book-stat-card span {
-        display:block;
-        color:#64748b;
-        font-size:13px;
-        margin-bottom:8px;
-      }
-
-      .book-stat-card strong {
-        display:block;
-        color:#0f172a;
-        font-size:28px;
-        font-weight:800;
-      }
-
-      .admin-book-th {
-        padding:14px 16px;
-        text-align:left;
-        color:#64748b;
-        font-size:11px;
-        font-weight:800;
-        white-space:nowrap;
-      }
-
-      .admin-book-row {
-        border-bottom:1px solid #f1f5f9;
-      }
-
-      .admin-book-row:hover {
-        background:#f8fafc;
-      }
-
-      .admin-book-cell {
-        padding:15px 16px;
-        color:#334155;
-        font-size:13px;
-        vertical-align:middle;
-      }
-
-      .book-action {
-        border:0;
-        border-radius:8px;
-        padding:8px 11px;
-        margin:2px;
-        font-size:11px;
-        font-weight:700;
-        cursor:pointer;
-      }
-
-      .book-approve {
-        background:#dcfce7;
-        color:#166534;
-      }
-
-      .book-reject {
-        background:#fee2e2;
-        color:#991b1b;
-      }
-
-      .book-delete {
-        background:#f1f5f9;
-        color:#475569;
-      }
-
-      .book-flag {
-        display:inline-flex;
-        margin:2px;
-        padding:4px 7px;
-        border-radius:6px;
-        background:#f1f5f9;
-        color:#64748b;
-        font-size:10px;
-        font-weight:700;
-      }
-
-      .book-flag.active {
-        background:#dbeafe;
-        color:#1d4ed8;
-      }
-
-      @media(max-width:700px) {
-
-        .admin-books-page {
-          padding:16px !important;
-        }
-
-      }
-
-    </style>
-  `;
+  <style>
+    .admin-books-page{min-height:100vh;background:#f8fafc;padding:32px}.ab-wrap{max-width:1600px;margin:auto}.ab-header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:22px}.ab-kicker{color:#2563eb;font-size:12px;font-weight:900;letter-spacing:.04em}.ab-header h1{margin:7px 0 4px;color:#0f172a;font-size:34px}.ab-header p{margin:0;color:#64748b}.ab-primary{border:0;background:#2563eb;color:white;border-radius:11px;padding:12px 17px;font-weight:800;cursor:pointer}.ab-primary:disabled{opacity:.6;cursor:wait}.ab-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px}.ab-stats>div{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:18px}.ab-stats span{display:block;color:#64748b;font-size:13px}.ab-stats b{display:block;color:#0f172a;font-size:28px;margin-top:5px}.ab-toolbar{display:flex;gap:10px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:15px;margin-bottom:18px}.ab-toolbar input,.ab-toolbar select{border:1px solid #cbd5e1;border-radius:10px;padding:12px 14px;background:#fff;outline:none}.ab-toolbar input{flex:1;min-width:240px}.ab-table-wrap{background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:auto}.ab-table{width:100%;min-width:1350px;border-collapse:collapse}.ab-table th{padding:14px 15px;text-align:left;background:#f8fafc;color:#64748b;font-size:11px;white-space:nowrap}.ab-table td{padding:14px 15px;border-top:1px solid #f1f5f9;vertical-align:middle;font-size:13px;color:#334155}.ab-row:hover{background:#f8fafc}.ab-loading{text-align:center!important;padding:60px!important;color:#64748b}.ab-status{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:10px;font-weight:900;text-transform:uppercase}.ab-source{font-size:10px;font-weight:900;padding:5px 8px;border-radius:7px;background:#eef2ff;color:#4338ca}.ab-source.external{background:#fef3c7;color:#92400e}.ab-title{font-weight:800;color:#0f172a;max-width:270px}.ab-sub{font-size:10px;color:#94a3b8;margin-top:4px}.ab-actions{display:flex;gap:5px;flex-wrap:wrap;min-width:260px}.ab-btn{border:0;border-radius:8px;padding:7px 9px;font-size:10px;font-weight:800;cursor:pointer}.ab-edit{background:#dbeafe;color:#1d4ed8}.ab-approve{background:#dcfce7;color:#166534}.ab-reject{background:#fee2e2;color:#991b1b}.ab-remove{background:#fef3c7;color:#92400e}.ab-restore{background:#dcfce7;color:#166534}.ab-delete{background:#e2e8f0;color:#475569}.ab-flag{background:#f1f5f9;color:#64748b}.ab-flag.on{background:#ede9fe;color:#6d28d9}.ab-modal{position:fixed;inset:0;background:rgba(15,23,42,.48);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999}.ab-modal.hidden{display:none}.ab-modal-card{width:min(820px,100%);max-height:92vh;overflow:auto;background:white;border-radius:20px;box-shadow:0 30px 80px rgba(0,0,0,.25)}.ab-modal-head{display:flex;justify-content:space-between;padding:20px 22px;border-bottom:1px solid #e2e8f0}.ab-modal-head b{font-size:20px;color:#0f172a}.ab-modal-head small{display:block;color:#94a3b8;margin-top:3px}.ab-modal-head button{border:0;background:#f1f5f9;border-radius:9px;font-size:22px;width:36px;height:36px;cursor:pointer}.ab-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;padding:20px}.ab-grid label{font-size:12px;font-weight:800;color:#475569}.ab-grid input,.ab-grid select,.ab-grid textarea{display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:11px 12px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;outline:none}.ab-full{grid-column:1/-1}.ab-checks{display:flex;gap:18px;flex-wrap:wrap;padding:0 20px 18px}.ab-checks label{font-size:12px;font-weight:700;color:#475569}.ab-modal-actions{display:flex;justify-content:flex-end;gap:9px;padding:17px 20px;border-top:1px solid #e2e8f0}.ab-secondary{border:0;background:#f1f5f9;color:#475569;border-radius:10px;padding:11px 16px;font-weight:800;cursor:pointer}.ab-denied{min-height:70vh;display:grid;place-items:center;background:#f8fafc}.ab-denied>div{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:40px;text-align:center}.ab-denied h2{color:#0f172a}.ab-denied p{color:#64748b}@media(max-width:800px){.admin-books-page{padding:16px}.ab-stats{grid-template-columns:repeat(2,1fr)}.ab-grid{grid-template-columns:1fr}.ab-full{grid-column:auto}.ab-header{flex-direction:column}}
+  </style>`;
 }
-
-
-// ------------------------------------------------------------
-// LOAD BOOKS - REAL TIME
-// ------------------------------------------------------------
-
-async function loadBooks() {
-
-  if (!isAdmin()) {
-    throw new Error('Administrator authorization required.');
-  }
-
-  const db =
-    getFirestoreInstance();
-
-  if (!db) {
-    throw new Error('Firestore is not available.');
-  }
-
-
-  if (unsubscribeBooks) {
-    unsubscribeBooks();
-    unsubscribeBooks = null;
-  }
-
-
-  unsubscribeBooks =
-    db.collection('books')
-      .onSnapshot(
-
-        snapshot => {
-
-          booksCache =
-            snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            }));
-
-          renderBooksTable();
-
-        },
-
-        error => {
-
-          console.error(
-            'Books listener error:',
-            error
-          );
-
-          const tbody =
-            document.getElementById(
-              'admin-books-list'
-            );
-
-          if (tbody) {
-
-            tbody.innerHTML = `
-              <tr>
-                <td
-                  colspan="7"
-                  style="
-                    padding:50px;
-                    text-align:center;
-                    color:#dc2626;
-                  "
-                >
-                  Unable to load books.
-                  <br>
-                  <small>
-                    Check Firestore Rules.
-                  </small>
-                </td>
-              </tr>
-            `;
-
-          }
-
-          Toast.show(
-            'Unable to load books.',
-            'error'
-          );
-
-        }
-      );
-}
-
-
-// ------------------------------------------------------------
-// FILTER + RENDER
-// ------------------------------------------------------------
-
-function renderBooksTable() {
-
-  const tbody =
-    document.getElementById(
-      'admin-books-list'
-    );
-
-  if (!tbody) {
-    return;
-  }
-
-
-  const term =
-    searchTerm.trim().toLowerCase();
-
-
-  let books =
-    booksCache.filter(book => {
-
-      const status =
-        String(book.status || 'pending')
-          .toLowerCase();
-
-      const title =
-        String(book.title || '')
-          .toLowerCase();
-
-      const matchesStatus =
-        statusFilter === 'all' ||
-        status === statusFilter;
-
-      const matchesSearch =
-        !term ||
-        title.includes(term);
-
-      return (
-        matchesStatus &&
-        matchesSearch
-      );
-
-    });
-
-
-  updateStats();
-
-
-  if (!books.length) {
-
-    tbody.innerHTML = `
-      <tr>
-        <td
-          colspan="7"
-          style="
-            padding:55px;
-            text-align:center;
-            color:#64748b;
-          "
-        >
-          No books found.
-        </td>
-      </tr>
-    `;
-
-    return;
-  }
-
-
-  tbody.innerHTML =
-    books.map(book => {
-
-      const title =
-        book.title || 'Untitled Book';
-
-      const status =
-        book.status || 'pending';
-
-      const price =
-        Number(book.price || 0);
-
-
-      const cover =
-        book.coverUrl ||
-        book.cover_url ||
-        '';
-
-
-      return `
-
-        <tr
-          class="admin-book-row"
-          data-book-id="${escapeHtml(book.id)}"
-        >
-
-          <!-- BOOK -->
-
-          <td class="admin-book-cell">
-
-            <div style="
-              display:flex;
-              align-items:center;
-              gap:12px;
-              max-width:340px;
-            ">
-
-              ${
-                cover
-                  ? `
-                    <img
-                      src="${escapeHtml(cover)}"
-                      alt=""
-                      style="
-                        width:48px;
-                        height:64px;
-                        object-fit:cover;
-                        border-radius:7px;
-                        background:#e2e8f0;
-                      "
-                    >
-                  `
-                  : `
-                    <div style="
-                      width:48px;
-                      height:64px;
-                      border-radius:7px;
-                      background:#e2e8f0;
-                      display:flex;
-                      align-items:center;
-                      justify-content:center;
-                      font-size:20px;
-                    ">
-                      📖
-                    </div>
-                  `
-              }
-
-              <div>
-
-                <div style="
-                  color:#0f172a;
-                  font-weight:750;
-                  line-height:1.35;
-                ">
-                  ${escapeHtml(title)}
-                </div>
-
-                <div style="
-                  color:#94a3b8;
-                  font-size:11px;
-                  margin-top:4px;
-                ">
-                  ID: ${escapeHtml(book.id)}
-                </div>
-
-              </div>
-
-            </div>
-
-          </td>
-
-
-          <!-- PRICE -->
-
-          <td class="admin-book-cell">
-
-            <strong style="
-              color:#0f172a;
-            ">
-              ₹${price.toLocaleString('en-IN')}
-            </strong>
-
-          </td>
-
-
-          <!-- SELLER -->
-
-          <td class="admin-book-cell">
-
-            <span style="
-              font-size:11px;
-              color:#64748b;
-              word-break:break-all;
-            ">
-              ${escapeHtml(
-                book.sellerId ||
-                book.seller_id ||
-                '—'
-              )}
-            </span>
-
-          </td>
-
-
-          <!-- STATUS -->
-
-          <td class="admin-book-cell">
-
-            ${statusBadge(status)}
-
-          </td>
-
-
-          <!-- FLAGS -->
-
-          <td class="admin-book-cell">
-
-            ${
-              book.is_trending
-                ? `
-                  <span class="book-flag active">
-                    TRENDING
-                  </span>
-                `
-                : ''
-            }
-
-            ${
-              book.is_bestseller
-                ? `
-                  <span class="book-flag active">
-                    BESTSELLER
-                  </span>
-                `
-                : ''
-            }
-
-            ${
-              book.is_new
-                ? `
-                  <span class="book-flag active">
-                    NEW
-                  </span>
-                `
-                : ''
-            }
-
-            ${
-              !book.is_trending &&
-              !book.is_bestseller &&
-              !book.is_new
-                ? `
-                  <span class="book-flag">
-                    —
-                  </span>
-                `
-                : ''
-            }
-
-          </td>
-
-
-          <!-- CREATED -->
-
-          <td class="admin-book-cell">
-
-            ${escapeHtml(
-              formatDate(book.createdAt)
-            )}
-
-          </td>
-
-
-          <!-- ACTIONS -->
-
-          <td class="admin-book-cell">
-
-            ${
-              status !== 'approved'
-                ? `
-                  <button
-                    class="
-                      book-action
-                      book-approve
-                    "
-                    data-action="approve"
-                    data-id="${escapeHtml(book.id)}"
-                  >
-                    Approve
-                  </button>
-                `
-                : ''
-            }
-
-
-            ${
-              status !== 'rejected'
-                ? `
-                  <button
-                    class="
-                      book-action
-                      book-reject
-                    "
-                    data-action="reject"
-                    data-id="${escapeHtml(book.id)}"
-                  >
-                    Reject
-                  </button>
-                `
-                : ''
-            }
-
-
-            <button
-              class="
-                book-action
-                book-delete
-              "
-              data-action="delete"
-              data-id="${escapeHtml(book.id)}"
-            >
-              Delete
-            </button>
-
-
-            <button
-              class="
-                book-action
-                book-delete
-              "
-              data-action="trending"
-              data-id="${escapeHtml(book.id)}"
-            >
-              ${book.is_trending ? 'Untrend' : 'Trending'}
-            </button>
-
-
-            <button
-              class="
-                book-action
-                book-delete
-              "
-              data-action="bestseller"
-              data-id="${escapeHtml(book.id)}"
-            >
-              ${book.is_bestseller ? 'Unbest' : 'Bestseller'}
-            </button>
-
-
-            <button
-              class="
-                book-action
-                book-delete
-              "
-              data-action="new"
-              data-id="${escapeHtml(book.id)}"
-            >
-              ${book.is_new ? 'Remove New' : 'New'}
-            </button>
-
-          </td>
-
-        </tr>
-
-      `;
-
-    }).join('');
-}
-
-
-// ------------------------------------------------------------
-// STATS
-// ------------------------------------------------------------
 
 function updateStats() {
-
-  const total =
-    booksCache.length;
-
-  const pending =
-    booksCache.filter(
-      book => book.status === 'pending'
-    ).length;
-
-  const approved =
-    booksCache.filter(
-      book => book.status === 'approved'
-    ).length;
-
-  const rejected =
-    booksCache.filter(
-      book => book.status === 'rejected'
-    ).length;
-
-
-  document.getElementById(
-    'books-total'
-  )?.replaceChildren(
-    document.createTextNode(total)
-  );
-
-  document.getElementById(
-    'books-pending'
-  )?.replaceChildren(
-    document.createTextNode(pending)
-  );
-
-  document.getElementById(
-    'books-approved'
-  )?.replaceChildren(
-    document.createTextNode(approved)
-  );
-
-  document.getElementById(
-    'books-rejected'
-  )?.replaceChildren(
-    document.createTextNode(rejected)
-  );
+  const count = s => booksCache.filter(b => String(b.status || 'pending').toLowerCase() === s).length;
+  const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=String(v); };
+  set('books-total',booksCache.length);set('books-pending',count('pending'));set('books-approved',count('approved'));set('books-rejected',count('rejected'));set('books-removed',count('removed'));
 }
 
+function filteredBooks() {
+  const q=searchTerm.trim().toLowerCase();
+  return booksCache.filter(b=>{
+    const s=String(b.status||'pending').toLowerCase();
+    const hay=[b.title,b.author,b.id,b.seller_id,b.sellerId,b.seller_name,b.sellerName,b.source_domain].join(' ').toLowerCase();
+    const searchOk=!q||hay.includes(q);
+    const statusOk=statusFilter==='all'||(statusFilter==='active' ? s!=='removed' : s===statusFilter);
+    return searchOk&&statusOk;
+  });
+}
 
-// ------------------------------------------------------------
-// UPDATE BOOK
-// ------------------------------------------------------------
+function renderBooksTable() {
+  const tbody=document.getElementById('admin-books-list'); if(!tbody)return;
+  updateStats();
+  const books=filteredBooks();
+  if(!books.length){tbody.innerHTML='<tr><td colspan="8" class="ab-loading">No books found.</td></tr>';return;}
+  tbody.innerHTML=books.map(book=>{
+    const title=val(book,'title')||'Untitled Book', status=String(val(book,'status')||'pending').toLowerCase();
+    const cover=val(book,'cover_url','coverUrl'); const price=Number(val(book,'sale_price','salePrice','price')||0); const source=String(val(book,'source_type','sourceType')||'internal').toLowerCase();
+    const seller=val(book,'seller_name','sellerName','seller_id','sellerId')||'—';
+    const created=val(book,'created_at','createdAt');
+    const flags=[['T',!!val(book,'is_trending','isTrending'),'Trending'],['B',!!val(book,'is_bestseller','isBestseller'),'Bestseller'],['N',!!val(book,'is_new','isNew'),'New'],['F',!!val(book,'is_featured','isFeatured'),'Featured']];
+    return `<tr class="ab-row"><td><div style="display:flex;gap:10px;align-items:center"><div style="width:44px;height:58px;border-radius:7px;overflow:hidden;background:#e2e8f0;display:grid;place-items:center">${cover?`<img src="${esc(cover)}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">`:'📖'}</div><div><div class="ab-title">${esc(title)}</div><div class="ab-sub">${esc(book.id)}</div></div></div></td><td><span class="ab-source ${source==='external'?'external':''}">${esc(source)}</span></td><td><b>₹${price.toLocaleString('en-IN')}</b></td><td><span style="font-size:11px;word-break:break-all">${esc(seller)}</span></td><td>${statusBadge(status)}</td><td>${flags.map(([x,on,name])=>`<span class="ab-flag ${on?'on':''}" title="${name}">${x}</span>`).join(' ')}</td><td>${esc(dateText(created))}</td><td><div class="ab-actions">
+      <button class="ab-btn ab-edit" data-action="edit" data-id="${esc(book.id)}">Edit</button>
+      ${status!=='approved'&&status!=='removed'?`<button class="ab-btn ab-approve" data-action="approve" data-id="${esc(book.id)}">Approve</button>`:''}
+      ${status!=='rejected'&&status!=='removed'?`<button class="ab-btn ab-reject" data-action="reject" data-id="${esc(book.id)}">Reject</button>`:''}
+      ${status!=='removed'?`<button class="ab-btn ab-remove" data-action="remove" data-id="${esc(book.id)}">Remove</button>`:`<button class="ab-btn ab-restore" data-action="restore" data-id="${esc(book.id)}">Restore</button>`}
+      <button class="ab-btn ab-delete" data-action="delete" data-id="${esc(book.id)}">Delete</button>
+      <button class="ab-btn ab-flag" data-action="trending" data-id="${esc(book.id)}">${book.is_trending?'Untrend':'Trending'}</button>
+      <button class="ab-btn ab-flag" data-action="bestseller" data-id="${esc(book.id)}">${book.is_bestseller?'Unbest':'Bestseller'}</button>
+      <button class="ab-btn ab-flag" data-action="new" data-id="${esc(book.id)}">${book.is_new?'Remove New':'New'}</button>
+      <button class="ab-btn ab-flag" data-action="featured" data-id="${esc(book.id)}">${book.is_featured?'Unfeature':'Feature'}</button>
+    </div></td></tr>`;
+  }).join('');
+}
 
-async function updateBook(bookId, data) {
-
-  if (!isAdmin()) {
-    throw new Error(
-      'Administrator authorization required.'
-    );
-  }
-
-  const db =
-    getFirestoreInstance();
-
-  if (!db) {
-    throw new Error(
-      'Firestore is not available.'
-    );
-  }
-
-
-  await db
-    .collection('books')
-    .doc(bookId)
-    .update({
-      ...data,
-      updatedAt:
-        window.firebase.firestore
-          .FieldValue
-          .serverTimestamp()
-    });
-
-
-  // Admin log
-
+async function loadBooks() {
+  if(!isAdmin()) throw new Error('Administrator authorization required.');
+  const firestore=db();
+  if(unsubscribeBooks){unsubscribeBooks();unsubscribeBooks=null;}
+  const tbody=document.getElementById('admin-books-list'); if(tbody)tbody.innerHTML='<tr><td colspan="8" class="ab-loading">Loading books from Firebase…</td></tr>';
   try {
-
-    await db
-      .collection('adminLogs')
-      .add({
-
-        adminId:
-          state.currentUser?.uid || '',
-
-        adminEmail:
-          state.currentUser?.email || '',
-
-        action:
-          data.status
-            ? `book_${data.status}`
-            : 'book_updated',
-
-        targetType:
-          'book',
-
-        targetId:
-          bookId,
-
-        details:
-          JSON.stringify(data),
-
-        createdAt:
-          window.firebase.firestore
-            .FieldValue
-            .serverTimestamp()
-
-      });
-
-  } catch (logError) {
-
-    console.warn(
-      'Admin log could not be created:',
-      logError
-    );
-
+    // One unindexed collection read is intentionally used: it avoids composite-index
+    // failures and loads every book in one round trip.
+    const snap=await firestore.collection('books').get();
+    booksCache=snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderBooksTable();
+    // Keep the admin screen live after the fast initial read.
+    unsubscribeBooks=firestore.collection('books').onSnapshot(s=>{
+      booksCache=s.docs.map(d=>({id:d.id,...d.data()}));
+      renderBooksTable();
+    },err=>console.error('Books realtime listener:',err));
+  } catch(err) {
+    console.error('Firebase books load failed:',err);
+    if(tbody)tbody.innerHTML=`<tr><td colspan="8" class="ab-loading" style="color:#dc2626">Could not load books from Firebase.<br><small>${esc(err.message||'Permission/network error')}</small></td></tr>`;
+    throw err;
   }
 }
 
-
-// ------------------------------------------------------------
-// ACTION
-// ------------------------------------------------------------
-
-async function handleBookAction(
-  action,
-  bookId
-) {
-
-  const book =
-    booksCache.find(
-      item => item.id === bookId
-    );
-
-  if (!book) {
-    throw new Error(
-      'Book not found.'
-    );
-  }
-
-
-  if (action === 'approve') {
-
-    if (
-      !window.confirm(
-        `Approve "${book.title || 'this book'}"?`
-      )
-    ) {
-      return;
-    }
-
-    await updateBook(
-      bookId,
-      {
-        status: 'approved'
-      }
-    );
-
-    Toast.show(
-      'Book approved successfully.',
-      'success'
-    );
-
-    return;
-  }
-
-
-  if (action === 'reject') {
-
-    if (
-      !window.confirm(
-        `Reject "${book.title || 'this book'}"?`
-      )
-    ) {
-      return;
-    }
-
-    await updateBook(
-      bookId,
-      {
-        status: 'rejected'
-      }
-    );
-
-    Toast.show(
-      'Book rejected.',
-      'info'
-    );
-
-    return;
-  }
-
-
-  if (action === 'delete') {
-
-    if (
-      !window.confirm(
-        `Permanently delete "${book.title || 'this book'}"?`
-      )
-    ) {
-      return;
-    }
-
-    const db =
-      getFirestoreInstance();
-
-    await db
-      .collection('books')
-      .doc(bookId)
-      .delete();
-
-
-    try {
-
-      await db
-        .collection('adminLogs')
-        .add({
-
-          adminId:
-            state.currentUser?.uid || '',
-
-          adminEmail:
-            state.currentUser?.email || '',
-
-          action:
-            'book_deleted',
-
-          targetType:
-            'book',
-
-          targetId:
-            bookId,
-
-          details:
-            book.title || '',
-
-          createdAt:
-            window.firebase.firestore
-              .FieldValue
-              .serverTimestamp()
-
-        });
-
-    } catch (error) {
-
-      console.warn(
-        'Delete log failed:',
-        error
-      );
-
-    }
-
-
-    Toast.show(
-      'Book deleted.',
-      'success'
-    );
-
-    return;
-  }
-
-
-  if (action === 'trending') {
-
-    await updateBook(
-      bookId,
-      {
-        is_trending:
-          !Boolean(book.is_trending)
-      }
-    );
-
-    Toast.show(
-      book.is_trending
-        ? 'Removed from trending.'
-        : 'Added to trending.',
-      'success'
-    );
-
-    return;
-  }
-
-
-  if (action === 'bestseller') {
-
-    await updateBook(
-      bookId,
-      {
-        is_bestseller:
-          !Boolean(book.is_bestseller)
-      }
-    );
-
-    Toast.show(
-      book.is_bestseller
-        ? 'Removed from bestseller.'
-        : 'Added to bestseller.',
-      'success'
-    );
-
-    return;
-  }
-
-
-  if (action === 'new') {
-
-    await updateBook(
-      bookId,
-      {
-        is_new:
-          !Boolean(book.is_new)
-      }
-    );
-
-    Toast.show(
-      book.is_new
-        ? 'Removed from New Releases.'
-        : 'Added to New Releases.',
-      'success'
-    );
-  }
+async function writeLog(action, bookId, details='') {
+  try { await db().collection('adminLogs').add({adminId:getAuthInstance()?.currentUser?.uid||state.currentUser?.id||'',adminEmail:getAuthInstance()?.currentUser?.email||state.currentUser?.email||'',action,targetType:'book',targetId:bookId,details:String(details),createdAt:window.firebase.firestore.FieldValue.serverTimestamp()}); } catch(e){console.warn('Admin log failed',e);}
 }
 
-
-// ------------------------------------------------------------
-// EVENTS
-// ------------------------------------------------------------
-
-export function initAdminBooksEvents() {
-
-  if (!isAdmin()) {
-    return;
-  }
-
-
-  const search =
-    document.getElementById(
-      'admin-books-search'
-    );
-
-  if (search) {
-
-    search.addEventListener(
-      'input',
-      event => {
-
-        searchTerm =
-          event.target.value || '';
-
-        renderBooksTable();
-
-      }
-    );
-
-  }
-
-
-  const status =
-    document.getElementById(
-      'admin-books-status'
-    );
-
-  if (status) {
-
-    status.addEventListener(
-      'change',
-      event => {
-
-        statusFilter =
-          event.target.value || 'all';
-
-        renderBooksTable();
-
-      }
-    );
-
-  }
-
-
-  const refresh =
-    document.getElementById(
-      'admin-books-refresh'
-    );
-
-  if (refresh) {
-
-    refresh.addEventListener(
-      'click',
-      async () => {
-
-        refresh.disabled = true;
-
-        refresh.textContent =
-          'Refreshing...';
-
-        try {
-
-          await loadBooks();
-
-          Toast.show(
-            'Books refreshed.',
-            'success'
-          );
-
-        } catch (error) {
-
-          console.error(error);
-
-          Toast.show(
-            error.message ||
-            'Unable to refresh books.',
-            'error'
-          );
-
-        } finally {
-
-          refresh.disabled = false;
-
-          refresh.textContent =
-            '↻ Refresh';
-
-        }
-
-      }
-    );
-
-  }
-
-
-  document.addEventListener(
-    'click',
-    async event => {
-
-      const button =
-        event.target.closest(
-          '[data-action]'
-        );
-
-      if (!button) {
-        return;
-      }
-
-
-      const action =
-        button.dataset.action;
-
-      const bookId =
-        button.dataset.id;
-
-
-      if (!bookId) {
-        return;
-      }
-
-
-      button.disabled = true;
-
-      const oldText =
-        button.textContent;
-
-      button.textContent =
-        '...';
-
-
-      try {
-
-        await handleBookAction(
-          action,
-          bookId
-        );
-
-      } catch (error) {
-
-        console.error(
-          'Book action error:',
-          error
-        );
-
-        Toast.show(
-          error.message ||
-          'Book action failed.',
-          'error'
-        );
-
-      } finally {
-
-        button.disabled = false;
-
-        button.textContent =
-          oldText;
-
-      }
-
-    }
-  );
-
-
-  loadBooks();
+async function updateBook(bookId,data) {
+  await db().collection('books').doc(bookId).update({...data,updated_at:window.firebase.firestore.FieldValue.serverTimestamp(),updatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
+  await writeLog('book_updated',bookId,JSON.stringify(data));
 }
 
-
-// ------------------------------------------------------------
-// CLEANUP
-// ------------------------------------------------------------
-
-export function destroyAdminBooksPage() {
-
-  if (unsubscribeBooks) {
-
-    unsubscribeBooks();
-
-    unsubscribeBooks = null;
-  }
-
-  booksCache = [];
-  searchTerm = '';
-  statusFilter = 'all';
+function openEdit(book) {
+  const modal=document.getElementById('ab-edit-modal'); if(!modal)return;
+  const get=(id)=>document.getElementById(id); const set=(id,v)=>{get(id).value=v??''};
+  set('ab-edit-book-id',book.id); set('ab-edit-title',val(book,'title'));set('ab-edit-author',val(book,'author'));set('ab-edit-price',val(book,'price'));set('ab-edit-sale-price',val(book,'sale_price','salePrice'));set('ab-edit-category',val(book,'category'));set('ab-edit-language',val(book,'language'));set('ab-edit-pages',val(book,'pages'));set('ab-edit-status',val(book,'status')||'pending');set('ab-edit-subtitle',val(book,'subtitle'));set('ab-edit-cover',val(book,'cover_url','coverUrl'));set('ab-edit-pdf-url',val(book,'pdf_url','pdfUrl'));set('ab-edit-description',val(book,'description'));get('ab-edit-trending').checked=!!val(book,'is_trending','isTrending');get('ab-edit-bestseller').checked=!!val(book,'is_bestseller','isBestseller');get('ab-edit-new').checked=!!val(book,'is_new','isNew');get('ab-edit-featured').checked=!!val(book,'is_featured','isFeatured');get('ab-edit-id').textContent=book.id;modal.classList.remove('hidden');
 }
+
+async function action(action,id) {
+  const book=booksCache.find(b=>b.id===id); if(!book)throw new Error('Book not found.');
+  const title=val(book,'title')||'this book';
+  if(action==='edit'){openEdit(book);return;}
+  if(action==='delete'){
+    if(!confirm(`Permanently delete "${title}" from Firestore? This cannot be undone.`))return;
+    await db().collection('books').doc(id).delete();await writeLog('book_deleted',id,title);Toast.show('Book permanently deleted.','success');return;
+  }
+  if(action==='remove'){
+    if(!confirm(`Remove "${title}" from the marketplace?`))return;
+    await updateBook(id,{status:'removed',removed:true,removed_at:new Date().toISOString()});Toast.show('Book removed from marketplace.','success');return;
+  }
+  if(action==='restore'){await updateBook(id,{status:'pending',removed:false,removed_at:null});Toast.show('Book restored to pending.','success');return;}
+  if(action==='approve'){await updateBook(id,{status:'approved',removed:false});Toast.show('Book approved.','success');return;}
+  if(action==='reject'){await updateBook(id,{status:'rejected'});Toast.show('Book rejected.','success');return;}
+  const fields={trending:'is_trending',bestseller:'is_bestseller',new:'is_new',featured:'is_featured'};
+  if(fields[action]){const key=fields[action];await updateBook(id,{[key]:!Boolean(book[key])});Toast.show('Book updated.','success');}
+}
+
+function bindEditForm(){
+  document.getElementById('ab-edit-form')?.addEventListener('submit',async e=>{
+    e.preventDefault();const id=document.getElementById('ab-edit-book-id').value;const button=e.target.querySelector('button[type=submit]');button.disabled=true;button.textContent='Saving…';
+    try{const n=id=>document.getElementById(id);await updateBook(id,{title:n('ab-edit-title').value.trim(),author:n('ab-edit-author').value.trim(),price:Number(n('ab-edit-price').value||0),sale_price:n('ab-edit-sale-price').value===''?null:Number(n('ab-edit-sale-price').value),category:n('ab-edit-category').value.trim(),language:n('ab-edit-language').value.trim(),pages:Number(n('ab-edit-pages').value||0),status:n('ab-edit-status').value,subtitle:n('ab-edit-subtitle').value.trim(),cover_url:n('ab-edit-cover').value.trim(),pdf_url:n('ab-edit-pdf-url').value.trim(),description:n('ab-edit-description').value.trim(),is_trending:n('ab-edit-trending').checked,is_bestseller:n('ab-edit-bestseller').checked,is_new:n('ab-edit-new').checked,is_featured:n('ab-edit-featured').checked});document.getElementById('ab-edit-modal').classList.add('hidden');Toast.show('Book changes saved to Firebase.','success');}catch(err){Toast.show(err.message||'Could not save book.','error');}finally{button.disabled=false;button.textContent='Save Changes';}
+  });
+}
+
+export function initAdminBooksEvents(){
+  if(!isAdmin()||eventsBound)return;eventsBound=true;
+  document.getElementById('admin-books-search')?.addEventListener('input',e=>{searchTerm=e.target.value||'';renderBooksTable();});
+  document.getElementById('admin-books-status')?.addEventListener('change',e=>{statusFilter=e.target.value;renderBooksTable();});
+  document.getElementById('admin-books-refresh')?.addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Refreshing…';try{await loadBooks();Toast.show('Books refreshed.','success');}catch(err){Toast.show(err.message||'Refresh failed.','error');}finally{b.disabled=false;b.textContent='↻ Refresh';}});
+  document.addEventListener('click',async e=>{
+    const close=e.target.closest('[data-modal-close]');if(close){document.getElementById('ab-edit-modal')?.classList.add('hidden');return;}
+    const button=e.target.closest('[data-action]');if(!button||!button.dataset.id)return;button.disabled=true;const old=button.textContent;button.textContent='…';try{await action(button.dataset.action,button.dataset.id);}catch(err){console.error(err);Toast.show(err.message||'Action failed.','error');}finally{button.disabled=false;button.textContent=old;}
+  });
+  bindEditForm();loadBooks().catch(err=>Toast.show(err.message||'Unable to load books.','error'));
+}
+
+export function destroyAdminBooksPage(){if(unsubscribeBooks){unsubscribeBooks();unsubscribeBooks=null;}booksCache=[];searchTerm='';statusFilter='active';eventsBound=false;}
