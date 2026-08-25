@@ -63,7 +63,6 @@ export function renderAdminBooksPage() {
 }
 
 async function loadBooksFromFirestore() {
-  // Fast bootstrap cache gives an immediate approved catalog when available.
   if (Array.isArray(window.__BOOKORA_FAST_BOOKS__) && window.__BOOKORA_FAST_BOOKS__.length) {
     books = window.__BOOKORA_FAST_BOOKS__.slice(); renderTable();
   }
@@ -96,8 +95,6 @@ async function loadBooksFromServer() {
 async function loadBooks() {
   const tbody = document.getElementById('ab-list');
   try {
-    // Do not wait on one data source. Firebase is authoritative for eBooks;
-    // the server is the secure fallback and for all admin mutations.
     const firebasePromise = loadBooksFromFirestore();
     let serverResult = null;
     try { serverResult = await loadBooksFromServer(); } catch (serverError) { console.warn('[Admin Books] server source:', serverError?.message || serverError); }
@@ -124,7 +121,14 @@ function renderTable() {
 
 export function initAdminBooksEvents() {
   if (!isAdmin() || eventsBound) return; eventsBound=true;
-  document.getElementById('admin-books-refresh')?.addEventListener('click',async e=>{e.currentTarget.disabled=true;try{serverSessionReady=false;await loadBooks();Toast.show('Books refreshed.','success')}catch(err){Toast.show(err.message,'error')}finally{e.currentTarget.disabled=false}});
+  document.getElementById('admin-books-refresh')?.addEventListener('click',async e=>{
+    const button = e.currentTarget;
+    if (!button) return;
+    button.disabled=true;
+    try { serverSessionReady=false; await loadBooks(); Toast.show('Books refreshed.','success'); }
+    catch(err) { Toast.show(err.message,'error'); }
+    finally { button.disabled=false; }
+  });
   document.getElementById('ab-search')?.addEventListener('input',e=>{search=e.target.value;renderTable()}); document.getElementById('ab-filter')?.addEventListener('change',e=>{filter=e.target.value;renderTable()});
   document.addEventListener('click',async e=>{
     const retryBtn=e.target.closest('#admin-books-inline-retry'); if(retryBtn){retryBtn.disabled=true;retryBtn.textContent='Retrying…';try{serverSessionReady=false;await loadBooks();Toast.show('Books loaded.','success')}catch(err){Toast.show(err.message||'Unable to load books.','error');retryBtn.disabled=false;retryBtn.textContent='Retry'}return;}
