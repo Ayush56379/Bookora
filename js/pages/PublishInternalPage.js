@@ -24,6 +24,91 @@ function getValue(id, fallback = '') { return document.getElementById(id)?.value
 function getNumber(id, fallback = 0) { const value = Number(document.getElementById(id)?.value); return Number.isFinite(value) ? value : fallback; }
 function authHeaders() { return { Authorization: `Bearer ${state.token}` }; }
 
+// Firestore is the permanent source of truth for book metadata. Google Drive
+// stores only the binary PDF and cover; this write contains metadata plus the
+// Drive references, never the binary file contents.
+async function persistBookMetadataToFirestore(book, input) {
+  const firestoreSdk = window.firebase;
+  if (!firestoreSdk?.firestore) throw new Error('Firebase Firestore is not available. The book was uploaded, but its metadata could not be saved.');
+
+  let authUser = null;
+  try { authUser = firestoreSdk.auth?.().currentUser || null; } catch (_) {}
+  if (!authUser) throw new Error('Firebase authentication is not ready. The book was uploaded, but its metadata could not be saved. Please retry.');
+
+  const db = firestoreSdk.firestore();
+  const bookId = String(book?.id || book?.bookId || '').trim();
+  if (!bookId) throw new Error('The server did not return a stable book ID, so the Firestore record cannot be created.');
+
+  const now = new Date().toISOString();
+  const safe = value => value === undefined || value === null ? '' : value;
+  const tags = Array.isArray(input.tags) ? input.tags : [];
+  const metadata = {
+    id: bookId,
+    bookId,
+    slug: safe(book.slug || input.slug || bookId),
+    title: safe(input.title || book.title),
+    subtitle: safe(input.subtitle || book.subtitle),
+    author: safe(input.author || book.author),
+    description: safe(input.description || book.description),
+    category: safe(input.category || book.category || 'Other'),
+    categoryId: safe(book.category_id || book.categoryId || ''),
+    tags,
+    pages: Number(input.pages || book.pages || 0),
+    format: 'PDF',
+    language: safe(book.language || 'English'),
+    price: Number(input.price || book.price || 0),
+    salePrice: input.sale_price === null || input.sale_price === undefined ? (book.salePrice ?? book.sale_price ?? null) : input.sale_price,
+    sale_price: input.sale_price === null || input.sale_price === undefined ? (book.sale_price ?? null) : input.sale_price,
+    coverUrl: safe(input.cover_url || book.cover_url || book.coverUrl),
+    cover_url: safe(input.cover_url || book.cover_url || book.coverUrl),
+    coverDriveFileId: safe(input.cover_file_id || book.cover_file_id || book.coverFileId),
+    coverFileId: safe(input.cover_file_id || book.cover_file_id || book.coverFileId),
+    cover_file_id: safe(input.cover_file_id || book.cover_file_id || book.coverFileId),
+    pdfUrl: safe(input.pdf_url || book.pdf_url || book.pdfUrl),
+    pdf_url: safe(input.pdf_url || book.pdf_url || book.pdfUrl),
+    driveFileId: safe(input.pdf_file_id || book.pdf_file_id || book.pdfFileId || book.driveFileId),
+    pdfFileId: safe(input.pdf_file_id || book.pdf_file_id || book.pdfFileId || book.driveFileId),
+    pdf_file_id: safe(input.pdf_file_id || book.pdf_file_id || book.pdfFileId || book.driveFileId),
+    sourceType: 'internal',
+    source_type: 'internal',
+    creatorId: safe(book.creator_id || book.creatorId || state.currentUser?.id),
+    creator_id: safe(book.creator_id || book.creatorId || state.currentUser?.id),
+    creatorUid: authUser.uid,
+    firebaseUid: authUser.uid,
+    sellerId: safe(book.seller_id || book.sellerId || book.creator_id || state.currentUser?.id),
+    seller_id: safe(book.seller_id || book.sellerId || book.creator_id || state.currentUser?.id),
+    sellerName: safe(book.seller_name || book.sellerName || input.author),
+    seller_name: safe(book.seller_name || book.sellerName || input.author),
+    status: 'pending',
+    isFeatured: false,
+    is_featured: false,
+    isTrending: false,
+    is_trending: false,
+    isBestseller: false,
+    is_bestseller: false,
+    isNew: true,
+    is_new: true,
+    rating: Number(book.rating || 0),
+    reviewCount: Number(book.review_count || book.reviewCount || 0),
+    review_count: Number(book.review_count || book.reviewCount || 0),
+    createdAt: book.createdAt || book.created_at || now,
+    created_at: book.created_at || book.createdAt || now,
+    updatedAt: now,
+    updated_at: now,
+    backendBookId: bookId,
+    backendSynced: true,
+    metadataSource: 'firestore',
+    driveStorage: 'files-only'
+  };
+
+  const ref = db.collection('books').doc(bookId);
+  await ref.set(metadata, { merge: true });
+  const verify = await ref.get();
+  if (!verify.exists) throw new Error('Firestore did not confirm the new book record. The upload was not finalized.');
+
+  return { id: bookId, ...metadata };
+}
+
 async function loadUploadConfig() {
   const local = Number(state.settings?.books_config?.max_pdf_size_mb);
   if (Number.isFinite(local) && local > 0) uploadConfig.maxPdfMb = Math.min(MAX_ADMIN_PDF_MB, Math.max(1, Math.floor(local)));
@@ -165,7 +250,7 @@ function updatePreview() {
   document.getElementById('preview-pages')?.replaceChildren(document.createTextNode(`Pages: ${pages}`));
   document.getElementById('preview-price')?.replaceChildren(document.createTextNode(formatPrice(price)));
   const box = document.getElementById('preview-cover-box');
-  if (box && selectedCover) { if (box.dataset.url) URL.revokeObjectURL(box.dataset.url); const url = URL.createObjectURL(selectedCover); box.dataset.url = url; box.style.background = `url("${url}") center/cover no-repeat`; }
+  if (box && selectedCover) { if (box.dataset.url) URL.revokeObjectURL(box.dataset.url); const url = URL.createObjectURL(selectedCover); box.dataset.url = url; box.style.background = `url(\"${url}\") center/cover no-repeat`; }
 }
 
 function showStep(step) {
@@ -296,7 +381,7 @@ export function initPublishInternalEvents() {
     if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { Toast.show('Please select a JPG, PNG or WEBP cover.', 'warning'); event.target.value = ''; return; }
     if (file.size > MAX_COVER_MB * 1024 * 1024) { Toast.show(`Cover must be ${MAX_COVER_MB} MB or smaller.`, 'warning'); event.target.value = ''; return; }
     selectedCover = file; updateFilesUI(); const preview = document.getElementById('step2-cover-preview');
-    if (preview) { if (preview.dataset.url) URL.revokeObjectURL(preview.dataset.url); const url = URL.createObjectURL(file); preview.dataset.url = url; preview.style.backgroundImage = `url("${url}")`; preview.style.display = 'block'; }
+    if (preview) { if (preview.dataset.url) URL.revokeObjectURL(preview.dataset.url); const url = URL.createObjectURL(file); preview.dataset.url = url; preview.style.backgroundImage = `url(\"${url}\")`; preview.style.display = 'block'; }
   });
 
   detectPagesButton?.addEventListener('click', () => detectAndSetPages()); priceInput?.addEventListener('input', updateRoyalty); saleInput?.addEventListener('input', updateRoyalty);
@@ -321,8 +406,13 @@ export function initPublishInternalEvents() {
       setSubmitProgress('Uploading cover...', selectedPDF.size / totalBytes * 100);
       const coverFile = await uploadFileResumable(selectedCover, 'cover', ratio => setSubmitProgress('Uploading cover...', (selectedPDF.size + ratio * selectedCover.size) / totalBytes * 100));
       setSubmitProgress('Files uploaded. Creating listing...', 100);
-      const bookResponse = await requestJson('/api/books/create', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ action: 'createBook', title, subtitle, author, category, description, tags, pages, format: 'PDF', price, sale_price: salePrice, cover_url: coverFile?.url || coverFile?.webViewLink || coverFile?.downloadUrl || '', pdf_url: pdfFile?.url || pdfFile?.webViewLink || pdfFile?.downloadUrl || '', cover_file_id: coverFile?.id || coverFile?.file_id || coverFile?.fileId || '', pdf_file_id: pdfFile?.id || pdfFile?.file_id || pdfFile?.fileId || '', status: 'pending' }) });
+      const createPayload = { action: 'createBook', title, subtitle, author, category, description, tags, pages, format: 'PDF', price, sale_price: salePrice, cover_url: coverFile?.url || coverFile?.webViewLink || coverFile?.downloadUrl || '', pdf_url: pdfFile?.url || pdfFile?.webViewLink || pdfFile?.downloadUrl || '', cover_file_id: coverFile?.id || coverFile?.file_id || coverFile?.fileId || '', pdf_file_id: pdfFile?.id || pdfFile?.file_id || pdfFile?.fileId || '', status: 'pending' };
+      const bookResponse = await requestJson('/api/books/create', { method: 'POST', headers: authHeaders(), body: JSON.stringify(createPayload) });
       if (!bookResponse.book) throw new Error('Book listing was not returned by the server.');
+
+      setSubmitProgress('Saving book metadata to Firebase...', 100);
+      await persistBookMetadataToFirestore(bookResponse.book, createPayload);
+
       Toast.show('eBook submitted successfully for admin review!', 'success');
       selectedPDF = null; selectedCover = null;
       updateFilesUI();
