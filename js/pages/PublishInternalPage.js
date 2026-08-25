@@ -24,6 +24,28 @@ function getValue(id, fallback = '') { return document.getElementById(id)?.value
 function getNumber(id, fallback = 0) { const value = Number(document.getElementById(id)?.value); return Number.isFinite(value) ? value : fallback; }
 function authHeaders() { return { Authorization: `Bearer ${state.token}` }; }
 
+// FIRESTORE_AUTH_RETRY_PATCH_V2
+// Firebase Auth can finish restoring the session slightly after the publish
+// wizard is rendered. Wait for the real Firebase user before writing metadata.
+async function waitForFirebaseUser(timeoutMs = 15000) {
+  const auth = window.firebase?.auth?.();
+  if (!auth) return null;
+  const immediate = auth.currentUser;
+  if (immediate) return immediate;
+  return await new Promise(resolve => {
+    let settled = false;
+    let unsubscribe = null;
+    const finish = user => {
+      if (settled) return;
+      settled = true;
+      try { unsubscribe?.(); } catch (_) {}
+      resolve(user || null);
+    };
+    try { unsubscribe = auth.onAuthStateChanged(finish); } catch (_) { finish(null); return; }
+    setTimeout(() => finish(auth.currentUser || null), timeoutMs);
+  });
+}
+
 // Firestore is the permanent source of truth for book metadata. Google Drive
 // stores only the binary PDF and cover; this write contains metadata plus the
 // Drive references, never the binary file contents.
@@ -31,9 +53,8 @@ async function persistBookMetadataToFirestore(book, input) {
   const firestoreSdk = window.firebase;
   if (!firestoreSdk?.firestore) throw new Error('Firebase Firestore is not available. The book was uploaded, but its metadata could not be saved.');
 
-  let authUser = null;
-  try { authUser = firestoreSdk.auth?.().currentUser || null; } catch (_) {}
-  if (!authUser) throw new Error('Firebase authentication is not ready. The book was uploaded, but its metadata could not be saved. Please retry.');
+  const authUser = await waitForFirebaseUser();
+  if (!authUser) throw new Error('Firebase authentication is not ready. The book was uploaded, but its metadata could not be saved. Please retry once the session finishes loading.');
 
   const db = firestoreSdk.firestore();
   const bookId = String(book?.id || book?.bookId || '').trim();
@@ -102,11 +123,21 @@ async function persistBookMetadataToFirestore(book, input) {
   };
 
   const ref = db.collection('books').doc(bookId);
-  await ref.set(metadata, { merge: true });
-  const verify = await ref.get();
-  if (!verify.exists) throw new Error('Firestore did not confirm the new book record. The upload was not finalized.');
-
-  return { id: bookId, ...metadata };
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await ref.set(metadata, { merge: true });
+      // A successful Firestore set() is the authoritative write acknowledgement.
+      // Do not require a follow-up read: creator rules may permit writes while
+      // restricting reads, and that used to incorrectly turn a successful write
+      // into a failed upload. Admin/public readers can read the same document.
+      return { id: bookId, ...metadata };
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 800 * attempt));
+    }
+  }
+  throw new Error(`Firebase could not save the book metadata: ${lastError?.message || 'permission or network error'}`);
 }
 
 async function loadUploadConfig() {
