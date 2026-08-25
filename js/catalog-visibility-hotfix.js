@@ -29,15 +29,12 @@ function newest(books) {
   return [...books].sort((a, b) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0));
 }
 
-// Every approved upload is a New Release unless the backend has already
-// supplied a flagged New Releases set.
 state.getNewReleases = function () {
   const books = state.getApprovedBooks();
   const flagged = books.filter(book => book.is_new);
   return newest(flagged.length ? flagged : books);
 };
 
-// Keep curated pages useful even when merchandising flags are missing.
 state.getTrendingBooks = function () {
   const books = state.getApprovedBooks();
   const flagged = books.filter(book => book.is_trending);
@@ -57,24 +54,36 @@ state.getExternalBooks = function () {
 function fixExplorePriceFilter() {
   const slider = document.getElementById('filter-price-slider');
   if (!slider) return;
-
-  // Prices are INR. The old ₹/$100 default hid books priced above ₹100.
   let changed = false;
-  if (Number(slider.max || 0) < 10000) {
-    slider.max = '10000';
-    changed = true;
-  }
-  if (Number(slider.value || 0) < 10000) {
-    slider.value = '10000';
-    changed = true;
-  }
-
+  if (Number(slider.max || 0) < 10000) { slider.max = '10000'; changed = true; }
+  if (Number(slider.value || 0) < 10000) { slider.value = '10000'; changed = true; }
   const label = document.getElementById('price-val-label');
   if (label && label.textContent !== '₹10,000') label.textContent = '₹10,000';
-
-  // Only dispatch once when the filter actually changes; this prevents the
-  // MutationObserver from creating a render loop.
   if (changed) slider.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function isPublicCatalogRoute() {
+  const route = (window.location.hash || '#/').split('?')[0].toLowerCase();
+  return !route.startsWith('#/admin') && !route.startsWith('#/creator') && !route.startsWith('#/dashboard') && !route.startsWith('#/settings');
+}
+
+let syncInFlight = false;
+let lastSyncAt = 0;
+
+async function refreshPublicCatalog(force = false) {
+  if (!isPublicCatalogRoute() || syncInFlight) return;
+  const now = Date.now();
+  if (!force && now - lastSyncAt < 5000) return;
+  syncInFlight = true;
+  try {
+    await state.syncData();
+    lastSyncAt = Date.now();
+    requestAnimationFrame(refreshCatalogUI);
+  } catch (error) {
+    console.warn('[Bookora public catalog refresh]', error?.message || error);
+  } finally {
+    syncInFlight = false;
+  }
 }
 
 function refreshCatalogUI() {
@@ -82,8 +91,14 @@ function refreshCatalogUI() {
   if (route === '#/explore') requestAnimationFrame(fixExplorePriceFilter);
 }
 
-window.addEventListener('hashchange', refreshCatalogUI);
-window.addEventListener('DOMContentLoaded', refreshCatalogUI);
+window.addEventListener('hashchange', () => {
+  refreshCatalogUI();
+  refreshPublicCatalog(true);
+});
+window.addEventListener('DOMContentLoaded', () => {
+  refreshCatalogUI();
+  refreshPublicCatalog(true);
+});
 
 const observer = new MutationObserver(() => {
   if (document.getElementById('filter-price-slider')) requestAnimationFrame(fixExplorePriceFilter);
@@ -93,3 +108,7 @@ observer.observe(document.documentElement, { childList: true, subtree: true });
 state.subscribe(event => {
   if (event === 'DATA_SYNCED') requestAnimationFrame(refreshCatalogUI);
 });
+
+// Keep another already-open public tab reasonably fresh without creating a
+// refresh loop. This only syncs data; it never reloads the page.
+setInterval(() => refreshPublicCatalog(false), 60000);
