@@ -1,7 +1,6 @@
 // Bookora homepage — Smart Trending eBooks engine.
-// Replaces the old Featured section with exactly 6 dynamically ranked trending books.
-// Ranking uses sales/purchases, ratings, review volume, freshness and a small daily
-// exploration factor so the six-book set can naturally change from day to day.
+// Shows the dynamic Trending eBooks section without the extra Best Sellers,
+// New Releases tabs or View all link. The complete trending ebook grid remains.
 (() => {
   if (window.__BOOKORA_SMART_TRENDING__) return;
   window.__BOOKORA_SMART_TRENDING__ = true;
@@ -114,12 +113,6 @@
               <h2>Trending eBooks</h2>
               <p>Updated automatically from sales, ratings, reviews and fresh activity.</p>
             </div>
-            <a href="#/explore" class="kdp-view-all">View all <span>→</span></a>
-          </div>
-          <div class="kdp-tabs">
-            <button class="kdp-tab active" type="button">Trending</button>
-            <a class="kdp-tab" href="#/best-sellers">Best Sellers</a>
-            <a class="kdp-tab" href="#/new-releases">New Releases</a>
           </div>
           <div id="home-live-catalog">
             ${books.length ? `<div class="kdp-book-grid">${cards}</div>` : `<div class="kdp-loading-state"><strong>Loading trending eBooks…</strong><span>Connecting to the Bookora catalog</span></div>`}
@@ -149,7 +142,6 @@
     try { state?.subscribe?.(() => refresh()); } catch (_) {}
   });
 
-  // Recalculate periodically and immediately after the calendar day changes.
   setInterval(refresh, 60 * 60 * 1000);
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
