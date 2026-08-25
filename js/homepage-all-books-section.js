@@ -90,16 +90,82 @@
   else start();
 })();
 
+// This section previously had a separate grid override that could collapse
+// cards when the global ebook rules were applied. It now explicitly follows
+// the same card geometry and responsive density as the rest of Bookora.
 if (!document.getElementById('bookora-all-ebooks-styles')) {
   const style = document.createElement('style');
   style.id = 'bookora-all-ebooks-styles';
   style.textContent = `
-    #bookora-all-ebooks-section{border-top:1px solid var(--border-subtle,#e2e8f0);padding-top:52px}
-    .bookora-all-ebooks-grid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:22px!important;width:100%!important;align-items:stretch!important}
-    .bookora-all-ebooks-grid .kdp-book-item{min-width:0!important;width:100%!important}
-    @media(max-width:1100px){.bookora-all-ebooks-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
-    @media(max-width:800px){.bookora-all-ebooks-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important}}
-    @media(max-width:560px){.bookora-all-ebooks-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}}
+    #bookora-all-ebooks-section{
+      width:100%!important;
+      max-width:none!important;
+      box-sizing:border-box!important;
+      border-top:1px solid var(--border-subtle,#e2e8f0);
+      padding-top:52px;
+    }
+    #bookora-all-ebooks-section .kdp-catalog-container{
+      width:100%!important;
+      max-width:2400px!important;
+      margin-inline:auto!important;
+      padding-inline:clamp(12px,2.4vw,48px)!important;
+      box-sizing:border-box!important;
+    }
+    #bookora-all-ebooks-section .bookora-all-ebooks-grid{
+      display:grid!important;
+      width:100%!important;
+      min-width:0!important;
+      max-width:none!important;
+      box-sizing:border-box!important;
+      grid-template-columns:repeat(6,minmax(0,1fr))!important;
+      gap:clamp(10px,1.25vw,22px)!important;
+      align-items:stretch!important;
+    }
+    #bookora-all-ebooks-section .bookora-all-ebooks-grid .kdp-book-item{
+      width:100%!important;
+      min-width:0!important;
+      max-width:250px!important;
+      box-sizing:border-box!important;
+      display:flex!important;
+      justify-content:stretch!important;
+    }
+    #bookora-all-ebooks-section .bookora-all-ebooks-grid .book-card,
+    #bookora-all-ebooks-section .bookora-all-ebooks-grid .book-card-premium{
+      width:100%!important;
+      min-width:0!important;
+      max-width:250px!important;
+      box-sizing:border-box!important;
+    }
+    #bookora-all-ebooks-section .bookora-all-ebooks-grid .book-cover-container,
+    #bookora-all-ebooks-section .bookora-all-ebooks-grid .book-cover-premium{
+      width:100%!important;
+      height:auto!important;
+      aspect-ratio:2/3!important;
+      min-height:0!important;
+      box-sizing:border-box!important;
+    }
+    @media(max-width:767px){
+      #bookora-all-ebooks-section .kdp-catalog-container{padding-inline:10px!important}
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid .kdp-book-item,
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid .book-card,
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid .book-card-premium{max-width:none!important}
+    }
+    @media(min-width:768px) and (max-width:1099px){
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important}
+    }
+    @media(min-width:1100px) and (max-width:1599px){
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important}
+    }
+    @media(min-width:1600px) and (max-width:2199px){
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(7,minmax(0,1fr))!important}
+    }
+    @media(min-width:2200px) and (max-width:3199px){
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(9,minmax(0,1fr))!important}
+    }
+    @media(min-width:3200px){
+      #bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(10,minmax(0,1fr))!important}
+    }
   `;
   document.head.appendChild(style);
 }
