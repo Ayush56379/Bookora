@@ -1,5 +1,5 @@
 // Bookora permanent homepage catalog.
-// Owns the single All eBooks section so it never competes with Featured eBooks.
+// Owns one stable All eBooks section so it never competes with Featured eBooks.
 (() => {
   if (window.__BOOKORA_PERMANENT_ALL_BOOKS__) return;
   window.__BOOKORA_PERMANENT_ALL_BOOKS__ = true;
@@ -7,10 +7,7 @@
   const SECTION_ID = 'bookora-home-all-books';
   let busy = false;
   let lastHtml = '';
-
-  const escapeHtml = value => String(value ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\"/g, '&quot;').replace(/'/g, '&#039;');
+  let renderBookCard = null;
 
   async function getState() {
     try { return (await import('./state.js')).state; } catch (_) { return null; }
@@ -31,10 +28,11 @@
     return [...map.values()];
   }
 
-  function cardGrid(books, state) {
-    const renderBookCard = state?.__renderBookCard;
-    if (typeof renderBookCard !== 'function') return '';
-    return books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('');
+  async function ensureCardRenderer() {
+    if (renderBookCard) return renderBookCard;
+    const mod = await import('./components/BookCard.js');
+    renderBookCard = mod.renderBookCard;
+    return renderBookCard;
   }
 
   async function render() {
@@ -56,12 +54,9 @@
 
       const state = await getState();
       if (!state) return;
-      if (!state.__renderBookCard) {
-        const mod = await import('./components/BookCard.js');
-        state.__renderBookCard = mod.renderBookCard;
-      }
-
+      const card = await ensureCardRenderer();
       const books = approvedBooks(state);
+      const cards = books.map(book => `<div class="kdp-book-item">${card(book)}</div>`).join('');
       const html = `
         <div class="kdp-catalog-container">
           <div class="kdp-section-head">
@@ -73,10 +68,9 @@
             <span class="bookora-all-books-count">${books.length} ${books.length === 1 ? 'book' : 'books'}</span>
           </div>
           <div class="kdp-book-grid">
-            ${books.length ? cardGrid(books, state) : '<div class="bookora-all-books-empty">No approved eBooks available yet.</div>'}
+            ${books.length ? cards : '<div class="bookora-all-books-empty">No approved eBooks available yet.</div>'}
           </div>
         </div>`;
-
       if (html !== lastHtml) {
         root.innerHTML = html;
         lastHtml = html;
