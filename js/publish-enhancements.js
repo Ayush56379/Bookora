@@ -154,7 +154,7 @@ function showDetailedPreview() {
   const box = document.createElement('div');
   box.id = 'bookora-full-preview';
   box.style.cssText = 'margin:1.25rem 0;padding:1.25rem;border:1px solid var(--border-subtle,#E2E8F0);border-radius:16px;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.06);';
-  const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  const escHtml = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;');
   const tagsHtml = tags.length ? tags.map(t => `<span style="display:inline-block;padding:4px 9px;border-radius:999px;background:#F1F5F9;margin:3px;font-size:.78rem;">${escHtml(t)}</span>`).join('') : '<span style="color:#64748B;">No tags</span>';
   const saleText = salePrice == null ? 'No sale price' : `₹${salePrice.toFixed(2)}`;
   const fileText = pdf ? `${pdf.name} · ${(pdf.size / 1048576).toFixed(2)} MB` : 'No PDF selected';
@@ -237,6 +237,74 @@ function validate(book) {
   if (!Number.isFinite(book.salePrice) || book.salePrice < 0 || book.salePrice > book.price) throw new Error('Sale price cannot be higher than the list price.');
 }
 
+async function enhancedResumableUpload(file, kind) {
+  if (!file) throw new Error(`${kind === 'pdf' ? 'PDF' : 'Cover'} file is required.`);
+  const auth = { Authorization: `Bearer ${state.token}` };
+  const startRes = await apiFetch('/api/books/upload-session/start', {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: file.name, mimeType: kind === 'pdf' ? 'application/pdf' : (file.type || 'image/jpeg'), size: file.size, kind })
+  });
+  const start = await startRes.json().catch(() => ({}));
+  if (!startRes.ok || !start.success || !start.upload_token) throw new Error(start.error || `Could not start ${kind} upload.`);
+  const token = start.upload_token;
+  const chunkSize = Math.max(256 * 1024, Number(start.chunk_size) || 4 * 1024 * 1024);
+  let offset = Number(start.next_offset) || 0;
+
+  while (offset < file.size) {
+    const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const raw = String(reader.result || '');
+        const comma = raw.indexOf(',');
+        resolve(comma >= 0 ? raw.slice(comma + 1) : raw);
+      };
+      reader.onerror = () => reject(reader.error || new Error(`Unable to read ${kind} chunk.`));
+      reader.readAsDataURL(chunk);
+    });
+
+    let uploaded = false;
+    for (let attempt = 1; attempt <= 4 && !uploaded; attempt += 1) {
+      try {
+        const chunkRes = await apiFetch('/api/books/upload-session/chunk', {
+          method: 'POST',
+          headers: { ...auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ upload_token: token, offset, data })
+        });
+        const result = await chunkRes.json().catch(() => ({}));
+        if (chunkRes.status === 409 && Number.isFinite(Number(result.next_offset))) {
+          offset = Math.max(0, Math.min(file.size, Number(result.next_offset)));
+          uploaded = true;
+          continue;
+        }
+        if (!chunkRes.ok || !result.success) throw new Error(result.error || `${kind} chunk upload failed.`);
+        const next = Number(result.next_offset);
+        if (!Number.isFinite(next) || next <= offset || next > file.size) throw new Error('Upload server returned an invalid next offset.');
+        offset = next;
+        uploaded = true;
+      } catch (error) {
+        if (attempt >= 4) throw error;
+        await new Promise(resolve => setTimeout(resolve, Math.min(5000, attempt * 800)));
+      }
+    }
+  }
+
+  const statusRes = await apiFetch('/api/books/upload-session/status', {
+    method: 'POST',
+    headers: { ...auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ upload_token: token })
+  });
+  const status = await statusRes.json().catch(() => ({}));
+  if (!statusRes.ok || !status.success || !status.done) throw new Error(status.error || `${kind} upload did not finalize.`);
+
+  const fileInfo = status.file || {};
+  const fileId = String(fileInfo.id || fileInfo.fileId || fileInfo.file_id || status.pdf_file_id || status.cover_file_id || '').trim();
+  const fileUrl = String(fileInfo.url || fileInfo.webViewLink || fileInfo.web_view_link || status.pdf_url || status.cover_url || '').trim();
+  if (!fileId) throw new Error(`${kind === 'pdf' ? 'PDF' : 'Cover'} upload completed without a Google Drive file ID.`);
+  return { file: fileInfo, fileId, url: fileUrl || `https://drive.google.com/file/d/${fileId}/view` };
+}
+
 async function enhancedSubmit() {
   if (enhancedSubmitRunning) return;
   enhancedSubmitRunning = true;
@@ -258,42 +326,23 @@ async function enhancedSubmit() {
       await runAiDetection(book);
       Toast.show('AI check passed. Preparing files...', 'success');
     } catch (aiError) {
-      // Do not make a temporary AI-service/parser failure prevent a valid seller from uploading.
-      // A clear AI rejection still blocks submission; service/unreadable-result errors are non-blocking.
       const message = String(aiError?.message || aiError || '');
       if (/AI check rejected/i.test(message)) throw aiError;
       console.warn('Bookora AI precheck unavailable; continuing to upload:', message);
       Toast.show('AI precheck is temporarily unavailable. Continuing with upload...', 'info');
     }
 
-    setSubmitText('Preparing files...');
-    const optimizedCoverPromise = resizeCover(book.cover);
-    const [pdfBase64, optimizedCover] = await Promise.all([fileToBase64(book.pdf), optimizedCoverPromise]);
-    const coverBase64 = await fileToBase64(optimizedCover);
+    setSubmitText('Uploading PDF to Drive...');
+    const pdfUpload = await enhancedResumableUpload(book.pdf, 'pdf');
+    setSubmitText('Uploading cover to Drive...');
+    const coverUpload = await enhancedResumableUpload(await resizeCover(book.cover), 'cover');
 
-    setSubmitText('Uploading to Drive...');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5 * 60 * 1000);
-    let uploadResponse;
-    try {
-      uploadResponse = await apiFetch('/api/books/upload-files', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { Authorization: `Bearer ${state.token}` },
-        body: JSON.stringify({
-          action: 'uploadBookFiles',
-          pdf: { name: book.pdf.name, mimeType: 'application/pdf', data: pdfBase64 },
-          cover: { name: optimizedCover.name, mimeType: optimizedCover.type, data: coverBase64 }
-        })
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    const uploadData = await uploadResponse.json().catch(() => ({}));
-    if (!uploadResponse.ok || !uploadData.success) {
-      throw new Error(uploadData.error || `File upload failed (HTTP ${uploadResponse.status}).`);
-    }
+    const uploadData = {
+      pdf_file_id: pdfUpload.fileId,
+      pdf_url: pdfUpload.url,
+      cover_file_id: coverUpload.fileId,
+      cover_url: coverUpload.url
+    };
 
     setSubmitText('Creating book listing...');
     const bookResponse = await apiFetch('/api/books/create', {
