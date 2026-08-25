@@ -1,109 +1,32 @@
-/* Bookora — canonical eBook sizing system
-   One consistent Amazon/KDP-style card geometry everywhere. */
-#app .book-card,
-#app .book-card-premium{
-  width:100% !important;
-  max-width:none !important;
-  min-width:0 !important;
-  box-sizing:border-box !important;
-  flex:0 0 auto !important;
-  transform-origin:center center;
-}
+/* Bookora — CANONICAL GLOBAL EBOOK CARD SYSTEM
+   Permanent source of truth for every ebook card/grid on the site. */
+:root{--bookora-catalog-inline:clamp(16px,3vw,40px);--bookora-card-min:210px;--bookora-card-gap:22px}
 
-/* Every catalog grid gets real, full-width columns. */
-#app .kdp-book-grid,
-#app #explore-books-grid,
-#app .explore-books-grid,
-#app .books-grid,
-#app .book-grid,
-#app .products-grid,
-#app .catalog-grid,
-#app .related-books-grid{
-  display:grid !important;
-  width:100% !important;
-  max-width:100% !important;
-  box-sizing:border-box !important;
-  align-items:stretch !important;
-}
+#app .kdp-catalog-section,#app .bookora-home-all-books-section{width:100%!important;box-sizing:border-box!important}
+#app .kdp-catalog-container{width:100%!important;max-width:1440px!important;margin-inline:auto!important;padding-inline:var(--bookora-catalog-inline)!important;box-sizing:border-box!important}
 
-/* Homepage: 5 desktop cards, naturally reduces as viewport shrinks. */
-#app #home-live-catalog .kdp-book-grid{
-  grid-template-columns:repeat(5,minmax(0,1fr)) !important;
-  gap:22px !important;
-}
-#app #home-live-catalog .kdp-book-item{
-  width:100% !important;
-  min-width:0 !important;
-  max-width:none !important;
-  display:block !important;
-}
-#app #home-live-catalog .kdp-book-item > .book-card{
-  width:100% !important;
-}
+/* One canonical card geometry everywhere. */
+#app .book-card,#app .book-card-premium{width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box!important;flex:0 0 auto!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
 
-/* Explore/category/related catalogs: same visual card size. */
-#app #explore-books-grid,
-#app .explore-books-grid,
-#app .books-grid,
-#app .book-grid,
-#app .products-grid,
-#app .catalog-grid,
-#app .related-books-grid{
-  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
-  gap:20px !important;
-}
+/* Grid depends on the actual available container width, not a fragile viewport rule. */
+#app .kdp-book-grid,#app #explore-books-grid,#app .explore-books-grid,#app .books-grid,#app .book-grid,#app .products-grid,#app .catalog-grid,#app .related-books-grid{display:grid!important;width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box!important;grid-template-columns:repeat(auto-fit,minmax(var(--bookora-card-min),1fr))!important;gap:var(--bookora-card-gap)!important;align-items:stretch!important}
+#app .kdp-book-grid>.kdp-book-item,#app .book-grid>*,#app .books-grid>*,#app .catalog-grid>*,#app .related-books-grid>*{width:100%!important;min-width:0!important;max-width:none!important;box-sizing:border-box!important;display:block!important}
 
-/* Book cover geometry is always a real book ratio, never a squeezed thumbnail. */
-#app .book-cover-container.book-cover-premium,
-#app .book-cover-premium{
-  width:100% !important;
-  aspect-ratio:2 / 3 !important;
-  min-height:0 !important;
-  height:auto !important;
-  overflow:hidden !important;
-}
-#app .book-cover-image{
-  width:100% !important;
-  height:100% !important;
-  object-fit:cover !important;
-  display:block !important;
-}
+/* Complete 2:3 book cover; never leave a side gutter. */
+#app .book-cover-container.book-cover-premium,#app .book-cover-premium,#app .book-card .book-cover-container{position:relative!important;width:100%!important;max-width:none!important;height:auto!important;min-height:0!important;aspect-ratio:2/3!important;overflow:hidden!important;flex:0 0 auto!important;box-sizing:border-box!important}
+#app .book-cover-image{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;object-fit:cover!important;display:block!important}
 
-/* Card content should fill the card and never inherit tiny widths. */
-#app .book-card-info{width:100% !important;box-sizing:border-box !important;}
-#app .book-card-title-link,#app .book-card-title-link h3{max-width:100% !important;}
-#app .book-card-price-row{width:100% !important;box-sizing:border-box !important;}
+#app .book-card-info{width:100%!important;min-width:0!important;box-sizing:border-box!important;display:flex!important;flex-direction:column!important;flex:1 1 auto!important}
+#app .book-card-title-link,#app .book-card-title-link h3,#app .book-card-author,#app .book-card-price-row{max-width:100%!important;min-width:0!important;box-sizing:border-box!important}
+#app .book-card-price-row{margin-top:auto!important;width:100%!important}
 
-@media(max-width:1200px){
-  #app #home-live-catalog .kdp-book-grid{grid-template-columns:repeat(4,minmax(0,1fr)) !important;gap:18px !important;}
-}
-@media(max-width:900px){
-  #app #home-live-catalog .kdp-book-grid,
-  #app #explore-books-grid,
-  #app .explore-books-grid,
-  #app .books-grid,
-  #app .book-grid,
-  #app .products-grid,
-  #app .catalog-grid,
-  #app .related-books-grid{grid-template-columns:repeat(3,minmax(0,1fr)) !important;gap:14px !important;}
-}
-@media(max-width:600px){
-  #app #home-live-catalog .kdp-book-grid,
-  #app #explore-books-grid,
-  #app .explore-books-grid,
-  #app .books-grid,
-  #app .book-grid,
-  #app .products-grid,
-  #app .catalog-grid,
-  #app .related-books-grid{grid-template-columns:repeat(2,minmax(0,1fr)) !important;gap:10px !important;}
-  #app .book-card-info{padding:.68rem .7rem !important;}
-  #app .book-card-title-link h3{font-size:.86rem !important;}
-  #app .book-card-author{font-size:.7rem !important;}
-  #app .book-card-price{font-size:.92rem !important;}
-}
+/* All eBooks uses exactly the same centered container/grid as Featured. */
+#app #bookora-home-all-books,#app .bookora-home-all-books-section{width:100%!important;max-width:none!important;margin:0!important;padding:0!important;box-sizing:border-box!important}
+#app #bookora-home-all-books .kdp-catalog-container,#app .bookora-home-all-books-section .kdp-catalog-container{width:100%!important;max-width:1440px!important;margin-inline:auto!important;padding-inline:var(--bookora-catalog-inline)!important;box-sizing:border-box!important}
+#app #bookora-home-all-books .kdp-book-grid,#app .bookora-home-all-books-section .kdp-book-grid{width:100%!important;grid-template-columns:repeat(auto-fit,minmax(var(--bookora-card-min),1fr))!important;gap:var(--bookora-card-gap)!important}
 
-/* Prevent old responsive/flex rules from shrinking only the first two cards. */
-@media(min-width:601px){
-  #app #home-live-catalog .kdp-book-item,
-  #app #home-live-catalog .kdp-book-item > .book-card{min-width:0 !important;}
-}
+@media(min-width:1500px){#app .kdp-book-grid{--bookora-card-min:220px;--bookora-card-gap:24px}}
+@media(max-width:900px){:root{--bookora-card-min:190px;--bookora-card-gap:16px}#app .kdp-catalog-container{padding-inline:20px!important}}
+@media(max-width:600px){:root{--bookora-card-min:155px;--bookora-card-gap:10px}#app .kdp-catalog-container{padding-inline:14px!important}#app .book-card-info{padding:.68rem .7rem!important}#app .book-card-title-link h3{font-size:.86rem!important}#app .book-card-author{font-size:.7rem!important}#app .book-card-price{font-size:.92rem!important}}
+@media(max-width:380px){:root{--bookora-card-min:280px;--bookora-card-gap:12px}#app .kdp-catalog-container{padding-inline:10px!important}}
+#app .kdp-book-item>.book-card,#app .kdp-book-item>.book-card-premium{width:100%!important;max-width:none!important;min-width:0!important}
