@@ -95,14 +95,44 @@ async function loadBooksFromServer() {
 async function loadBooks() {
   const tbody = document.getElementById('ab-list');
   try {
+    // Query both sources and MERGE them. The server can contain approved/removed
+    // records while Firebase can contain a newly submitted pending book that has
+    // not reached the server index yet. Never discard one source just because
+    // the other source returned data.
     const firebasePromise = loadBooksFromFirestore();
-    let serverResult = null;
+    let serverResult = [];
     try { serverResult = await loadBooksFromServer(); } catch (serverError) { console.warn('[Admin Books] server source:', serverError?.message || serverError); }
-    if (serverResult && serverResult.length) { books = serverResult; renderTable(); return; }
-    const firebaseResult = await firebasePromise;
-    if (firebaseResult) return;
-    books = [];
+
+    let firebaseResult = false;
+    try { firebaseResult = await firebasePromise; } catch (firebaseError) { console.warn('[Admin Books] Firebase source:', firebaseError?.message || firebaseError); }
+
+    const merged = new Map();
+
+    // Firebase is intentionally added first so the server response remains the
+    // authoritative overlay for duplicate IDs/statuses.
+    if (Array.isArray(books)) {
+      for (const book of books) {
+        if (book?.id != null) merged.set(String(book.id), book);
+      }
+    }
+    if (Array.isArray(serverResult)) {
+      for (const book of serverResult) {
+        if (book?.id != null) merged.set(String(book.id), book);
+      }
+    }
+
+    if (!merged.size && Array.isArray(state.books)) {
+      for (const book of state.books) {
+        if (book?.id != null) merged.set(String(book.id), book);
+      }
+    }
+
+    books = Array.from(merged.values());
     renderTable();
+
+    if (!books.length && !firebaseResult && !serverResult.length) {
+      console.warn('[Admin Books] No books returned by Firebase or server.');
+    }
   } catch (error) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="padding:50px;text-align:center;color:#b91c1c">${esc(error?.message || 'Unable to load books.')}<br><button id="admin-books-inline-retry" class="ab-btn" style="margin-top:12px;background:#2563eb;color:#fff">Retry</button></td></tr>`;
     throw error;
