@@ -1,25 +1,19 @@
-/* Bookora — CANONICAL GLOBAL EBOOK CARD SYSTEM
-   Permanent source of truth for every ebook card/grid on the site.
-   Design target: compact Amazon/KDP-style catalog cards, not oversized hero cards. */
+/* Bookora — GLOBAL RESPONSIVE EBOOK SYSTEM
+   One compact, consistent ebook-card system for the complete SPA.
+   Normal catalog cards stay compact on desktop, tablet, mobile and large TVs. */
+
 :root{
-  --bookora-catalog-max:1440px;
-  --bookora-catalog-inline:clamp(16px,4vw,60px);
-  --bookora-card-gap:18px;
+  --bookora-catalog-max:2400px;
+  --bookora-catalog-inline:clamp(12px,2.4vw,48px);
+  --bookora-card-gap:clamp(10px,1.25vw,22px);
+  --bookora-card-max:250px;
 }
 
-/* Every catalog section gets the same full-width, centered page rail. */
-#app .kdp-catalog-section,
-#app .bookora-home-all-books-section,
-#app #bookora-home-all-books{
-  width:100%!important;
-  max-width:none!important;
-  box-sizing:border-box!important;
-  margin-inline:0!important;
-}
-
+/* Page rail: use more of a large TV instead of leaving a narrow 1240px island. */
 #app .kdp-catalog-container,
 #app #bookora-home-all-books .kdp-catalog-container,
-#app .bookora-home-all-books-section .kdp-catalog-container{
+#app .bookora-home-all-books-section .kdp-catalog-container,
+#app .bookora-catalog-container{
   width:100%!important;
   max-width:var(--bookora-catalog-max)!important;
   margin-inline:auto!important;
@@ -27,22 +21,33 @@
   box-sizing:border-box!important;
 }
 
-/* ONE card geometry everywhere. */
+#app .kdp-catalog-section,
+#app .bookora-home-all-books-section,
+#app #bookora-home-all-books{
+  width:100%!important;
+  max-width:none!important;
+  margin-inline:0!important;
+  box-sizing:border-box!important;
+}
+
+/* Canonical normal ebook card geometry. */
 #app .book-card,
 #app .book-card-premium{
   width:100%!important;
-  max-width:none!important;
+  max-width:var(--bookora-card-max)!important;
   min-width:0!important;
   box-sizing:border-box!important;
-  flex:0 0 auto!important;
+  flex:0 1 auto!important;
   display:flex!important;
   flex-direction:column!important;
   overflow:hidden!important;
   border-radius:12px!important;
+  margin-inline:auto!important;
 }
 
-/* KDP-style catalog density: six compact books on desktop instead of three oversized cards. */
+/* All normal ebook grids use the same density. */
 #app .kdp-book-grid,
+#app .bookora-catalog-grid,
 #app #explore-books-grid,
 #app .explore-books-grid,
 #app .books-grid,
@@ -61,6 +66,9 @@
 }
 
 #app .kdp-book-grid>.kdp-book-item,
+#app .bookora-catalog-grid>*,
+#app #explore-books-grid>*,
+#app .explore-books-grid>*,
 #app .book-grid>*,
 #app .books-grid>*,
 #app .catalog-grid>*,
@@ -70,10 +78,30 @@
   min-width:0!important;
   max-width:none!important;
   box-sizing:border-box!important;
-  display:block!important;
+  display:flex!important;
+  justify-content:center!important;
 }
 
-/* Complete portrait cover: the image fills the card width and never creates a side gutter. */
+#app .kdp-book-item>.book-card,
+#app .kdp-book-item>.book-card-premium,
+#app .bookora-catalog-grid .book-card,
+#app .bookora-catalog-grid .book-card-premium,
+#app .books-grid .book-card,
+#app .books-grid .book-card-premium,
+#app .book-grid .book-card,
+#app .book-grid .book-card-premium,
+#app .products-grid .book-card,
+#app .products-grid .book-card-premium,
+#app .catalog-grid .book-card,
+#app .catalog-grid .book-card-premium,
+#app .related-books-grid .book-card,
+#app .related-books-grid .book-card-premium{
+  width:100%!important;
+  max-width:var(--bookora-card-max)!important;
+  min-width:0!important;
+}
+
+/* Same portrait cover ratio everywhere normal ebook cards are shown. */
 #app .book-cover-container.book-cover-premium,
 #app .book-cover-premium,
 #app .book-card .book-cover-container{
@@ -99,7 +127,6 @@
   display:block!important;
 }
 
-/* Keep the information area compact and consistent like a marketplace catalog card. */
 #app .book-card-info{
   width:100%!important;
   min-width:0!important;
@@ -109,6 +136,7 @@
   flex:1 1 auto!important;
   padding:10px 10px 11px!important;
 }
+
 #app .book-card-title-link,
 #app .book-card-title-link h3,
 #app .book-card-author,
@@ -117,6 +145,7 @@
   min-width:0!important;
   box-sizing:border-box!important;
 }
+
 #app .book-card-title-link h3{
   line-height:1.25!important;
   display:-webkit-box!important;
@@ -124,79 +153,135 @@
   -webkit-line-clamp:2!important;
   overflow:hidden!important;
 }
+
 #app .book-card-author{
   overflow:hidden!important;
   text-overflow:ellipsis!important;
   white-space:nowrap!important;
 }
-#app .book-card-price-row{
-  margin-top:auto!important;
-  width:100%!important;
+
+#app .book-card-price-row{margin-top:auto!important;width:100%!important}
+
+/* Tablet. */
+@media (min-width:768px) and (max-width:1099px){
+  :root{--bookora-card-gap:14px;--bookora-catalog-inline:20px;--bookora-card-max:250px}
+  #app .kdp-book-grid,
+  #app .bookora-catalog-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}
 }
 
-/* Exact responsive density: cards get smaller as the viewport gets smaller, rather than becoming giant. */
-@media (min-width:1440px){
-  #app .kdp-book-grid,
-  #app #bookora-home-all-books .kdp-book-grid,
-  #app .bookora-home-all-books-section .kdp-book-grid{
-    grid-template-columns:repeat(6,minmax(0,1fr))!important;
-  }
-}
-@media (min-width:1100px) and (max-width:1439px){
-  #app .kdp-book-grid,
-  #app #bookora-home-all-books .kdp-book-grid,
-  #app .bookora-home-all-books-section .kdp-book-grid{
-    grid-template-columns:repeat(5,minmax(0,1fr))!important;
-  }
-}
-@media (min-width:768px) and (max-width:1099px){
-  :root{--bookora-card-gap:16px;--bookora-catalog-inline:24px}
-  #app .kdp-book-grid,
-  #app #bookora-home-all-books .kdp-book-grid,
-  #app .bookora-home-all-books-section .kdp-book-grid{
-    grid-template-columns:repeat(4,minmax(0,1fr))!important;
-  }
-}
+/* Large phones / small tablets: two or three compact cards, never one giant card. */
 @media (min-width:480px) and (max-width:767px){
-  :root{--bookora-card-gap:12px;--bookora-catalog-inline:16px}
+  :root{--bookora-card-gap:12px;--bookora-catalog-inline:14px;--bookora-card-max:230px}
   #app .kdp-book-grid,
-  #app #bookora-home-all-books .kdp-book-grid,
-  #app .bookora-home-all-books-section .kdp-book-grid{
-    grid-template-columns:repeat(3,minmax(0,1fr))!important;
-  }
-}
-@media (min-width:381px) and (max-width:479px){
-  :root{--bookora-card-gap:10px;--bookora-catalog-inline:12px}
-  #app .kdp-book-grid,
-  #app #bookora-home-all-books .kdp-book-grid,
-  #app .bookora-home-all-books-section .kdp-book-grid{
-    grid-template-columns:repeat(2,minmax(0,1fr))!important;
-  }
+  #app .bookora-catalog-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}
   #app .book-card-info{padding:8px!important}
   #app .book-card-title-link h3{font-size:.82rem!important}
   #app .book-card-author{font-size:.7rem!important}
   #app .book-card-price{font-size:.9rem!important}
 }
-@media (max-width:380px){
-  :root{--bookora-card-gap:12px;--bookora-catalog-inline:10px}
+
+/* Phones: two columns all the way down to very narrow screens so covers do not become huge. */
+@media (max-width:479px){
+  :root{--bookora-card-gap:10px;--bookora-catalog-inline:10px;--bookora-card-max:220px}
   #app .kdp-book-grid,
-  #app #bookora-home-all-books .kdp-book-grid,
-  #app .bookora-home-all-books-section .kdp-book-grid{
-    grid-template-columns:minmax(0,1fr)!important;
-  }
-  #app .book-card-info{padding:10px!important}
+  #app .bookora-catalog-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  #app .book-card-info{padding:7px!important}
+  #app .book-card-title-link h3{font-size:.78rem!important;min-height:2.05rem!important}
+  #app .book-card-author{font-size:.65rem!important}
+  #app .book-card-price{font-size:.86rem!important}
+  #app .book-buy-btn{font-size:.62rem!important;padding:.34rem .48rem!important}
+  #app .book-card-premium .book-wishlist-btn{width:30px!important;height:30px!important;top:.45rem!important;right:.45rem!important}
 }
 
-#app .kdp-book-item>.book-card,
-#app .kdp-book-item>.book-card-premium{
-  width:100%!important;
-  max-width:none!important;
-  min-width:0!important;
+/* Desktop: 6 compact cards at normal desktop widths. */
+@media (min-width:1100px) and (max-width:1599px){
+  :root{--bookora-card-gap:18px;--bookora-catalog-inline:clamp(22px,3vw,40px);--bookora-card-max:245px}
+  #app .kdp-book-grid,
+  #app .bookora-catalog-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important}
 }
 
-/* Prevent old page-specific rules from re-expanding catalog cards. */
+/* Wide desktop: add a column instead of making every ebook larger. */
+@media (min-width:1600px) and (max-width:2199px){
+  :root{--bookora-card-gap:20px;--bookora-catalog-inline:clamp(28px,3vw,52px);--bookora-card-max:245px}
+  #app .kdp-book-grid,
+  #app .bookora-catalog-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(7,minmax(0,1fr))!important}
+}
+
+/* Large TV / 4K: use the available screen without creating giant books. */
+@media (min-width:2200px) and (max-width:3199px){
+  :root{--bookora-card-gap:22px;--bookora-catalog-inline:clamp(36px,3vw,64px);--bookora-card-max:245px}
+  #app .kdp-book-grid,
+  #app .bookora-catalog-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(9,minmax(0,1fr))!important}
+}
+
+/* Very large 4K/5K/8K displays: increase density, not card size. */
+@media (min-width:3200px){
+  :root{--bookora-card-gap:24px;--bookora-catalog-inline:clamp(44px,3vw,80px);--bookora-card-max:250px}
+  #app .kdp-book-grid,
+  #app .bookora-catalog-grid,
+  #app #explore-books-grid,
+  #app .explore-books-grid,
+  #app .books-grid,
+  #app .book-grid,
+  #app .products-grid,
+  #app .catalog-grid,
+  #app .related-books-grid{grid-template-columns:repeat(10,minmax(0,1fr))!important}
+}
+
+/* Prevent legacy page rules from re-expanding normal catalog cards. */
 #app .kdp-catalog-section .book-card,
 #app .bookora-home-all-books-section .book-card,
-#app #bookora-home-all-books .book-card{
-  max-width:none!important;
+#app #bookora-home-all-books .book-card,
+#app .bookora-catalog-grid .book-card,
+#app .kdp-book-grid .book-card{
+  width:100%!important;
+  max-width:var(--bookora-card-max)!important;
 }
+
+/* Never let a normal ebook card itself cause horizontal overflow. */
+#app .book-card,
+#app .book-card-premium,
+#app .book-cover-container,
+#app .book-card-info{min-width:0!important;max-width:100%!important}
