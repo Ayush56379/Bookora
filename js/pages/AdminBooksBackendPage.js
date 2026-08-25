@@ -21,24 +21,70 @@ function isAdmin() {
   return !!state.isAdmin;
 }
 
+async function validateCachedServerSession() {
+  const token = String(localStorage.getItem('bookora_auth_token') || '');
+  if (!token || !token.startsWith('tok_')) return '';
+  try {
+    const response = await fetch(`${window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com'}/api/auth/me`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      cache: 'no-store'
+    });
+    const data = await response.json().catch(() => ({}));
+    const admin = response.ok && data?.authenticated === true && (data?.is_admin === true || String(data?.user?.email || '').toLowerCase() === 'ayushprajpati6@gmail.com');
+    if (!admin) {
+      localStorage.removeItem('bookora_auth_token');
+      return '';
+    }
+    state.token = token;
+    state.currentUser = data.user || state.currentUser;
+    state.isAuthenticated = true;
+    state.isAdmin = true;
+    serverSessionReady = true;
+    return token;
+  } catch (_) {
+    return '';
+  }
+}
+
+async function waitForAdminFirebaseUser(timeoutMs = 30000) {
+  const direct = await waitForAuthenticatedFirebaseUser();
+  if (direct) return direct;
+  const auth = window.firebase?.auth?.();
+  if (!auth) return null;
+  if (auth.currentUser) return auth.currentUser;
+  return new Promise(resolve => {
+    let settled = false;
+    let unsubscribe = null;
+    const finish = user => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { unsubscribe?.(); } catch (_) {}
+      resolve(user || null);
+    };
+    const timer = setTimeout(() => finish(auth.currentUser || null), timeoutMs);
+    try { unsubscribe = auth.onAuthStateChanged(user => finish(user)); }
+    catch (_) { finish(auth.currentUser || null); }
+  });
+}
+
 async function ensureServerAdminSession() {
   if (!isAdmin()) throw new Error('Administrator authorization required.');
 
-  // Firebase is the identity authority, but admin APIs intentionally use the
-  // server-issued Bookora session token. This is an authentication exchange,
-  // not a client-side authorization bypass.
-  const firebaseUser = await waitForAuthenticatedFirebaseUser();
+  // First reuse the durable Bookora server session. Do not block on Firebase
+  // restoration when a previously verified server session is still valid.
+  const cachedServerToken = await validateCachedServerSession();
+  if (cachedServerToken) return cachedServerToken;
+
+  const firebaseUser = await waitForAdminFirebaseUser(30000);
   if (!firebaseUser) throw new Error('Firebase administrator session is not ready. Please sign in again.');
 
-  const firebaseToken = await firebaseUser.getIdToken(false);
+  const firebaseToken = await firebaseUser.getIdToken(true);
   if (!firebaseToken) throw new Error('Firebase administrator token is unavailable. Please sign in again.');
 
-  // Always exchange the verified Firebase identity when the current token is
-  // missing or is still a Firebase JWT. This fixes the reload case where the
-  // global state is hydrated with a Firebase token instead of the Bookora
-  // server session token.
   const current = String(state.token || '');
-  if (serverSessionReady && current && !current.split('.')[0].includes('ey')) return current;
+  if (serverSessionReady && current && current.startsWith('tok_')) return current;
 
   const res = await apiFetch('/api/auth/firebase', {
     method: 'POST',
@@ -58,7 +104,8 @@ async function ensureServerAdminSession() {
   state.currentUser = data.user || state.currentUser;
   state.isAdmin = true;
   state.isAuthenticated = true;
-  localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser));
+  try { localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser)); } catch (_) {}
+  try { localStorage.setItem('bookora_auth_token', data.token); } catch (_) {}
   serverSessionReady = true;
   return data.token;
 }
@@ -93,14 +140,20 @@ export function renderAdminBooksPage() {
 }
 
 async function loadBooks() {
-  await ensureServerAdminSession();
-  const res = await apiFetch('/api/admin/books', {
-    headers: { Authorization: `Bearer ${state.token}` }
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Unable to load books.');
-  books = Array.isArray(data) ? data : (Array.isArray(data.books) ? data.books : []);
-  renderTable();
+  try {
+    await ensureServerAdminSession();
+    const res = await apiFetch('/api/admin/books', {
+      headers: { Authorization: `Bearer ${state.token}` }
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Unable to load books.');
+    books = Array.isArray(data) ? data : (Array.isArray(data.books) ? data.books : []);
+    renderTable();
+  } catch (error) {
+    const tbody = document.getElementById('ab-list');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="padding:50px;text-align:center;color:#b91c1c">${esc(error?.message || 'Unable to load books.')}<br><button id="admin-books-inline-retry" class="ab-btn" style="margin-top:12px;background:#2563eb;color:#fff">Retry</button></td></tr>`;
+    throw error;
+  }
 }
 
 function renderTable() {
@@ -136,6 +189,14 @@ export function initAdminBooksEvents() {
   document.getElementById('ab-search')?.addEventListener('input', e => { search=e.target.value; renderTable(); });
   document.getElementById('ab-filter')?.addEventListener('change', e => { filter=e.target.value; renderTable(); });
   document.addEventListener('click', async e => {
+    const retryBtn = e.target.closest('#admin-books-inline-retry');
+    if (retryBtn) {
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Retrying…';
+      try { serverSessionReady = false; await loadBooks(); Toast.show('Books loaded.','success'); }
+      catch (err) { Toast.show(err.message || 'Unable to load books.','error'); retryBtn.disabled = false; retryBtn.textContent = 'Retry'; }
+      return;
+    }
     const removeBtn=e.target.closest('[data-ab-remove-id]');
     if (removeBtn) {
       const id=removeBtn.dataset.abRemoveId;
