@@ -1,13 +1,12 @@
-// Bookora homepage — Smart Trending eBooks engine.
-// Shows the dynamic Trending eBooks section without the extra Best Sellers,
-// New Releases tabs or View all link. The complete trending ebook grid remains.
+// Bookora homepage — Firebase-backed Smart Trending eBooks engine.
+// The final Top-6 list comes from Firestore: trending_ebooks/current.
 (() => {
   if (window.__BOOKORA_SMART_TRENDING__) return;
   window.__BOOKORA_SMART_TRENDING__ = true;
 
   const SECTION_ID = 'bookora-smart-trending';
   let busy = false;
-  let lastSignature = '';
+  let unsubscribe = null;
   let renderBookCard = null;
 
   async function getState() {
@@ -29,55 +28,33 @@
     return [...map.values()];
   }
 
-  function num(value) {
-    const n = Number(value);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
+  function key(book) { return String(book?.id || book?.bookId || book?.book_id || ''); }
+
+  function resolveBooks(catalog, items) {
+    return (Array.isArray(items) ? items : []).slice(0, 6).map(item => {
+      const id = String(item?.bookId || item?.id || '');
+      const slug = String(item?.slug || '').toLowerCase();
+      return catalog.find(book => key(book) === id)
+        || catalog.find(book => slug && String(book?.slug || '').toLowerCase() === slug);
+    }).filter(Boolean).slice(0, 6);
   }
 
-  function sales(book) {
-    const fields = ['purchaseCount','purchase_count','purchases','salesCount','sales_count','soldCount','sold_count','totalSales','total_sales','ordersCount','orders_count','orderCount','order_count','buyCount','buy_count','unitsSold','units_sold'];
-    return Math.max(0, ...fields.map(key => num(book?.[key])));
+  async function readCurrentTrending() {
+    try {
+      if (!window.firebase?.apps?.length) return null;
+      const db = window.firebase.firestore();
+      const snap = await db.collection('trending_ebooks').doc('current').get();
+      if (!snap.exists) return null;
+      const data = snap.data() || {};
+      return Array.isArray(data.books) ? data.books.slice(0, 6) : [];
+    } catch (error) {
+      console.warn('[Bookora Trending] Firebase read failed:', error?.message || error);
+      return null;
+    }
   }
 
-  function reviewStats(state, book) {
-    const ids = new Set([String(book?.id || ''), String(book?.bookId || ''), String(book?.book_id || ''), String(book?.bookoraId || ''), String(book?.bookora_id || '')].filter(Boolean));
-    const reviews = Array.isArray(state?.reviews) ? state.reviews.filter(r => ids.has(String(r?.bookId || r?.book_id || r?.bookoraBookId || r?.bookora_book_id || r?.productId || ''))) : [];
-    const directRating = num(book?.rating ?? book?.averageRating ?? book?.average_rating);
-    const directCount = num(book?.review_count ?? book?.reviewCount ?? book?.reviews_count ?? book?.reviewsCount);
-    const ratings = reviews.map(r => num(r?.rating ?? r?.stars)).filter(r => r >= 1 && r <= 5);
-    const avg = ratings.length ? ratings.reduce((a,b) => a + b, 0) / ratings.length : 0;
-    return { rating: Math.min(5, Math.max(0, directRating || avg)), count: Math.max(directCount, ratings.length) };
-  }
-
-  function freshness(book) {
-    const created = Date.parse(book?.createdAt || book?.created_at || book?.publishedAt || book?.published_at || '') || 0;
-    if (!created) return 0;
-    const ageDays = Math.max(0, (Date.now() - created) / 86400000);
-    return Math.max(0, 18 - Math.min(18, ageDays / 14));
-  }
-
-  function dailyBoost(book) {
-    const day = new Date().toISOString().slice(0, 10);
-    const raw = String(book?.id || book?.bookId || book?.slug || book?.title || '') + ':' + day;
-    let hash = 2166136261;
-    for (let i = 0; i < raw.length; i++) { hash ^= raw.charCodeAt(i); hash = Math.imul(hash, 16777619); }
-    return ((hash >>> 0) % 1000) / 1000 * 7;
-  }
-
-  function rank(state, books) {
-    return books.map(book => {
-      const s = sales(book);
-      const { rating, count } = reviewStats(state, book);
-      const score =
-        (s > 0 ? Math.log1p(s) * 18 : 0) +
-        rating * 9 +
-        Math.log1p(count) * 4 +
-        freshness(book) +
-        (book?.is_bestseller ? 8 : 0) +
-        (book?.is_trending ? 5 : 0) +
-        dailyBoost(book);
-      return { book, score, s, rating, count };
-    }).sort((a,b) => b.score - a.score || b.s - a.s || b.rating - a.rating || b.count - a.count).slice(0, 6).map(x => ({ ...x.book, is_trending: true }));
+  function loading(root) {
+    root.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>Trending eBooks</h2><p>Loading today's ranking from Bookora Firebase.</p></div></div><div class="kdp-loading-state"><strong>Loading trending eBooks…</strong><span>Reading the latest Top 6 from Firebase</span></div></div>`;
   }
 
   async function render() {
@@ -86,63 +63,39 @@
     try {
       const main = document.querySelector('#main-content');
       if (!main || !main.querySelector('.bookora-home-clean')) return;
-      const featured = main.querySelector('.kdp-catalog-section');
-      if (!featured) return;
-
-      let root = document.getElementById(SECTION_ID);
-      if (!root) {
-        root = featured;
-        root.id = SECTION_ID;
-      }
-
+      const section = main.querySelector('.kdp-catalog-section');
+      if (!section) return;
+      section.id = SECTION_ID;
+      const root = section;
       const state = await getState();
       if (!state) return;
       if (!renderBookCard) renderBookCard = (await import('./components/BookCard.js')).renderBookCard;
 
-      const books = rank(state, approvedBooks(state));
-      const signature = books.map(b => String(b.id || b.bookId || b.slug || b.title)).join('|') + ':' + new Date().toISOString().slice(0,10);
-      if (signature === lastSignature) return;
-      lastSignature = signature;
+      const firebaseItems = await readCurrentTrending();
+      if (firebaseItems === null) {
+        loading(root);
+        return;
+      }
 
+      const books = resolveBooks(approvedBooks(state), firebaseItems);
       const cards = books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('');
-      root.innerHTML = `
-        <div class="kdp-catalog-container">
-          <div class="kdp-section-head">
-            <div>
-              <span class="kdp-kicker">BOOKORA STORE</span>
-              <h2>Trending eBooks</h2>
-              <p>Updated automatically from sales, ratings, reviews and fresh activity.</p>
-            </div>
-          </div>
-          <div id="home-live-catalog">
-            ${books.length ? `<div class="kdp-book-grid">${cards}</div>` : `<div class="kdp-loading-state"><strong>Loading trending eBooks…</strong><span>Connecting to the Bookora catalog</span></div>`}
-          </div>
-        </div>`;
-    } finally {
-      busy = false;
-    }
+      root.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>Trending eBooks</h2><p>Updated automatically from sales, ratings, reviews and fresh activity.</p></div></div><div id="home-live-catalog">${books.length ? `<div class="kdp-book-grid">${cards}</div>` : `<div class="kdp-loading-state"><strong>No trending eBooks yet</strong><span>The Firebase ranking is waiting for today's snapshot.</span></div>`}</div></div>`;
+    } finally { busy = false; }
   }
 
-  const refresh = () => { lastSignature = ''; setTimeout(render, 20); };
-  const observer = new MutationObserver(() => {
-    if (document.querySelector('#main-content .bookora-home-clean')) setTimeout(render, 0);
-  });
+  function startFirebaseListener() {
+    try {
+      if (!window.firebase?.apps?.length) return;
+      const db = window.firebase.firestore();
+      if (typeof unsubscribe === 'function') unsubscribe();
+      unsubscribe = db.collection('trending_ebooks').doc('current').onSnapshot(() => setTimeout(render, 0), error => console.warn('[Bookora Trending] Firebase listener failed:', error?.message || error));
+    } catch (error) { console.warn('[Bookora Trending] Firebase listener unavailable:', error?.message || error); }
+  }
 
-  const start = () => {
-    const app = document.getElementById('app');
-    if (app) observer.observe(app, { childList: true, subtree: true });
-    render();
-  };
-
-  window.addEventListener('bookora:fast-catalog', refresh);
-  window.addEventListener('bookora:catalog-updated', refresh);
-  window.addEventListener('hashchange', () => { lastSignature = ''; setTimeout(render, 50); });
-
-  getState().then(state => {
-    try { state?.subscribe?.(() => refresh()); } catch (_) {}
-  });
-
-  setInterval(refresh, 60 * 60 * 1000);
+  const start = () => { render(); startFirebaseListener(); };
+  window.addEventListener('bookora:fast-catalog', () => setTimeout(render, 20));
+  window.addEventListener('bookora:catalog-updated', () => setTimeout(render, 20));
+  window.addEventListener('hashchange', () => { if (typeof unsubscribe === 'function') unsubscribe(); unsubscribe = null; setTimeout(start, 50); });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
