@@ -1,5 +1,7 @@
 // Bookora homepage — Firebase-backed Smart Trending eBooks engine.
-// The final Top-6 list comes from Firestore: trending_ebooks/current.
+// The backend calculates the ranking from real orders/reviews and persists it
+// to Firestore. Homepage reads that Firebase-backed snapshot through the
+// protected backend API, with a direct Firestore fallback when available.
 (() => {
   if (window.__BOOKORA_SMART_TRENDING__) return;
   window.__BOOKORA_SMART_TRENDING__ = true;
@@ -7,7 +9,6 @@
   const SECTION_ID = 'bookora-smart-trending';
   let busy = false;
   let unsubscribe = null;
-  let renderBookCard = null;
 
   async function getState() {
     try { return (await import('./state.js')).state; } catch (_) { return null; }
@@ -40,6 +41,21 @@
   }
 
   async function readCurrentTrending() {
+    // Primary path: backend reads/calculates the authoritative data and persists
+    // the same Top-6 snapshot into Firebase before returning it.
+    try {
+      const base = String(window.BOOKORA_API_BASE || window.BOOKORA_BACKEND_URL || 'https://bookora-backend-x08l.onrender.com').replace(/\/$/, '');
+      const response = await fetch(`${base}/api/trending?limit=6`, { method: 'GET', cache: 'no-store', credentials: 'omit' });
+      if (response.ok) {
+        const payload = await response.json();
+        if (Array.isArray(payload?.books)) return payload.books.slice(0, 6);
+      }
+    } catch (error) {
+      console.warn('[Bookora Trending] Backend snapshot read failed:', error?.message || error);
+    }
+
+    // Fallback: direct Firebase read for installations whose Firestore rules
+    // allow public reads of the trending snapshot.
     try {
       if (!window.firebase?.apps?.length) return null;
       const db = window.firebase.firestore();
@@ -48,13 +64,13 @@
       const data = snap.data() || {};
       return Array.isArray(data.books) ? data.books.slice(0, 6) : [];
     } catch (error) {
-      console.warn('[Bookora Trending] Firebase read failed:', error?.message || error);
+      console.warn('[Bookora Trending] Firebase fallback read failed:', error?.message || error);
       return null;
     }
   }
 
   function loading(root) {
-    root.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>Trending eBooks</h2><p>Loading today's ranking from Bookora Firebase.</p></div></div><div class="kdp-loading-state"><strong>Loading trending eBooks…</strong><span>Reading the latest Top 6 from Firebase</span></div></div>`;
+    root.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>Trending eBooks</h2><p>Loading today's ranking from Bookora.</p></div></div><div class="kdp-loading-state"><strong>Loading trending eBooks…</strong><span>Reading the latest Top 6 ranking</span></div></div>`;
   }
 
   async function render() {
@@ -69,8 +85,6 @@
       const root = section;
       const state = await getState();
       if (!state) return;
-      if (!renderBookCard) renderBookCard = (await import('./components/BookCard.js')).renderBookCard;
-
       const firebaseItems = await readCurrentTrending();
       if (firebaseItems === null) {
         loading(root);
@@ -78,6 +92,7 @@
       }
 
       const books = resolveBooks(approvedBooks(state), firebaseItems);
+      const renderBookCard = (await import('./components/BookCard.js')).renderBookCard;
       const cards = books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('');
       root.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>Trending eBooks</h2><p>Updated automatically from sales, ratings, reviews and fresh activity.</p></div></div><div id="home-live-catalog">${books.length ? `<div class="kdp-book-grid">${cards}</div>` : `<div class="kdp-loading-state"><strong>No trending eBooks yet</strong><span>The Firebase ranking is waiting for today's snapshot.</span></div>`}</div></div>`;
     } finally { busy = false; }
@@ -93,6 +108,7 @@
   }
 
   const start = () => { render(); startFirebaseListener(); };
+  window.addEventListener('bookora:firebase-trending-updated', () => setTimeout(render, 0));
   window.addEventListener('bookora:fast-catalog', () => setTimeout(render, 20));
   window.addEventListener('bookora:catalog-updated', () => setTimeout(render, 20));
   window.addEventListener('hashchange', () => { if (typeof unsubscribe === 'function') unsubscribe(); unsubscribe = null; setTimeout(start, 50); });
