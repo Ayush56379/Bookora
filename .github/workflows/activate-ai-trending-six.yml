@@ -1,0 +1,111 @@
+name: Activate AI Trending Six
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/activate-ai-trending-six.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ai-trending]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Patch Bookora trending ranking and homepage
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          state = Path('js/state.js')
+          text = state.read_text(encoding='utf-8')
+          old = """  getApprovedBooks() { return (Array.isArray(this.books) ? this.books : []).map(book => this.normalizeBook(book)).filter(Boolean).filter(book => book.status === 'approved'); }\n  getTrendingBooks() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_trending); return (flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))).slice(0, 24); }\n  getBestSellers() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_bestseller); return (flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))).slice(0, 24); }\n"""
+          new = r'''  getApprovedBooks() { return (Array.isArray(this.books) ? this.books : []).map(book => this.normalizeBook(book)).filter(Boolean).filter(book => book.status === 'approved'); }
+
+  _bookReviewStats(book) {
+    const ids = new Set([String(book?.id || ''), String(book?.bookId || ''), String(book?.book_id || ''), String(book?.bookoraId || ''), String(book?.bookora_id || '')].filter(Boolean));
+    const reviews = Array.isArray(this.reviews) ? this.reviews.filter(review => ids.has(String(review?.bookId || review?.book_id || review?.bookoraBookId || review?.bookora_book_id || review?.productId || ''))) : [];
+    const directRating = Number(book?.rating ?? book?.averageRating ?? book?.average_rating ?? 0);
+    const directCount = Number(book?.review_count ?? book?.reviewCount ?? book?.reviews_count ?? book?.reviewsCount ?? 0);
+    const reviewRatings = reviews.map(r => Number(r?.rating ?? r?.stars ?? 0)).filter(r => r >= 1 && r <= 5);
+    const reviewAverage = reviewRatings.length ? reviewRatings.reduce((sum, r) => sum + r, 0) / reviewRatings.length : 0;
+    const rating = directRating > 0 ? directRating : reviewAverage;
+    const count = Math.max(directCount, reviewRatings.length);
+    return { rating: Math.max(0, Math.min(5, rating)), count };
+  }
+
+  _bookPurchaseCount(book) {
+    const fields = ['purchaseCount','purchase_count','purchases','salesCount','sales_count','soldCount','sold_count','totalSales','total_sales','ordersCount','orders_count','orderCount','order_count','buyCount','buy_count','unitsSold','units_sold'];
+    const values = fields.map(field => Number(book?.[field] ?? 0)).filter(Number.isFinite).filter(value => value >= 0);
+    return values.length ? Math.max(...values) : 0;
+  }
+
+  getFeaturedTrendingBooks(limit = 6) {
+    const books = this.getApprovedBooks();
+    const now = Date.now();
+    const ranked = books.map(book => {
+      const sales = this._bookPurchaseCount(book);
+      const { rating, count } = this._bookReviewStats(book);
+      const created = Date.parse(book?.createdAt || book?.created_at || book?.publishedAt || book?.published_at || '') || 0;
+      const ageDays = created ? Math.max(0, (now - created) / 86400000) : 3650;
+      const freshness = Math.max(0, 18 - Math.min(18, ageDays / 14));
+      const salesScore = sales > 0 ? Math.log1p(sales) * 18 : 0;
+      const ratingScore = rating * 9;
+      const reviewScore = Math.log1p(count) * 4;
+      const flagScore = (book?.is_bestseller ? 8 : 0) + (book?.is_trending ? 10 : 0);
+      const score = salesScore + ratingScore + reviewScore + freshness + flagScore;
+      return { book: { ...book, is_trending: true, __bookoraTrendingScore: score }, score, sales, rating, count, created };
+    });
+    ranked.sort((a, b) => b.score - a.score || b.sales - a.sales || b.rating - a.rating || b.count - a.count || b.created - a.created);
+    return ranked.slice(0, Math.max(0, Number(limit) || 6)).map(item => item.book);
+  }
+
+  getTrendingBooks() { return this.getFeaturedTrendingBooks(24); }
+  getBestSellers() {
+    const books = this.getApprovedBooks();
+    const ranked = books.map(book => ({ book, sales: this._bookPurchaseCount(book), rating: this._bookReviewStats(book).rating })).sort((a, b) => b.sales - a.sales || b.rating - a.rating);
+    return ranked.slice(0, 24).map(item => item.book);
+  }
+'''
+          if old not in text:
+              raise SystemExit('state ranking block not found')
+          state.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          home = Path('js/pages/HomePage.js')
+          text = home.read_text(encoding='utf-8')
+          old_fn = """function featuredBooks() {\n  const books = catalogBooks();\n  const trending = books.filter(book => book.is_trending);\n  const best = books.filter(book => book.is_bestseller);\n  return (trending.length ? trending : best.length ? best : newest(books)).slice(0, 10);\n}\n"""
+          new_fn = """function featuredBooks() {\n  const ranked = typeof state.getFeaturedTrendingBooks === 'function' ? state.getFeaturedTrendingBooks(6) : catalogBooks().slice(0, 6);\n  return ranked.slice(0, 6);\n}\n"""
+          if old_fn not in text:
+              raise SystemExit('homepage featured function not found')
+          text = text.replace(old_fn, new_fn, 1)
+          text = text.replace("${books.length ? 'Featured eBooks' : 'Discover eBooks'}", "${books.length ? 'Trending eBooks' : 'Discover eBooks'}", 1)
+          text = text.replace('<button class="kdp-tab active" type="button">Featured</button>', '<button class="kdp-tab active" type="button">Trending</button>', 1)
+          text = text.replace('<p>Browse books from verified Bookora creators.</p>', '<p>Automatically selected from purchase activity, ratings, reviews, and freshness.</p>', 1)
+          home.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify six-book homepage logic
+        run: |
+          grep -q "getFeaturedTrendingBooks(6)" js/pages/HomePage.js
+          grep -q "getFeaturedTrendingBooks(limit = 6)" js/state.js
+          node --check js/state.js
+          node --check js/pages/HomePage.js
+
+      - name: Commit activated ranking
+        run: |
+          git config user.name "bookora-ai"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/state.js js/pages/HomePage.js
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git commit -m "feat: auto rank six trending ebooks [skip ai-trending]"
+          git push origin main
