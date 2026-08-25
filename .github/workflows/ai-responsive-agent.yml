@@ -10,6 +10,8 @@ on:
       - '**/*.html'
       - '**/*.css'
       - '**/*.js'
+      - 'tools/**/*.mjs'
+      - '.github/workflows/ai-responsive-agent.yml'
 
 permissions:
   contents: write
@@ -57,4 +59,4 @@ jobs:
           git add css/ai-responsive-overrides.css responsive-report || true
           git commit -m "fix: AI responsive layout corrections"
           git push --set-upstream origin "$BRANCH"
-          gh pr create --base main --head "$BRANCH" --title "AI responsive layout corrections" --body "Automated Bookora responsive-design pass using the existing Render Groq AI backend. The agent tests real browser viewports from 320px phones through 1920px large displays and limits generated changes to the responsive override layer. Review before merging."
+          gh pr create --base main --head "$BRANCH" --title "AI responsive layout corrections" --body "Automated Bookora responsive-design pass. Tests the complete website at 280, 320, 375, 414, 600, 768, 1024, 1280, 1440, 1920, 2560 and 3840px widths and uses the existing Render Groq AI backend to repair responsive CSS only. Review the generated responsive report before merging."
