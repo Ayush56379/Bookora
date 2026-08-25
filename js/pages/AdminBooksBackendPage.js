@@ -1,5 +1,6 @@
 import { apiFetch, waitForAuthenticatedFirebaseUser } from '../config.js';
 import { state } from '../state.js';
+import { getAllBooksFromFirestore } from '../services/firebase.js';
 import { Toast } from '../components/Toast.js';
 
 let books = [];
@@ -21,15 +22,22 @@ function isAdmin() {
   return !!state.isAdmin;
 }
 
+function withTimeout(promise, timeoutMs, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(message)), timeoutMs))
+  ]);
+}
+
 async function validateCachedServerSession() {
   const token = String(localStorage.getItem('bookora_auth_token') || '');
   if (!token || !token.startsWith('tok_')) return '';
   try {
-    const response = await fetch(`${window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com'}/api/auth/me`, {
+    const response = await withTimeout(fetch(`${window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com'}/api/auth/me`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       cache: 'no-store'
-    });
+    }), 6000, 'Server session check timed out.');
     const data = await response.json().catch(() => ({}));
     const admin = response.ok && data?.authenticated === true && (data?.is_admin === true || String(data?.user?.email || '').toLowerCase() === 'ayushprajpati6@gmail.com');
     if (!admin) {
@@ -47,9 +55,7 @@ async function validateCachedServerSession() {
   }
 }
 
-async function waitForAdminFirebaseUser(timeoutMs = 30000) {
-  const direct = await waitForAuthenticatedFirebaseUser();
-  if (direct) return direct;
+async function waitForAdminFirebaseUser(timeoutMs = 10000) {
   const auth = window.firebase?.auth?.();
   if (!auth) return null;
   if (auth.currentUser) return auth.currentUser;
@@ -72,12 +78,10 @@ async function waitForAdminFirebaseUser(timeoutMs = 30000) {
 async function ensureServerAdminSession() {
   if (!isAdmin()) throw new Error('Administrator authorization required.');
 
-  // First reuse the durable Bookora server session. Do not block on Firebase
-  // restoration when a previously verified server session is still valid.
   const cachedServerToken = await validateCachedServerSession();
   if (cachedServerToken) return cachedServerToken;
 
-  const firebaseUser = await waitForAdminFirebaseUser(30000);
+  const firebaseUser = await waitForAdminFirebaseUser(10000);
   if (!firebaseUser) throw new Error('Firebase administrator session is not ready. Please sign in again.');
 
   const firebaseToken = await firebaseUser.getIdToken(true);
@@ -86,11 +90,11 @@ async function ensureServerAdminSession() {
   const current = String(state.token || '');
   if (serverSessionReady && current && current.startsWith('tok_')) return current;
 
-  const res = await apiFetch('/api/auth/firebase', {
+  const res = await withTimeout(apiFetch('/api/auth/firebase', {
     method: 'POST',
     headers: { Authorization: `Bearer ${firebaseToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({})
-  });
+  }), 12000, 'Administrator session exchange timed out.');
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.success || !data.token) {
     throw new Error(data.error || 'Server could not verify the administrator session. Please sign in again.');
@@ -139,18 +143,42 @@ export function renderAdminBooksPage() {
   `;
 }
 
-async function loadBooks() {
+async function loadBooksFromFirestoreFallback() {
   try {
+    const result = await withTimeout(getAllBooksFromFirestore(), 10000, 'Firebase books query timed out.');
+    if (Array.isArray(result) && result.length) {
+      books = result;
+      renderTable();
+      return true;
+    }
+  } catch (error) {
+    console.warn('[Admin Books] Firestore fallback failed:', error?.message || error);
+  }
+  if (Array.isArray(state.books) && state.books.length) {
+    books = state.books.slice();
+    renderTable();
+    return true;
+  }
+  return false;
+}
+
+async function loadBooks() {
+  const tbody = document.getElementById('ab-list');
+  try {
+    // Load visible admin data from Firestore first. This prevents the UI from
+    // being blocked by the separate server-session exchange on page startup.
+    // Mutating actions still require the server-verified admin session.
+    if (await loadBooksFromFirestoreFallback()) return;
+
     await ensureServerAdminSession();
-    const res = await apiFetch('/api/admin/books', {
+    const res = await withTimeout(apiFetch('/api/admin/books', {
       headers: { Authorization: `Bearer ${state.token}` }
-    });
+    }), 12000, 'Books API request timed out.');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Unable to load books.');
     books = Array.isArray(data) ? data : (Array.isArray(data.books) ? data.books : []);
     renderTable();
   } catch (error) {
-    const tbody = document.getElementById('ab-list');
     if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="padding:50px;text-align:center;color:#b91c1c">${esc(error?.message || 'Unable to load books.')}<br><button id="admin-books-inline-retry" class="ab-btn" style="margin-top:12px;background:#2563eb;color:#fff">Retry</button></td></tr>`;
     throw error;
   }
