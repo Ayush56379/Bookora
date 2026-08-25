@@ -1,11 +1,6 @@
 // Bookora homepage catalog enhancement
-// Adds a single clear All eBooks catalog with a user-selectable view.
-//
-// IMPORTANT: the observer below watches only direct children of #app.
-// Watching the whole subtree caused a feedback loop because renderCatalog()
-// replaces the catalog grid's innerHTML, which itself creates mutations.
-// That loop could make the SPA look like it was continuously refreshing and
-// could prevent the catalog from ever settling/loading correctly.
+// Adds a complete All eBooks catalog directly on the homepage, immediately
+// after the existing Featured eBooks section.
 import './homepage-catalog-reliability.js';
 import { state } from './state.js';
 import { renderBookCard } from './components/BookCard.js';
@@ -48,7 +43,17 @@ function categoryOptions() {
 }
 
 function getTargetSection() {
+  const sections = [...document.querySelectorAll('section')];
+  const featured = sections.find(section => {
+    const text = String(section.textContent || '').replace(/\s+/g, ' ').trim();
+    return /Featured eBooks/i.test(text) && /Best Sellers/i.test(text) && /New Releases/i.test(text);
+  });
+  if (featured) return featured;
+
   const headings = [...document.querySelectorAll('h2')];
+  const featuredHeading = headings.find(h => /featured ebooks/i.test(h.textContent || ''));
+  if (featuredHeading) return featuredHeading.closest('section') || null;
+
   const categoryHeading = headings.find(h => /browse by category/i.test(h.textContent || ''));
   return categoryHeading?.closest('section') || null;
 }
@@ -78,8 +83,6 @@ function renderCatalog(view = 'all') {
     ? books.map(renderBookCard).join('')
     : `<div class="bookora-catalog-empty"><strong>No eBooks found</strong><span>Try another category or view.</span></div>`;
 
-  // Avoid unnecessary DOM replacement. This also prevents needless work when
-  // multiple data sources announce the same catalog state.
   if (gridEl.innerHTML !== nextHtml) gridEl.innerHTML = nextHtml;
 }
 
@@ -91,8 +94,8 @@ function injectCatalog() {
     return;
   }
 
-  const categorySection = getTargetSection();
-  if (!categorySection) return;
+  const targetSection = getTargetSection();
+  if (!targetSection) return;
 
   const section = document.createElement('section');
   section.id = SECTION_ID;
@@ -103,7 +106,7 @@ function injectCatalog() {
         <div>
           <span class="badge badge-bookora">BOOKORA LIBRARY</span>
           <h2 class="bookora-catalog-title">All eBooks</h2>
-          <p>Browse the complete Bookora catalog and switch between trending, best sellers, new releases, and categories.</p>
+          <p>All approved eBooks available on Bookora are shown here. Use the filters to browse the complete catalog.</p>
         </div>
         <div class="bookora-catalog-filter-wrap">
           <label for="bookora-home-catalog-filter">Browse</label>
@@ -122,7 +125,7 @@ function injectCatalog() {
     </div>
   `;
 
-  categorySection.insertAdjacentElement('afterend', section);
+  targetSection.insertAdjacentElement('afterend', section);
   section.querySelector('select').addEventListener('change', e => renderCatalog(e.target.value));
   renderCatalog('all');
 }
@@ -139,8 +142,6 @@ function scheduleInject() {
 const app = document.getElementById('app');
 if (app) {
   const observer = new MutationObserver(scheduleInject);
-  // DO NOT use subtree:true here. renderCatalog() changes descendants inside
-  // the catalog and would otherwise trigger this observer again indefinitely.
   observer.observe(app, { childList: true, subtree: false });
 }
 
