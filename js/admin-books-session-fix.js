@@ -1,11 +1,15 @@
 // Bookora Admin Books session recovery hotfix.
 // Keeps the existing server-verified admin architecture intact while making
 // the Firebase -> Bookora session exchange resilient to auth initialization races.
+// IMPORTANT: session recovery is triggered only on route entry, never from a
+// DOM MutationObserver. The books page itself can mutate the DOM many times;
+// observing those mutations caused an unintended refresh loop.
 (() => {
   const TOKEN_KEY = 'bookora_auth_token';
   const API = window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com';
   let running = false;
   let lastHash = '';
+  let recoveredForRoute = false;
 
   const isBooksRoute = () => {
     const hash = window.location.hash || '';
@@ -91,7 +95,7 @@
   }
 
   async function recoverBooksPage() {
-    if (running || !isBooksRoute()) return;
+    if (running || !isBooksRoute() || recoveredForRoute) return;
     running = true;
     try {
       const token = await ensureServerSession();
@@ -99,11 +103,15 @@
       const { state } = await import('./state.js');
       state.token = token;
       await sleep(150);
-      // The page's existing loader remains authoritative. Trigger its existing
-      // Refresh action after the server session is ready, so approve/reject/
-      // remove actions continue using the same verified API architecture.
       const refresh = document.getElementById('admin-books-refresh');
-      if (refresh) refresh.click();
+      // Trigger exactly once when entering the route. After that, only the
+      // user's actual Refresh click may reload the books list.
+      if (refresh) {
+        recoveredForRoute = true;
+        refresh.click();
+      } else {
+        recoveredForRoute = true;
+      }
     } catch (error) {
       console.warn('[Bookora Admin Books session fix]', error?.message || error);
     } finally {
@@ -113,17 +121,14 @@
 
   function schedule() {
     const hash = window.location.hash || '';
-    if (hash === lastHash && !isBooksRoute()) return;
-    lastHash = hash;
+    if (hash !== lastHash) {
+      lastHash = hash;
+      recoveredForRoute = false;
+    }
     if (isBooksRoute()) void recoverBooksPage();
   }
 
   window.addEventListener('hashchange', schedule, { passive: true });
-
-  const observer = new MutationObserver(() => {
-    if (isBooksRoute() && document.getElementById('admin-books-refresh')) void recoverBooksPage();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
   window.__BOOKORA_ADMIN_BOOKS_SESSION_FIX__ = { recover: recoverBooksPage };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule, { once: true });
