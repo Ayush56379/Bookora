@@ -1,108 +1,80 @@
-// Bookora Trending Firebase Recorder
-// Persists the automatically calculated top-6 trending eBooks in Firestore.
-// Existing books/reviews/order data remain the source of truth; this only records the ranking snapshot.
-import { state } from './state.js';
+// Bookora Trending Firebase Bridge
+// The backend calculates the ranking from real paid orders + reviews + freshness.
+// Firebase is the single source of truth for the homepage Trending eBooks list.
 
-const DAILY_COLLECTION = 'trending_ebooks_daily';
 const CURRENT_COLLECTION = 'trending_ebooks';
 const CURRENT_DOC = 'current';
-let lastSignature = '';
-let running = false;
+let unsubscribe = null;
+let refreshTimer = null;
 
-function dayKey() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+function normalizeItems(payload) {
+  const list = Array.isArray(payload?.books) ? payload.books : [];
+  return list.slice(0, 6).map((item, index) => ({
+    ...item,
+    rank: Number(item?.rank || index + 1),
+    id: String(item?.bookId || item?.id || ''),
+    bookId: String(item?.bookId || item?.id || ''),
+    status: 'approved',
+    coverUrl: String(item?.coverUrl || item?.cover_url || ''),
+    cover_url: String(item?.coverUrl || item?.cover_url || ''),
+    title: String(item?.title || 'Untitled eBook'),
+    author: String(item?.author || 'Bookora Creator'),
+    category: String(item?.category || 'Other'),
+    price: Number(item?.price || 0),
+    sale_price: Number(item?.salePrice ?? item?.sale_price ?? item?.price ?? 0),
+    pages: Number(item?.pages || 0),
+    rating: Number(item?.rating || 0),
+    reviewCount: Number(item?.reviewCount || item?.review_count || 0),
+    review_count: Number(item?.reviewCount || item?.review_count || 0),
+    purchaseCount: Number(item?.salesCount || item?.purchaseCount || 0),
+    purchase_count: Number(item?.salesCount || item?.purchaseCount || 0),
+    is_trending: true,
+    isTrending: true
+  }));
 }
 
-function safeNumber(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
+function publish(payload) {
+  const books = normalizeItems(payload);
+  if (!books.length) return;
+  window.__BOOKORA_FIREBASE_TRENDING__ = { ...payload, books };
+  window.dispatchEvent(new CustomEvent('bookora:firebase-trending-updated', { detail: { books, payload } }));
 }
 
-function getStats(book) {
-  let rating = 0;
-  let reviewCount = 0;
-  let sales = 0;
+async function refreshBackendSnapshot() {
   try {
-    const reviews = typeof state._bookReviewStats === 'function' ? state._bookReviewStats(book) : null;
-    rating = safeNumber(reviews?.rating);
-    reviewCount = Math.max(0, safeNumber(reviews?.count));
-  } catch (_) {}
-  try {
-    sales = typeof state._bookPurchaseCount === 'function' ? Math.max(0, safeNumber(state._bookPurchaseCount(book))) : 0;
-  } catch (_) {}
-  return { sales, rating, reviewCount };
-}
-
-async function getDb() {
-  if (!window.firebase?.apps?.length) return null;
-  try { return window.firebase.firestore(); } catch (_) { return null; }
-}
-
-async function persist() {
-  if (running) return;
-  running = true;
-  try {
-    if (!state.booksLoaded) return;
-    const books = typeof state.getFeaturedTrendingBooks === 'function'
-      ? state.getFeaturedTrendingBooks(6)
-      : state.getTrendingBooks?.().slice(0, 6) || [];
-    if (!books.length) return;
-
-    const items = books.slice(0, 6).map((book, index) => {
-      const stats = getStats(book);
-      return {
-        rank: index + 1,
-        bookId: String(book.id || book.bookId || ''),
-        title: String(book.title || 'Untitled eBook'),
-        slug: String(book.slug || ''),
-        coverUrl: String(book.coverUrl || book.cover_url || book.front_cover_url || book.frontCover || ''),
-        category: String(book.category || ''),
-        price: safeNumber(book.price),
-        salesCount: stats.sales,
-        rating: stats.rating,
-        reviewCount: stats.reviewCount,
-        score: safeNumber(book.__bookoraTrendingScore),
-        isApproved: String(book.status || '').toLowerCase() === 'approved'
-      };
-    });
-
-    const signature = JSON.stringify(items.map(item => [item.bookId, item.salesCount, item.rating, item.reviewCount, item.score]));
-    if (signature === lastSignature) return;
-    lastSignature = signature;
-
-    const db = await getDb();
-    if (!db) return;
-    const timestamp = window.firebase.firestore.FieldValue.serverTimestamp();
-    const payload = {
-      date: dayKey(),
-      generatedAt: timestamp,
-      updatedAt: timestamp,
-      algorithm: 'sales + rating + reviews + freshness + existing trending/bestseller signals',
-      limit: 6,
-      books: items
-    };
-
-    // One immutable daily snapshot plus one current snapshot.
-    await db.collection(DAILY_COLLECTION).doc(dayKey()).set(payload, { merge: true });
-    await db.collection(CURRENT_COLLECTION).doc(CURRENT_DOC).set(payload, { merge: true });
+    const base = String(window.BOOKORA_API_BASE || window.BOOKORA_BACKEND_URL || 'https://bookora-backend-x08l.onrender.com').replace(/\/$/, '');
+    await fetch(`${base}/api/trending?limit=6`, { method: 'GET', cache: 'no-store', credentials: 'omit' });
   } catch (error) {
-    // Ranking must never break the storefront if Firestore rules/network reject analytics writes.
-    console.warn('[Bookora Trending] Firebase snapshot skipped:', error?.message || error);
-  } finally {
-    running = false;
+    console.warn('[Bookora Trending] Backend refresh unavailable:', error?.message || error);
   }
 }
 
-function start() {
-  state.subscribe(event => {
-    if (event === 'DATA_SYNCED' || event === 'CATALOG_UPDATED') setTimeout(persist, 150);
-  });
-  setTimeout(persist, 1000);
+async function attachFirestore() {
+  if (!window.firebase?.apps?.length) return;
+  try {
+    const db = window.firebase.firestore();
+    if (unsubscribe) unsubscribe();
+    unsubscribe = db.collection(CURRENT_COLLECTION).doc(CURRENT_DOC).onSnapshot(snapshot => {
+      if (snapshot.exists) publish(snapshot.data() || {});
+    }, error => {
+      console.warn('[Bookora Trending] Firestore listener unavailable:', error?.message || error);
+    });
+  } catch (error) {
+    console.warn('[Bookora Trending] Firestore attach failed:', error?.message || error);
+  }
+}
+
+async function start() {
+  await refreshBackendSnapshot();
+  await attachFirestore();
+  // Recalculate hourly so a new sale/review can reach Firebase without waiting for a page reload.
+  refreshTimer = setInterval(refreshBackendSnapshot, 60 * 60 * 1000);
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
 else start();
+
+window.addEventListener('beforeunload', () => {
+  if (unsubscribe) unsubscribe();
+  if (refreshTimer) clearInterval(refreshTimer);
+});
