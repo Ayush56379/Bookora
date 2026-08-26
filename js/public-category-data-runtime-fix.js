@@ -2,8 +2,8 @@
 // This runtime is intentionally scoped to the public category directory/explore filter.
 (() => {
   'use strict';
-  if (window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V5__) return;
-  window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V5__ = true;
+  if (window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V6__) return;
+  window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V6__ = true;
 
   const esc = value => String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -20,9 +20,6 @@
   const slugify = value => String(value || '')
     .trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-  // A book can store a category as a name, slug, Firebase category id, object,
-  // or an array of any of those forms. Return every usable identifier so the
-  // Firebase book can always be matched to the corresponding category card.
   const categoryValues = book => {
     const raw = [book?.category, book?.categories, book?.category_name, book?.categoryName]
       .filter(value => value !== undefined && value !== null && value !== '');
@@ -31,12 +28,8 @@
       if (value === undefined || value === null || value === '') return;
       if (Array.isArray(value)) return value.forEach(add);
       if (typeof value === 'object') {
-        add(value.name);
-        add(value.title);
-        add(value.category);
-        add(value.label);
-        add(value.slug);
-        add(value.id);
+        add(value.name); add(value.title); add(value.category);
+        add(value.label); add(value.slug); add(value.id);
         return;
       }
       const normalized = normalizeName(value);
@@ -47,46 +40,41 @@
   };
 
   const categoryKeys = category => [...new Set([
-    normalizeName(category?.name),
-    normalizeName(category?.title),
-    normalizeName(category?.slug),
-    normalizeName(category?.id)
+    normalizeName(category?.name), normalizeName(category?.title),
+    normalizeName(category?.slug), normalizeName(category?.id)
   ].filter(Boolean).map(value => String(value).trim().toLowerCase()))];
 
   const renderCard = c => `
     <a href="#/category/${encodeURIComponent(c.slug)}" class="category-card" data-slug="${esc(c.slug)}">
-      <div class="category-icon-box">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-      </div>
+      <div class="category-icon-box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></div>
       <div><h4 style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:2px;">${esc(c.name)}</h4><span style="font-size:0.78rem;color:var(--text-muted);">${Number.isFinite(Number(c.count)) ? Number(c.count) : 0} Publications</span></div>
       <div class="category-arrow"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"></path></svg></div>
-    </a>
-  `;
+    </a>`;
 
   const sync = async () => {
     try {
-      const { state } = await import('./state.js?v=category-data-runtime-20260826-5');
+      const { state } = await import('./state.js?v=category-data-runtime-20260826-6');
       const sourceCategories = Array.isArray(state.categories) ? state.categories : [];
-
-      // Use the actual Firebase-backed state books. Do not depend on the cached
-      // category count or on a category count field stored in Firebase.
       let books = Array.isArray(state.books) ? state.books : [];
       if (typeof state.getApprovedBooks === 'function') {
         const approved = state.getApprovedBooks();
         if (approved.length) books = approved;
       }
 
-      // Build counts against every supported category identifier (name/slug/id).
+      // IMPORTANT: each book is counted once per category alias. The previous
+      // implementation incremented the same alias twice (raw value + slug),
+      // which produced incorrect doubled counts such as 18 instead of 9.
       const countByKey = new Map();
       books.forEach(book => {
-        const values = categoryValues(book).map(value => String(value).trim().toLowerCase());
-        if (!values.length) return;
-        values.forEach(value => countByKey.set(value, (countByKey.get(value) || 0) + 1));
-        // Also allow a human-readable category name to match its slug.
-        values.forEach(value => {
+        const aliases = new Set();
+        categoryValues(book).forEach(value => {
+          const normalized = String(value).trim().toLowerCase();
+          if (!normalized) return;
+          aliases.add(normalized);
           const slug = slugify(value);
-          if (slug) countByKey.set(slug, (countByKey.get(slug) || 0) + 1);
+          if (slug) aliases.add(slug);
         });
+        aliases.forEach(key => countByKey.set(key, (countByKey.get(key) || 0) + 1));
       });
 
       const categories = [];
@@ -97,8 +85,7 @@
         const key = name.toLowerCase();
         if (seen.has(key)) return;
         seen.add(key);
-        const keys = categoryKeys(raw);
-        const count = keys.reduce((max, k) => Math.max(max, Number(countByKey.get(k) || 0)), 0);
+        const count = categoryKeys(raw).reduce((max, k) => Math.max(max, Number(countByKey.get(k) || 0)), 0);
         categories.push({
           ...((raw && typeof raw === 'object') ? raw : {}),
           name,
@@ -110,8 +97,6 @@
 
       sourceCategories.forEach(add);
 
-      // Also surface categories present on approved Firebase books if their
-      // category document is missing from the categories collection.
       const knownKeys = new Set(categories.flatMap(categoryKeys));
       books.forEach(book => {
         categoryValues(book).forEach(value => {
