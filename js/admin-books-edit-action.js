@@ -1,4 +1,6 @@
 // Bookora Admin Books: guaranteed Edit action + Firebase editor.
+// Load the shared upload-category source for the editor as well.
+void import('./admin-books-category-sync.js?v=20260826-1').catch(error => console.warn('[Admin Category Sync] loader:', error));
 (() => {
   'use strict';
   if (window.__BOOKORA_ADMIN_BOOKS_EDIT_ACTION_V2__) return;
