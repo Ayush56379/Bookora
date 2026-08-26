@@ -1,7 +1,5 @@
 // Bookora optional runtime loader.
 // Never blocks or replaces the core SPA. Every optional runtime is isolated.
-// Authentication resilience is booted immediately so login never depends on
-// the browser waiting for the idle callback or the full optional-runtime chain.
 (() => {
   const EARLY_AUTH_RUNTIME = './auth-network-resilience.js?v=20260826-3';
   const modules = [
@@ -63,7 +61,8 @@
     './seller-wallet-route.js?v=20260826-1',
     './wallet-cashfree-payout.js?v=20260826-1',
     './smart-search-runtime.js?v=20260822-1',
-    './active-mode-persistence.js?v=20260826-1'
+    './active-mode-persistence.js?v=20260826-1',
+    './membership-firebase-runtime.js?v=20260826-1'
   ];
 
   const loadOne = async src => {
@@ -72,17 +71,11 @@
   };
 
   loadOne(EARLY_AUTH_RUNTIME);
-
   const start = async () => {
     if (!window.__BOOKORA_CORE_BOOTED__) return;
     for (const src of modules) await loadOne(src);
   };
-
-  const waitForCore = () => {
-    if (window.__BOOKORA_CORE_BOOTED__) return start();
-    setTimeout(waitForCore, 250);
-  };
-
+  const waitForCore = () => window.__BOOKORA_CORE_BOOTED__ ? start() : setTimeout(waitForCore, 250);
   if ('requestIdleCallback' in window) requestIdleCallback(waitForCore, { timeout: 3000 });
   else setTimeout(waitForCore, 1500);
 })();
