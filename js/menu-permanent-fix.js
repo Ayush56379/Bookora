@@ -128,7 +128,7 @@
     'Other'
   ];
 
-  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[c]));
+  const esc = value => String(value ?? '').replace(/[&<>\"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;', "'":'&#039;' }[c]));
 
   function enhanceCategorySelect() {
     const select = document.getElementById('pub-category');
@@ -154,7 +154,7 @@
     const host = document.createElement('div');
     host.id = 'bookora-custom-category-host';
     host.style.cssText = 'display:none;margin-top:.55rem;padding:.75rem .85rem;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;';
-    host.innerHTML = `<label for="bookora-custom-category" style="display:block;font-size:.78rem;font-weight:700;color:#334155;margin-bottom:.4rem;">Apni category ka naam likhiye</label><input id="bookora-custom-category" type="text" maxlength="80" placeholder="Example: Indian Cooking" style="width:100%;box-sizing:border-box;padding:.7rem .8rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font:inherit;"><div style="margin-top:.35rem;font-size:.72rem;color:#64748b;">Ye category aapki eBook ke liye save hogi.</div>`;
+    host.innerHTML = `<label for="bookora-custom-category" style="display:block;font-size:.78rem;font-weight:700;color:#334155;margin-bottom:.4rem;">Enter your custom category name</label><input id="bookora-custom-category" type="text" maxlength="80" placeholder="Example: Indian Cooking" style="width:100%;box-sizing:border-box;padding:.7rem .8rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font:inherit;"><div style="margin-top:.35rem;font-size:.72rem;color:#64748b;">This category will be saved for your eBook.</div>`;
     select.insertAdjacentElement('afterend', host);
 
     const input = host.querySelector('#bookora-custom-category');
