@@ -90,3 +90,119 @@
   const timer = setInterval(() => { if (installRouteGuard() || performance.now() - started > 15000) clearInterval(timer); }, 25);
   installRouteGuard();
 })();
+
+// Publish wizard category hotfix. This is intentionally isolated from the
+// existing publish/upload/payment code: it only repairs the category selector.
+(() => {
+  if (window.__BOOKORA_PUBLISH_CATEGORY_FIX__) return;
+  window.__BOOKORA_PUBLISH_CATEGORY_FIX__ = true;
+
+  const CATEGORIES = [
+    'Art & Photography',
+    'Biography & Memoir',
+    'Business',
+    "Children's Books",
+    'Comics & Graphic Novels',
+    'Computers & Technology',
+    'Cooking, Food & Wine',
+    'Crafts & Hobbies',
+    'Education',
+    'Fiction',
+    'Health & Fitness',
+    'History',
+    'Law',
+    'Literature',
+    'Mathematics',
+    'Medical',
+    'Music',
+    'Parenting & Family',
+    'Philosophy',
+    'Psychology',
+    'Religion & Spirituality',
+    'Romance',
+    'Science',
+    'Self-Help',
+    'Social Science',
+    'Sports & Recreation',
+    'Travel',
+    'Other'
+  ];
+
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[c]));
+
+  function enhanceCategorySelect() {
+    const select = document.getElementById('pub-category');
+    if (!select) return;
+
+    // If Admin already supplied a full category list, do not overwrite it.
+    // Only repair the broken/empty selector shown in the publish wizard.
+    const meaningful = [...select.options].filter(option => {
+      const value = String(option.value || '').trim();
+      const text = String(option.textContent || '').trim().toLowerCase();
+      return value && text !== 'select category';
+    });
+    if (meaningful.length <= 1 && !select.dataset.bookoraCategoryExpanded) {
+      const current = select.value;
+      select.innerHTML = '<option value="">Select category</option>' + CATEGORIES.map(category => `<option value="${esc(category)}">${esc(category)}</option>`).join('');
+      select.dataset.bookoraCategoryExpanded = '1';
+      if (current && CATEGORIES.includes(current)) select.value = current;
+    }
+
+    if (select.dataset.bookoraCategoryBound === '1') return;
+    select.dataset.bookoraCategoryBound = '1';
+
+    const host = document.createElement('div');
+    host.id = 'bookora-custom-category-host';
+    host.style.cssText = 'display:none;margin-top:.55rem;padding:.75rem .85rem;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;';
+    host.innerHTML = `<label for="bookora-custom-category" style="display:block;font-size:.78rem;font-weight:700;color:#334155;margin-bottom:.4rem;">Apni category ka naam likhiye</label><input id="bookora-custom-category" type="text" maxlength="80" placeholder="Example: Indian Cooking" style="width:100%;box-sizing:border-box;padding:.7rem .8rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font:inherit;"><div style="margin-top:.35rem;font-size:.72rem;color:#64748b;">Ye category aapki eBook ke liye save hogi.</div>`;
+    select.insertAdjacentElement('afterend', host);
+
+    const input = host.querySelector('#bookora-custom-category');
+    const showOther = () => {
+      const isOther = select.value === 'Other' || select.dataset.bookoraOther === '1';
+      host.style.display = isOther ? 'block' : 'none';
+      if (isOther) {
+        select.dataset.bookoraOther = '1';
+        input?.focus();
+      } else {
+        delete select.dataset.bookoraOther;
+      }
+    };
+
+    select.addEventListener('change', () => {
+      if (select.value === 'Other') {
+        showOther();
+        return;
+      }
+      delete select.dataset.bookoraOther;
+      host.style.display = 'none';
+    });
+
+    input?.addEventListener('input', () => {
+      const custom = input.value.trim();
+      if (!custom) {
+        select.value = 'Other';
+        return;
+      }
+      let option = [...select.options].find(item => item.dataset.bookoraCustom === '1');
+      if (!option) {
+        option = document.createElement('option');
+        option.dataset.bookoraCustom = '1';
+        select.appendChild(option);
+      }
+      option.value = custom;
+      option.textContent = `Other: ${custom}`;
+      select.value = custom;
+    });
+  }
+
+  const run = () => {
+    if (!String(window.location.hash || '').startsWith('#/publish')) return;
+    try { enhanceCategorySelect(); } catch (error) { console.warn('[Bookora category fix skipped]', error); }
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true });
+  else run();
+  window.addEventListener('hashchange', () => setTimeout(run, 50));
+  new MutationObserver(run).observe(document.documentElement, { childList: true, subtree: true });
+})();
