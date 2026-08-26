@@ -43,6 +43,7 @@
     './homepage-seller-section-fix.js?v=20260820-1',
     './admin-settings-persistence-fix.js?v=20260824-1',
     './admin-settings-live-firestore.js?v=20260824-1',
+    './admin-cashfree-subscription-mode.js?v=20260826-1',
     './google-profile-photo-fix.js?v=20260819-1',
     './book-detail-loading-fix.js?v=20260819-1',
     './book-detail-media-hotfix.js?v=20260819-2',
@@ -65,18 +66,9 @@
     './membership-firebase-runtime.js?v=20260826-1',
     './membership-autopay-runtime.js?v=20260826-1'
   ];
-
-  const loadOne = async src => {
-    try { await import(src); }
-    catch (error) { console.warn('[Bookora optional runtime skipped]', src, error); }
-  };
-
+  const loadOne = async src => { try { await import(src); } catch (error) { console.warn('[Bookora optional runtime skipped]', src, error); } };
   loadOne(EARLY_AUTH_RUNTIME);
-  const start = async () => {
-    if (!window.__BOOKORA_CORE_BOOTED__) return;
-    for (const src of modules) await loadOne(src);
-  };
+  const start = async () => { if (!window.__BOOKORA_CORE_BOOTED__) return; for (const src of modules) await loadOne(src); };
   const waitForCore = () => window.__BOOKORA_CORE_BOOTED__ ? start() : setTimeout(waitForCore, 250);
-  if ('requestIdleCallback' in window) requestIdleCallback(waitForCore, { timeout: 3000 });
-  else setTimeout(waitForCore, 1500);
+  if ('requestIdleCallback' in window) requestIdleCallback(waitForCore, { timeout: 3000 }); else setTimeout(waitForCore, 1500);
 })();
