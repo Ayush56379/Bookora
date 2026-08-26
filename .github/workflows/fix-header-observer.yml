@@ -1,0 +1,39 @@
+name: Fix header MutationObserver startup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-header-observer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch observer initialization
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('js/header-active-route-fix.js')
+          text = p.read_text(encoding='utf-8')
+          old = """  // Watch only for header insertion/replacement. Watching class/href would observe\n  // our own active-state writes and cause an unnecessary render loop.\n  const observer = new MutationObserver(schedule);\n  observer.observe(document.body, { childList: true, subtree: true });\n\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply, { once: true });\n  else apply();\n"""
+          new = """  // Watch only for header insertion/replacement. This file is loaded from <head>,\n  // so document.body may not exist yet. Never observe a null target.\n  const installObserver = () => {\n    if (!document.body || typeof MutationObserver !== 'function') return;\n    const observer = new MutationObserver(schedule);\n    observer.observe(document.body, { childList: true, subtree: true });\n    window.__BOOKORA_HEADER_ACTIVE_ROUTE_OBSERVER__ = observer;\n    apply();\n  };\n\n  if (document.body) installObserver();\n  else document.addEventListener('DOMContentLoaded', installObserver, { once: true });\n\n  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply, { once: true });\n  else apply();\n"""
+          if old not in text:
+              raise SystemExit('Expected header observer block was not found; refusing unsafe edit.')
+          p.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          git diff --check
+      - name: Commit fix
+        run: |
+          git config user.name "bookora-ai"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/header-active-route-fix.js
+          git commit -m "fix: prevent header MutationObserver null-body error"
+          git push origin main
