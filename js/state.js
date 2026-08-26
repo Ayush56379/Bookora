@@ -39,7 +39,7 @@ class BookoraState {
         this.isAuthenticated = true;
         this.isAdmin = user.role === 'admin' || String(user.email || '').toLowerCase() === MASTER_ADMIN_EMAIL;
         this.isSeller = this.isAdmin || user.seller_status === 'approved' || user.role === 'creator' || user.role === 'seller';
-        this.activeMode = this.isAdmin ? 'admin' : this.isSeller ? 'seller' : 'buyer';
+        this.activeMode = this.resolvePersistedMode(user);
       } catch (error) {
         console.warn('Cached user could not be restored:', error);
         this.clearLocalSession();
@@ -48,6 +48,18 @@ class BookoraState {
     this.hydrateCatalogCache();
     this.syncData();
     this.startFirebaseSession();
+  }
+
+  resolvePersistedMode(user = this.currentUser) {
+    const saved = String(localStorage.getItem('bookora_active_mode') || '').toLowerCase();
+    if (saved === 'admin' && this.isAdmin) return 'admin';
+    if (saved === 'seller' && this.isSeller) return 'seller';
+    if (saved === 'buyer' && !!user) return 'buyer';
+    // Only use a role-based default when no valid mode has ever been chosen.
+    // Once the user explicitly switches mode, that selection is authoritative
+    // across refreshes, route changes and Firebase session hydration.
+    if (!saved) return this.isAdmin ? 'admin' : this.isSeller ? 'seller' : 'buyer';
+    return 'buyer';
   }
 
   hydrateCatalogCache() {
@@ -190,7 +202,9 @@ class BookoraState {
     this.isAuthenticated = true;
     this.isAdmin = isMasterAdmin || user.role === 'admin';
     this.isSeller = this.isAdmin || user.seller_status === 'approved' || user.role === 'creator' || user.role === 'seller';
-    this.activeMode = this.isAdmin ? 'admin' : this.isSeller ? 'seller' : 'buyer';
+    // IMPORTANT: Firebase hydration must never silently change the selected UI
+    // mode. Keep the explicit persisted mode until the user changes it.
+    this.activeMode = this.resolvePersistedMode(user);
     localStorage.setItem('bookora_user_profile', JSON.stringify(user));
     localStorage.setItem('bookora_active_mode', this.activeMode);
     this.notify('USER_LOGGED_IN', user);
@@ -204,7 +218,7 @@ class BookoraState {
     this.isAuthenticated = true;
     this.isAdmin = user.role === 'admin' || String(user.email || '').toLowerCase() === MASTER_ADMIN_EMAIL || user.isMasterAdmin === true;
     this.isSeller = this.isAdmin || user.seller_status === 'approved' || user.role === 'creator' || user.role === 'seller';
-    this.activeMode = this.isAdmin ? 'admin' : this.isSeller ? 'seller' : 'buyer';
+    this.activeMode = this.resolvePersistedMode(user);
     localStorage.setItem('bookora_user_profile', JSON.stringify(user));
     localStorage.setItem('bookora_active_mode', this.activeMode);
     this.notify('USER_LOGGED_IN', user);
@@ -296,7 +310,16 @@ class BookoraState {
 
   subscribe(callback) { this.subscribers.add(callback); return () => this.subscribers.delete(callback); }
   notify(event, payload = null) { this.subscribers.forEach(callback => { try { callback(event, payload, this); } catch (error) { console.error(error); } }); }
-  setActiveMode(mode) { if (mode === 'admin' && !this.isAdmin) return; if (mode === 'seller' && !this.isSeller) return; this.activeMode = mode; localStorage.setItem('bookora_active_mode', mode); this.notify('MODE_CHANGED', mode); }
+  setActiveMode(mode) {
+    if (!['buyer', 'seller', 'admin'].includes(mode)) return false;
+    if (mode === 'admin' && !this.isAdmin) return false;
+    if (mode === 'seller' && !this.isSeller) return false;
+    if (mode === this.activeMode) return true;
+    this.activeMode = mode;
+    localStorage.setItem('bookora_active_mode', mode);
+    this.notify('MODE_CHANGED', mode);
+    return true;
+  }
   async logout() { try { if (window.firebase?.apps?.length) { const auth = window.firebase.auth(); if (auth.currentUser) await auth.signOut(); } } catch (error) { console.warn('Firebase logout:', error); } this.clearLocalSession(); this.notify('USER_LOGGED_OUT'); }
   clearLocalSession() { this.token = ''; this.currentUser = null; this.isAuthenticated = false; this.isAdmin = false; this.isSeller = false; this.activeMode = 'buyer'; this.library = new Set(); this.wishlist = new Set(); localStorage.removeItem('bookora_auth_token'); localStorage.removeItem('bookora_user_profile'); localStorage.removeItem('bookora_active_mode'); }
   async toggleWishlist(bookId) { if (!this.isAuthenticated || !this.currentUser?.uid) throw new Error('Please login first.'); const { db } = await this.getFirebase(); const uid = this.currentUser.uid; const normalizedId = String(bookId); const wishlistRef = db.collection('wishlists').doc(uid); const snapshot = await wishlistRef.get(); let ids = snapshot.exists && Array.isArray(snapshot.data()?.bookIds) ? snapshot.data().bookIds.map(id => String(id)) : []; let isAdded; if (ids.includes(normalizedId)) { ids = ids.filter(id => id !== normalizedId); this.wishlist.delete(normalizedId); isAdded = false; } else { ids.push(normalizedId); this.wishlist.add(normalizedId); isAdded = true; } await wishlistRef.set({ userId: uid, bookIds: ids, updatedAt: window.firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); this.notify('WISHLIST_UPDATED', { bookId: normalizedId, isAdded }); return isAdded; }
