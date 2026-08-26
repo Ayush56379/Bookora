@@ -4,6 +4,7 @@
 // relative to this file as ./<module>, never ./js/<module>.
 (() => {
   const modules = [
+    './auth-logout-ui-permanent-fix.js?v=20260826-1',
     './auth-network-resilience.js?v=20260826-2',
     './api-auth-bridge.js?v=20260826-4',
     './external-publish-scan-permanent-fix.js?v=20260823-3',
