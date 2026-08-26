@@ -2,8 +2,8 @@
 // This runtime is intentionally scoped to the public category directory/explore filter.
 (() => {
   'use strict';
-  if (window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V4__) return;
-  window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V4__ = true;
+  if (window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V5__) return;
+  window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V5__ = true;
 
   const esc = value => String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -11,23 +11,47 @@
 
   const normalizeName = value => {
     if (Array.isArray(value)) return '';
-    if (value && typeof value === 'object') return normalizeName(value.name || value.title || value.category || '');
+    if (value && typeof value === 'object') {
+      return normalizeName(value.name || value.title || value.category || value.label || value.slug || value.id || '');
+    }
     return String(value || '').trim().replace(/\s+/g, ' ');
   };
 
   const slugify = value => String(value || '')
     .trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
+  // A book can store a category as a name, slug, Firebase category id, object,
+  // or an array of any of those forms. Return every usable identifier so the
+  // Firebase book can always be matched to the corresponding category card.
   const categoryValues = book => {
     const raw = [book?.category, book?.categories, book?.category_name, book?.categoryName]
       .filter(value => value !== undefined && value !== null && value !== '');
     const values = [];
-    raw.forEach(value => {
-      if (Array.isArray(value)) values.push(...value);
-      else values.push(value);
-    });
-    return [...new Set(values.map(normalizeName).filter(Boolean))];
+    const add = value => {
+      if (value === undefined || value === null || value === '') return;
+      if (Array.isArray(value)) return value.forEach(add);
+      if (typeof value === 'object') {
+        add(value.name);
+        add(value.title);
+        add(value.category);
+        add(value.label);
+        add(value.slug);
+        add(value.id);
+        return;
+      }
+      const normalized = normalizeName(value);
+      if (normalized) values.push(normalized);
+    };
+    raw.forEach(add);
+    return [...new Set(values)];
   };
+
+  const categoryKeys = category => [...new Set([
+    normalizeName(category?.name),
+    normalizeName(category?.title),
+    normalizeName(category?.slug),
+    normalizeName(category?.id)
+  ].filter(Boolean).map(value => String(value).trim().toLowerCase()))];
 
   const renderCard = c => `
     <a href="#/category/${encodeURIComponent(c.slug)}" class="category-card" data-slug="${esc(c.slug)}">
@@ -41,16 +65,27 @@
 
   const sync = async () => {
     try {
-      const { state } = await import('./state.js?v=category-data-runtime-20260826-4');
+      const { state } = await import('./state.js?v=category-data-runtime-20260826-5');
       const sourceCategories = Array.isArray(state.categories) ? state.categories : [];
-      const books = typeof state.getApprovedBooks === 'function' ? state.getApprovedBooks() : [];
 
-      // Count every approved publication against every category attached to it.
-      const countByName = new Map();
+      // Use the actual Firebase-backed state books. Do not depend on the cached
+      // category count or on a category count field stored in Firebase.
+      let books = Array.isArray(state.books) ? state.books : [];
+      if (typeof state.getApprovedBooks === 'function') {
+        const approved = state.getApprovedBooks();
+        if (approved.length) books = approved;
+      }
+
+      // Build counts against every supported category identifier (name/slug/id).
+      const countByKey = new Map();
       books.forEach(book => {
-        categoryValues(book).forEach(name => {
-          const key = name.toLowerCase();
-          countByName.set(key, (countByName.get(key) || 0) + 1);
+        const values = categoryValues(book).map(value => String(value).trim().toLowerCase());
+        if (!values.length) return;
+        values.forEach(value => countByKey.set(value, (countByKey.get(value) || 0) + 1));
+        // Also allow a human-readable category name to match its slug.
+        values.forEach(value => {
+          const slug = slugify(value);
+          if (slug) countByKey.set(slug, (countByKey.get(slug) || 0) + 1);
         });
       });
 
@@ -62,24 +97,31 @@
         const key = name.toLowerCase();
         if (seen.has(key)) return;
         seen.add(key);
+        const keys = categoryKeys(raw);
+        const count = keys.reduce((max, k) => Math.max(max, Number(countByKey.get(k) || 0)), 0);
         categories.push({
           ...((raw && typeof raw === 'object') ? raw : {}),
           name,
           slug: raw?.slug || slugify(name),
           description: raw?.description || `Explore ${name} eBooks on Bookora.`,
-          count: countByName.get(key) || 0
+          count
         });
       };
 
-      // Firebase categories collection is the authoritative list, including categories with 0 books.
       sourceCategories.forEach(add);
 
-      // Also surface any category used by an approved Firebase book if its category document is missing.
-      countByName.forEach((count, key) => {
-        if (!seen.has(key)) add({ name: key, count });
+      // Also surface categories present on approved Firebase books if their
+      // category document is missing from the categories collection.
+      const knownKeys = new Set(categories.flatMap(categoryKeys));
+      books.forEach(book => {
+        categoryValues(book).forEach(value => {
+          const key = String(value).trim().toLowerCase();
+          const slug = slugify(value);
+          if (knownKeys.has(key) || knownKeys.has(slug)) return;
+          add({ name: value, slug: slug || key });
+        });
       });
 
-      // Keep the shared category state normalized for the existing category route.
       state.categories = categories;
 
       const dir = document.querySelector('.categories-dir-page');
@@ -109,6 +151,7 @@
   };
 
   window.addEventListener('bookora:catalog-updated', sync, { passive: true });
+  window.addEventListener('hashchange', () => setTimeout(sync, 50), { passive: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(sync, 0), { once: true });
   else setTimeout(sync, 0);
 })();
