@@ -2,12 +2,17 @@
 // Adds a separate AutoPay environment selector without changing the existing
 // one-time payment environment setting. The selected value is persisted by the
 // existing Save All Settings flow into Firestore settings.payments.
+//
+// IMPORTANT: this runtime must stay lightweight. Do not observe the whole DOM:
+// the admin settings page and other runtimes perform many DOM updates and a
+// global MutationObserver can make the Settings route consume the main thread.
 import { state } from './state.js';
 
 const ROUTE = '#/admin/settings';
 const FIELD_ID = 'set-cf-subscription-env';
 const CARD_ID = 'bookora-cashfree-subscription-mode';
-let observer = null;
+let renderTimer = null;
+let lastRouteRender = 0;
 
 const isRoute = () => (window.location.hash || '#/').split('?')[0] === ROUTE;
 
@@ -25,6 +30,7 @@ function ensureField() {
     field.id = FIELD_ID;
     field.name = FIELD_ID;
     field.value = 'SANDBOX';
+    field.setAttribute('data-bookora-autopay-field', 'true');
     document.body.appendChild(field);
   }
   return field;
@@ -39,6 +45,7 @@ function render() {
   if (!isRoute() || !state.isAdmin) return;
   const root = document.querySelector('.admin-settings');
   if (!root) return;
+
   const field = ensureField();
   const settings = state.settings || {};
   const configured = String(settings.payments?.cashfree_subscription_environment || settings.payments?.cashfree_environment || field.value || 'SANDBOX').toUpperCase();
@@ -77,6 +84,16 @@ function render() {
   });
   const status = card.querySelector('#bookora-cf-sub-mode-status');
   if (status) status.textContent = mode === 'PRODUCTION' ? 'Production selected' : 'Sandbox selected';
+  lastRouteRender = Date.now();
+}
+
+function scheduleRender(delay = 180) {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    renderTimer = null;
+    if (!isRoute()) return;
+    render();
+  }, delay);
 }
 
 document.addEventListener('click', event => {
@@ -90,20 +107,28 @@ document.addEventListener('click', event => {
 
 document.addEventListener('click', event => {
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest('#save-all-settings-btn')) setTimeout(() => { const field = ensureField(); delete field.dataset.userChanged; render(); }, 500);
-  if (target?.closest('#reload-settings-btn')) { const field = ensureField(); delete field.dataset.userChanged; setTimeout(render, 50); }
+  if (target?.closest('#save-all-settings-btn')) {
+    setTimeout(() => { const field = ensureField(); delete field.dataset.userChanged; scheduleRender(100); }, 500);
+  }
+  if (target?.closest('#reload-settings-btn')) {
+    const field = ensureField(); delete field.dataset.userChanged; scheduleRender(100);
+  }
 }, true);
 
 state.subscribe(event => {
-  if (['SETTINGS_UPDATED', 'AUTH_STATE_CHANGED', 'USER_LOGGED_IN'].includes(event)) setTimeout(render, 150);
+  if (['SETTINGS_UPDATED', 'AUTH_STATE_CHANGED', 'USER_LOGGED_IN'].includes(event)) scheduleRender(180);
 });
 
-function start() {
-  if (observer || !document.body) return;
-  observer = new MutationObserver(() => { if (isRoute()) render(); });
-  observer.observe(document.body, { childList: true, subtree: true });
-  render();
+window.addEventListener('hashchange', () => {
+  if (isRoute()) {
+    // The SPA router needs a moment to replace #main-content before the card is inserted.
+    scheduleRender(220);
+    setTimeout(() => { if (isRoute() && Date.now() - lastRouteRender > 150) render(); }, 700);
+  }
+});
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => scheduleRender(250), { once: true });
+} else {
+  scheduleRender(250);
 }
-window.addEventListener('hashchange', () => setTimeout(render, 100));
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-else start();
