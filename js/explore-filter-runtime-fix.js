@@ -4,18 +4,14 @@
 // from a polling loop or duplicate render handlers.
 (() => {
   'use strict';
-  if (window.__BOOKORA_EXPLORE_STABLE_REFRESH_V3__) return;
-  window.__BOOKORA_EXPLORE_STABLE_REFRESH_V3__ = true;
+  if (window.__BOOKORA_EXPLORE_STABLE_REFRESH_V4__) return;
+  window.__BOOKORA_EXPLORE_STABLE_REFRESH_V4__ = true;
 
   const page = () => document.querySelector('.explore-page');
 
   const refreshFromCatalog = () => {
     const p = page();
     if (!p) return;
-
-    // Let the native ExplorePage implementation do the actual filtering.
-    // A single change event refreshes the current catalog without installing
-    // another input/change handler or polling loop.
     const sort = p.querySelector('#catalog-sort-select');
     if (sort) sort.dispatchEvent(new Event('change', { bubbles: true }));
   };
@@ -30,8 +26,8 @@
     setTimeout(refreshFromCatalog, 0);
   }
 
-  // Category names/counts are also hydrated from the same live catalog event.
-  import('./public-category-data-runtime-fix.js?v=20260826-1').catch(error => {
+  // Category names/counts are hydrated from the same live Firebase catalog event.
+  import('./public-category-data-runtime-fix.js?v=20260826-3').catch(error => {
     console.warn('[Bookora categories] runtime load failed:', error?.message || error);
   });
 })();
