@@ -1,10 +1,9 @@
-// Bookora header active-route fix
-// Keeps the navigation highlight synchronized with the actual SPA hash route,
-// including routes that previously had no active-state expression.
+// Bookora permanent header active-route fix.
+// Buyer navigation must have exactly ONE active item, matching the current SPA hash.
 (() => {
   'use strict';
-  if (window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX__) return;
-  window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX__ = true;
+  if (window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V2__) return;
+  window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V2__ = true;
 
   const normalize = value => {
     const raw = String(value || '#/').trim();
@@ -12,43 +11,73 @@
     return raw.replace(/\/+$/, '') || '#/';
   };
 
-  const routeMatches = (href, hash) => {
-    const target = normalize(href);
-    const current = normalize(hash);
-    if (target === '#/') return current === '#/';
-    // Exact route for normal top-level navigation; nested routes stay active
-    // under their parent (e.g. /explore?... or /categories/foo).
-    return current === target || current.startsWith(`${target}/`) || current.startsWith(`${target}?`);
+  const buyerRoutes = [
+    ['#/', h => h === '#/'],
+    ['#/explore', h => h === '#/explore' || h.startsWith('#/explore/') || h.startsWith('#/explore?')],
+    ['#/categories', h => h === '#/categories' || h.startsWith('#/categories/') || h.startsWith('#/categories?')],
+    ['#/best-sellers', h => h === '#/best-sellers' || h.startsWith('#/best-sellers/') || h.startsWith('#/best-sellers?')],
+    ['#/new-releases', h => h === '#/new-releases' || h.startsWith('#/new-releases/') || h.startsWith('#/new-releases?')],
+    ['#/pricing', h => h === '#/pricing' || h.startsWith('#/pricing/') || h.startsWith('#/pricing?')]
+  ];
+
+  const getCurrentTarget = () => {
+    const hash = normalize(window.location.hash || '#/');
+    return buyerRoutes.find(([, test]) => test(hash))?.[0] || null;
   };
 
-  const sync = () => {
-    const current = normalize(window.location.hash || '#/');
-    document.querySelectorAll('#main-header a.nav-link, .mobile-drawer-link').forEach(link => {
-      const href = link.getAttribute('href') || '';
-      if (!href.startsWith('#/')) return;
-      const active = routeMatches(href, current);
-      link.classList.toggle('active', active);
-      if (active) link.setAttribute('aria-current', 'page');
-      else link.removeAttribute('aria-current');
+  const applyBuyerState = () => {
+    const header = document.getElementById('main-header');
+    if (!header) return;
+    const nav = header.querySelector('.desktop-nav');
+    if (!nav) return;
+
+    // Seller/Admin nav does not contain the buyer Home link.
+    if (!nav.querySelector('a.nav-link[href="#/"]')) return;
+
+    const target = getCurrentTarget();
+    if (!target) return;
+
+    Array.from(nav.querySelectorAll('a.nav-link')).forEach(link => {
+      const href = normalize(link.getAttribute('href') || '');
+      const active = href === target;
+      link.classList.remove('active');
+      link.removeAttribute('aria-current');
+      link.style.removeProperty('background');
+      link.style.removeProperty('color');
+      link.style.removeProperty('font-weight');
+      link.style.removeProperty('box-shadow');
+
+      if (active) {
+        link.classList.add('active');
+        link.setAttribute('aria-current', 'page');
+        link.style.setProperty('background', '#EFF6FF', 'important');
+        link.style.setProperty('color', '#2563EB', 'important');
+        link.style.setProperty('font-weight', '700', 'important');
+      }
     });
   };
 
-  const schedule = () => requestAnimationFrame(sync);
+  let raf = 0;
+  const schedule = () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      applyBuyerState();
+      setTimeout(applyBuyerState, 0);
+    });
+  };
 
-  window.addEventListener('hashchange', schedule);
+  window.addEventListener('hashchange', schedule, { passive: true });
   window.addEventListener('bookora:route-changed', schedule);
   window.addEventListener('bookora:header-rendered', schedule);
-
-  const observer = new MutationObserver(() => {
-    if (document.querySelector('#main-header')) schedule();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-
   document.addEventListener('click', event => {
-    const link = event.target?.closest?.('#main-header a.nav-link, #main-header .mobile-drawer-link');
-    if (!link) return;
-    setTimeout(sync, 0);
+    if (event.target?.closest?.('#main-header a.nav-link, #main-header .mobile-drawer-link')) setTimeout(applyBuyerState, 0);
   }, true);
 
-  sync();
+  const observer = new MutationObserver(() => {
+    if (document.getElementById('main-header')) schedule();
+  });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'href'] });
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyBuyerState, { once: true });
+  else applyBuyerState();
 })();
