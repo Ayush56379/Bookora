@@ -1,7 +1,10 @@
-// Bookora — Firebase-only wishlist persistence + live UI synchronization.
-// The authenticated Firebase UID is the owner of the wishlist document.
-// No localStorage fallback is used: Firebase is the source of truth.
+// Bookora — Wishlist persistence bridge.
+// Firebase Auth remains the identity authority. Wishlist writes/reads go through
+// the authenticated Bookora backend, which owns the server-side Firestore write.
+// This avoids browser Firestore permission failures while keeping Firebase data
+// as the persistent source of truth.
 import { state } from './state.js';
+import { apiFetch } from './config.js';
 
 const rerenderWishlist = () => {
   try {
@@ -15,78 +18,83 @@ const rerenderWishlist = () => {
   }
 };
 
-async function persistWishlistRecord(bookId, isAdded) {
-  if (!state.isAuthenticated || !state.currentUser?.uid) throw new Error('Please login first.');
-  const { db } = await state.getFirebase();
-  const uid = String(state.currentUser.uid);
-  const normalizedId = String(bookId);
-  const book = state.getApprovedBooks().find(item => String(item.id) === normalizedId) || {};
-  const wishlistRef = db.collection('wishlists').doc(uid);
-
-  // One document per authenticated Firebase user = complete account-level record.
-  await wishlistRef.set({
-    userId: uid,
-    firebaseUid: uid,
-    email: state.currentUser.email || '',
-    userName: state.currentUser.name || state.currentUser.displayName || '',
-    bookIds: Array.from(state.wishlist).map(String),
-    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-    lastAction: isAdded ? 'added' : 'removed',
-    lastBookId: normalizedId
-  }, { merge: true });
-
-  // Also keep an auditable per-book record for this user.
-  const itemRef = wishlistRef.collection('items').doc(normalizedId);
-  if (isAdded) {
-    await itemRef.set({
-      userId: uid,
-      firebaseUid: uid,
-      email: state.currentUser.email || '',
-      userName: state.currentUser.name || state.currentUser.displayName || '',
-      bookId: normalizedId,
-      bookTitle: book.title || '',
-      bookAuthor: book.author || '',
-      addedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-  } else {
-    await itemRef.delete();
+function extractWishlistIds(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload.map(item => typeof item === 'object' ? (item.bookId ?? item.book_id ?? item.id) : item).filter(Boolean).map(String);
+  const candidates = [payload.bookIds, payload.book_ids, payload.wishlistIds, payload.wishlist_ids, payload.items, payload.wishlist, payload.data, payload.books];
+  for (const value of candidates) {
+    if (Array.isArray(value)) return value.map(item => typeof item === 'object' ? (item.bookId ?? item.book_id ?? item.id) : item).filter(Boolean).map(String);
   }
+  return [];
 }
 
-const originalToggle = state.toggleWishlist.bind(state);
+async function loadWishlistFromBackend() {
+  if (!state.isAuthenticated || !state.currentUser?.uid) return;
+  const response = await apiFetch('/api/wishlist', { method: 'GET', cache: 'no-store' });
+  if (!response.ok) throw new Error(`Wishlist GET HTTP ${response.status}`);
+  const payload = await response.json();
+  state.wishlist = new Set(extractWishlistIds(payload));
+  state.notify('WISHLIST_SYNCED', { persistence: 'firebase-backend' });
+  rerenderWishlist();
+}
+
+async function addWishlist(bookId) {
+  const id = String(bookId);
+  const attempts = [
+    { bookId: id },
+    { book_id: id }
+  ];
+  let lastError = null;
+  for (const body of attempts) {
+    try {
+      const response = await apiFetch('/api/wishlist', { method: 'POST', body: JSON.stringify(body) });
+      if (response.ok) return true;
+      lastError = new Error(`Wishlist POST HTTP ${response.status}`);
+      if (![400, 404, 405, 422].includes(response.status)) break;
+    } catch (error) { lastError = error; }
+  }
+  throw lastError || new Error('Wishlist add failed.');
+}
+
+async function removeWishlist(bookId) {
+  const response = await apiFetch(`/api/wishlist/${encodeURIComponent(String(bookId))}`, { method: 'DELETE' });
+  if (response.ok || response.status === 204 || response.status === 404) return true;
+  throw new Error(`Wishlist DELETE HTTP ${response.status}`);
+}
 
 state.toggleWishlist = async function(bookId) {
   const normalizedId = String(bookId || '').trim();
   if (!normalizedId) throw new Error('BOOK_ID_MISSING');
   if (!this.isAuthenticated || !this.currentUser?.uid) throw new Error('Please login first.');
 
-  // Existing state method performs the atomic source-of-truth update in Firebase.
-  const result = await originalToggle(normalizedId);
-  try {
-    await persistWishlistRecord(normalizedId, result);
-  } catch (error) {
-    // Do not silently switch to localStorage. Firebase must remain authoritative.
-    console.error('[Bookora Wishlist] Firebase record enrichment failed:', error);
-    throw error;
-  }
+  const isAdded = !this.wishlist.has(normalizedId);
+  if (isAdded) await addWishlist(normalizedId);
+  else await removeWishlist(normalizedId);
 
+  // Optimistic in-memory state is updated only after the server confirms the
+  // operation. The server authenticates with Firebase and persists the record.
+  if (isAdded) this.wishlist.add(normalizedId);
+  else this.wishlist.delete(normalizedId);
   this.notify('WISHLIST_UPDATED', {
     bookId: normalizedId,
-    isAdded: result,
-    persistence: 'firebase'
+    isAdded,
+    persistence: 'firebase-backend'
   });
   rerenderWishlist();
-  return result;
+  return isAdded;
 };
 
-state.subscribe(event => {
-  // Firebase sync populates state.wishlist after authentication. Re-render the
-  // already-open Wishlist route so it never stays stuck on "Wishlist (0)".
-  if (event === 'DATA_SYNCED' || event === 'USER_LOGGED_IN' || event === 'WISHLIST_UPDATED') {
-    rerenderWishlist();
+async function reconcile() {
+  try {
+    await loadWishlistFromBackend();
+  } catch (error) {
+    console.warn('[Bookora Wishlist] Backend sync skipped:', error?.message || error);
   }
+}
+
+state.subscribe(event => {
+  if (event === 'USER_LOGGED_IN' || event === 'AUTH_STATE_CHANGED' || event === 'DATA_SYNCED') reconcile();
+  if (event === 'WISHLIST_UPDATED' || event === 'WISHLIST_SYNCED') rerenderWishlist();
 });
 
-// If this runtime loads after the initial sync, immediately reconcile the route.
-rerenderWishlist();
+reconcile();
