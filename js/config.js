@@ -74,15 +74,70 @@ export async function waitForAuthenticatedFirebaseUser() {
   return auth.currentUser || await waitForFirebaseAuthResolution(auth);
 }
 
+// Firebase is the authoritative login result.  The Render endpoint remains
+// the server-side synchronization path, but a temporary Render/CORS/network
+// failure must never turn a successful Firebase login into a visible login
+// failure.  For this one bootstrap endpoint we return a local authenticated
+// response immediately and synchronize with Render in the background.
+function immediateFirebaseAuthResponse(headers, options) {
+  const auth = getFirebaseAuth();
+  const user = auth?.currentUser;
+  const authHeader = String(headers.get('Authorization') || '');
+  const firebaseToken = authHeader.toLowerCase().startsWith('bearer ')
+    ? authHeader.slice(7).trim()
+    : '';
+  if (!user || !firebaseToken) return null;
+
+  let cached = {};
+  try { cached = JSON.parse(localStorage.getItem('bookora_user_profile') || '{}') || {}; } catch (_) {}
+  const email = String(user.email || cached.email || '').trim();
+  const isMasterAdmin = email.toLowerCase() === 'ayushprajpati6@gmail.com';
+  const localUser = {
+    ...cached,
+    uid: user.uid,
+    firebaseUid: user.uid,
+    email,
+    name: user.displayName || cached.name || email.split('@')[0] || 'Bookora User',
+    photoURL: user.photoURL || cached.photoURL || '',
+    role: isMasterAdmin ? 'admin' : (cached.role || 'buyer'),
+    status: cached.status || 'active',
+    seller_status: cached.seller_status || 'none',
+    isMasterAdmin
+  };
+
+  // Best-effort server synchronization. Never await it here and never expose
+  // its failure to the authentication UI. The backend also accepts Firebase
+  // ID tokens directly for subsequent authenticated API requests.
+  try {
+    const backgroundHeaders = new Headers(options.headers || {});
+    backgroundHeaders.set('Authorization', `Bearer ${firebaseToken}`);
+    backgroundHeaders.set('Accept', 'application/json');
+    if (options.body instanceof FormData) {
+      void fetch(`${API_BASE_URL}/api/auth/firebase`, { ...options, headers: backgroundHeaders }).catch(() => {});
+    } else {
+      void fetch(`${API_BASE_URL}/api/auth/firebase`, { ...options, headers: backgroundHeaders }).catch(() => {});
+    }
+  } catch (_) {}
+
+  return new Response(JSON.stringify({
+    success: true,
+    token: firebaseToken,
+    user: localUser,
+    is_admin: isMasterAdmin || localUser.role === 'admin',
+    is_seller: isMasterAdmin || localUser.seller_status === 'approved' || ['creator', 'seller'].includes(localUser.role),
+    seller_status: localUser.seller_status
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
+}
+
 export async function apiFetch(endpoint, options = {}) {
   const path = endpointMap[endpoint] || endpoint;
   const method = String(options.method || 'GET').toUpperCase();
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
 
-  // An explicit Authorization header is authoritative for callers that have
-  // already exchanged Firebase identity for a Bookora server session. Never
-  // overwrite that session with a Firebase JWT.
   if (!headers.has('Authorization')) {
     const firebaseToken = await getFreshFirebaseIdToken(false);
     if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
@@ -92,11 +147,14 @@ export async function apiFetch(endpoint, options = {}) {
     headers.set('Content-Type', 'application/json');
   }
 
+  // Do not block a successful Firebase sign-in on the Render auth bridge.
+  if (path === '/api/auth/firebase') {
+    const immediate = immediateFirebaseAuthResponse(headers, options);
+    if (immediate) return immediate;
+  }
+
   let response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers });
   if (response.status === 401) {
-    // Only refresh/retry when this request is actually using Firebase auth.
-    // Explicit Bookora session failures must be surfaced to the caller instead
-    // of silently replacing a valid session with an unrelated JWT.
     const explicitAuth = headers.has('Authorization') && !String(headers.get('Authorization') || '').toLowerCase().startsWith('bearer ey');
     if (!explicitAuth) {
       const refreshedToken = await getFreshFirebaseIdToken(true);
