@@ -1,6 +1,7 @@
-// Bookora Best Sellers - Firebase-backed catalog + authoritative bestseller ordering
-// Keeps book-card metadata sourced from Firestore while using the existing secure
-// public catalog API's bestselling sort for sales-derived ordering.
+// Bookora Best Sellers - 100% Firebase PAID-orders ranking.
+// Book metadata is read from the existing Firestore-approved catalog in state.
+// Sales ranking comes exclusively from the secure backend endpoint that reads
+// Firestore `orders` where paymentStatus == PAID.
 import { state } from './state.js';
 import { apiUrl } from './config.js';
 
@@ -12,90 +13,79 @@ function idOf(book) {
   return String(book?.id || book?.bookId || book?.book_id || book?.bookoraLibraryId || '').trim();
 }
 
-function extractBooks(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.books)) return payload.books;
-  if (Array.isArray(payload?.data?.books)) return payload.data.books;
+function extractRanking(payload) {
+  if (Array.isArray(payload?.ranking)) return payload.ranking;
+  if (Array.isArray(payload?.data?.ranking)) return payload.data.ranking;
   return [];
-}
-
-function fallbackSalesCount(book) {
-  const candidates = [
-    book?.salesCount,
-    book?.sales_count,
-    book?.totalSales,
-    book?.total_sales,
-    book?.purchaseCount,
-    book?.purchase_count,
-    book?.orderCount,
-    book?.order_count,
-    book?.soldCount,
-    book?.sold_count
-  ];
-  for (const value of candidates) {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
-  }
-  return 0;
-}
-
-function sortFromFirebaseFields(books) {
-  const approved = Array.isArray(books) ? books.filter(book => book?.status === 'approved') : [];
-  const hasSalesField = approved.some(book => fallbackSalesCount(book) > 0);
-  if (!hasSalesField) return [];
-  return [...approved].sort((a, b) => {
-    const salesDiff = fallbackSalesCount(b) - fallbackSalesCount(a);
-    if (salesDiff) return salesDiff;
-    return (Date.parse(b?.created_at || b?.createdAt || '') || 0) - (Date.parse(a?.created_at || a?.createdAt || '') || 0);
-  });
 }
 
 async function hydrateBestSellerOrder(force = false) {
   if (hydrationPromise && !force) return hydrationPromise;
-  if (!force && Date.now() - lastHydratedAt < CACHE_TTL && Array.isArray(state.__bestSellerRanked)) return state.__bestSellerRanked;
+  if (!force && Date.now() - lastHydratedAt < CACHE_TTL && Array.isArray(state.__bestSellerRanked)) {
+    return state.__bestSellerRanked;
+  }
 
   hydrationPromise = (async () => {
     const approved = state.getApprovedBooks();
     const byId = new Map(approved.map(book => [idOf(book), book]).filter(([id]) => id));
-    let ranked = [];
 
-    // The backend bestseller query is the secure sales-derived source. We do not
-    // read buyer order documents in the browser. The returned IDs are mapped back
-    // to the current Firestore-approved catalog so card metadata stays Firebase-backed.
-    try {
-      const response = await fetch(apiUrl('/api/books?sort=bestselling'), {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        credentials: 'omit',
-        cache: 'no-store'
-      });
-      if (!response.ok) throw new Error(`Bestseller API HTTP ${response.status}`);
-      const payload = await response.json();
-      const ordered = extractBooks(payload);
-      const seen = new Set();
-      ranked = ordered.map(item => byId.get(idOf(item))).filter(book => {
-        const id = idOf(book);
-        if (!id || seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-    } catch (error) {
-      console.warn('[Best Sellers] sales-derived ordering unavailable:', error.message);
+    // IMPORTANT: this endpoint is backed exclusively by Firestore orders.
+    // No local orders table, bestseller flag, rating, freshness or mock sales
+    // count is allowed to influence the ranking.
+    const response = await fetch(apiUrl('/api/books/bestseller-rankings'), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'omit',
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      let detail = '';
+      try { detail = String((await response.json())?.error || ''); } catch (_) {}
+      throw new Error(`Firebase bestseller endpoint HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
     }
 
-    // Safe fallback: use actual sales aggregate fields already present on the
-    // Firestore book documents. Never invent a sales count or promote by creation date.
-    if (!ranked.length) ranked = sortFromFirebaseFields(approved);
+    const payload = await response.json();
+    if (payload?.source !== 'firebase.orders' || payload?.paymentStatus !== 'PAID') {
+      throw new Error('Best Seller source verification failed: expected Firebase orders with paymentStatus=PAID.');
+    }
 
-    // Last-resort compatibility for existing admin-curated bestseller flags. This
-    // keeps the page usable when the production API is temporarily unavailable.
-    if (!ranked.length) ranked = approved.filter(book => book?.is_bestseller === true || book?.is_bestseller === 'true');
+    const ordered = extractRanking(payload);
+    const ranked = [];
+    const salesByBook = new Map();
+    const seen = new Set();
+
+    for (const item of ordered) {
+      const id = String(item?.bookId || item?.productId || '').trim();
+      const salesCount = Number(item?.salesCount || 0);
+      if (!id || !Number.isFinite(salesCount) || salesCount <= 0 || seen.has(id)) continue;
+      const book = byId.get(id);
+      // A paid order for an unpublished/unapproved book must never appear publicly.
+      if (!book) continue;
+      seen.add(id);
+      salesByBook.set(id, salesCount);
+      ranked.push(book);
+    }
+
+    // The backend already returns descending Firebase PAID-order counts. Keep a
+    // defensive client-side sort so a malformed response can never change rank.
+    ranked.sort((a, b) => {
+      const diff = (salesByBook.get(idOf(b)) || 0) - (salesByBook.get(idOf(a)) || 0);
+      return diff || idOf(a).localeCompare(idOf(b));
+    });
 
     state.__bestSellerRanked = ranked.slice(0, 24);
-    state.__bestSellerSales = new Map();
+    state.__bestSellerSales = salesByBook;
     lastHydratedAt = Date.now();
     return state.__bestSellerRanked;
-  })().finally(() => {
+  })().catch(error => {
+    // Do not silently fall back to old/mock bestseller logic. If Firebase order
+    // ranking is unavailable, show the page's genuine empty/error state instead.
+    state.__bestSellerRanked = [];
+    state.__bestSellerSales = new Map();
+    console.error('[Best Sellers] Firebase PAID-order ranking failed:', error);
+    throw error;
+  }).finally(() => {
     hydrationPromise = null;
   });
 
@@ -104,32 +94,43 @@ async function hydrateBestSellerOrder(force = false) {
 
 if (!state.__bestSellersRuntimeInstalled) {
   const originalGetBestSellers = state.getBestSellers.bind(state);
-  state.getBestSellers = function getBestSellersFirebaseBacked() {
+
+  state.getBestSellers = function getBestSellersFirebasePaidOrders() {
     if (Array.isArray(this.__bestSellerRanked)) return this.__bestSellerRanked.slice(0, 24);
+    // Initial synchronous render only; hydrateBestSellerOrder() replaces this
+    // immediately after the Firebase-backed ranking request resolves.
     return originalGetBestSellers().slice(0, 24);
   };
-  state.__bestSellersRuntimeInstalled = true;
 
+  state.__bestSellersRuntimeInstalled = true;
   state.__hydrateBestSellers = () => hydrateBestSellerOrder(true);
 
   window.addEventListener('bookora:catalog-updated', () => {
     state.__bestSellerRanked = null;
-    hydrateBestSellerOrder(false).then(() => {
+    hydrateBestSellerOrder(true).then(() => {
       if ((window.location.hash || '').split('?')[0] === '#/best-sellers') {
         const app = window.__BOOKORA_APP_INSTANCE__;
         if (app?.requestRoute) app.requestRoute(true, false);
       }
-    }).catch(error => console.warn('[Best Sellers] hydration after catalog sync failed:', error));
+    }).catch(() => {
+      if ((window.location.hash || '').split('?')[0] === '#/best-sellers') {
+        const app = window.__BOOKORA_APP_INSTANCE__;
+        if (app?.requestRoute) app.requestRoute(true, false);
+      }
+    });
   });
 
-  // Start immediately so the first route can replace the initial fallback as soon
-  // as the authoritative ordering is available.
   hydrateBestSellerOrder(false).then(() => {
     if ((window.location.hash || '').split('?')[0] === '#/best-sellers') {
       const app = window.__BOOKORA_APP_INSTANCE__;
       if (app?.requestRoute) app.requestRoute(true, false);
     }
-  }).catch(error => console.warn('[Best Sellers] initial hydration failed:', error));
+  }).catch(() => {
+    if ((window.location.hash || '').split('?')[0] === '#/best-sellers') {
+      const app = window.__BOOKORA_APP_INSTANCE__;
+      if (app?.requestRoute) app.requestRoute(true, false);
+    }
+  });
 }
 
 export { hydrateBestSellerOrder };
