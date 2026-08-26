@@ -5,6 +5,7 @@
 (() => {
   const EARLY_AUTH_RUNTIME = './auth-network-resilience.js?v=20260826-3';
   const modules = [
+    './homepage-featured-removal-permanent.js?v=20260826-1',
     './auth-logout-ui-permanent-fix.js?v=20260826-1',
     './api-auth-bridge.js?v=20260826-4',
     './external-publish-scan-permanent-fix.js?v=20260823-3',
