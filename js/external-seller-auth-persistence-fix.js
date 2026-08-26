@@ -26,7 +26,6 @@ function getStoredToken() {
     if (!token || isFirebaseJwt(token)) return '';
     const storedUid = String(localStorage.getItem(UID_KEY) || '').trim();
     const currentUid = String(getFirebaseUser()?.uid || '').trim();
-    // Never reuse another Firebase user's backend session.
     if (currentUid && storedUid && currentUid !== storedUid) return '';
     return token;
   } catch (_) { return ''; }
@@ -67,7 +66,9 @@ async function exchangeFirebaseForBookoraSession(firebaseToken, forceRefresh = f
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.success || !data?.token) {
-      throw new Error(data?.error || 'Bookora authentication session could not be established.');
+      const retryAfter = response.headers.get('Retry-After');
+      const suffix = retryAfter ? ` (retry after ${retryAfter}s)` : '';
+      throw new Error(data?.error || `Bookora authentication session could not be established (${response.status})${suffix}`);
     }
     persistToken(data.token, user?.uid || data.user?.uid || data.user?.firebaseUid || '');
     return data.token;
@@ -77,8 +78,10 @@ async function exchangeFirebaseForBookoraSession(firebaseToken, forceRefresh = f
 
 async function persistVerifiedToken(forceRefresh = false) {
   try {
+    const existing = getStoredToken();
+    if (existing && !forceRefresh) return existing;
     const firebaseToken = await getFreshFirebaseIdToken(forceRefresh);
-    if (!firebaseToken) return getStoredToken();
+    if (!firebaseToken) return existing;
     return await exchangeFirebaseForBookoraSession(firebaseToken, forceRefresh);
   } catch (error) {
     console.warn('[External Seller Auth] session exchange skipped:', error?.message || error);
@@ -89,8 +92,6 @@ async function persistVerifiedToken(forceRefresh = false) {
 if (!window.__BOOKORA_EXTERNAL_SELLER_SESSION_BRIDGE__) {
   window.__BOOKORA_EXTERNAL_SELLER_SESSION_BRIDGE__ = true;
 
-  // Convert explicit Firebase Authorization headers into the backend session
-  // token immediately before protected external requests are sent.
   const originalFetch = window.fetch.bind(window);
   window.fetch = async function externalSellerSessionFetch(input, init = {}) {
     if (!isExternalProtectedRequest(input)) return originalFetch(input, init);
@@ -102,14 +103,13 @@ if (!window.__BOOKORA_EXTERNAL_SELLER_SESSION_BRIDGE__) {
     const suppliedToken = authorization.slice(7).trim();
     if (!isFirebaseJwt(suppliedToken)) return originalFetch(input, init);
 
-    let backendToken = '';
-    try {
-      // Prefer the already-issued Bookora session for the current Firebase user.
-      backendToken = getStoredToken();
-      if (!backendToken) backendToken = await exchangeFirebaseForBookoraSession(suppliedToken, false);
-    } catch (error) {
-      try { backendToken = await exchangeFirebaseForBookoraSession(suppliedToken, true); }
-      catch (refreshError) { console.warn('[External Seller Auth] Firebase→Bookora exchange failed:', refreshError?.message || refreshError); }
+    let backendToken = getStoredToken();
+    if (!backendToken) {
+      try {
+        backendToken = await exchangeFirebaseForBookoraSession(suppliedToken, false);
+      } catch (error) {
+        console.warn('[External Seller Auth] Firebase→Bookora exchange failed:', error?.message || error);
+      }
     }
 
     if (!backendToken) return originalFetch(input, init);
@@ -117,13 +117,14 @@ if (!window.__BOOKORA_EXTERNAL_SELLER_SESSION_BRIDGE__) {
     return originalFetch(input, { ...init, headers });
   };
 
-  // Warm the session after Firebase restoration. A cached profile alone never
-  // authenticates the user; a real Firebase user is required for this step.
+  // IMPORTANT: api-auth-bridge.js is the single owner of the normal
+  // Firebase→Bookora session warm-up. Do not make a second /api/auth/firebase
+  // request here; doing so can trigger backend/edge 429 responses on startup.
+  // This bridge only restores an existing token and exchanges lazily when an
+  // external protected request actually needs a session.
   void persistVerifiedToken(false);
 
   state.subscribe(event => {
-    if (event === 'USER_LOGGED_IN') void persistVerifiedToken(false);
-    if (event === 'AUTH_STATE_CHANGED' && getFirebaseUser()) void persistVerifiedToken(false);
     if (event === 'USER_LOGGED_OUT') {
       try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(UID_KEY); } catch (_) {}
     }
