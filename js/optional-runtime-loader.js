@@ -1,11 +1,11 @@
 // Bookora optional runtime loader.
 // Never blocks or replaces the core SPA. Every optional runtime is isolated.
-// This loader itself lives inside /js, so every module below must resolve
-// relative to this file as ./<module>, never ./js/<module>.
+// Authentication resilience is booted immediately so login never depends on
+// the browser waiting for the idle callback or the full optional-runtime chain.
 (() => {
+  const EARLY_AUTH_RUNTIME = './auth-network-resilience.js?v=20260826-3';
   const modules = [
     './auth-logout-ui-permanent-fix.js?v=20260826-1',
-    './auth-network-resilience.js?v=20260826-2',
     './api-auth-bridge.js?v=20260826-4',
     './external-publish-scan-permanent-fix.js?v=20260823-3',
     './firestore-book-sync.js?v=20260823-10',
@@ -64,8 +64,26 @@
     './book-detail-related-mobile-fix.js?v=20260822-1',
     './smart-search-runtime.js?v=20260822-1'
   ];
-  const loadOne = async src => { try { await import(src); } catch (error) { console.warn('[Bookora optional runtime skipped]', src, error); } };
-  const start = async () => { if (!window.__BOOKORA_CORE_BOOTED__) return; for (const src of modules) await loadOne(src); };
-  const waitForCore = () => { if (window.__BOOKORA_CORE_BOOTED__) return start(); setTimeout(waitForCore, 250); };
-  if ('requestIdleCallback' in window) requestIdleCallback(waitForCore, { timeout: 3000 }); else setTimeout(waitForCore, 1500);
+
+  const loadOne = async src => {
+    try { await import(src); }
+    catch (error) { console.warn('[Bookora optional runtime skipped]', src, error); }
+  };
+
+  // IMPORTANT: authentication resilience must not wait for core boot/idle time.
+  // It patches the backend auth exchange with a verified Firebase fallback.
+  loadOne(EARLY_AUTH_RUNTIME);
+
+  const start = async () => {
+    if (!window.__BOOKORA_CORE_BOOTED__) return;
+    for (const src of modules) await loadOne(src);
+  };
+
+  const waitForCore = () => {
+    if (window.__BOOKORA_CORE_BOOTED__) return start();
+    setTimeout(waitForCore, 250);
+  };
+
+  if ('requestIdleCallback' in window) requestIdleCallback(waitForCore, { timeout: 3000 });
+  else setTimeout(waitForCore, 1500);
 })();
