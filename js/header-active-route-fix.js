@@ -2,8 +2,8 @@
 // Exactly one navigation item is blue and it always matches the currently open route.
 (() => {
   'use strict';
-  if (window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V3__) return;
-  window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V3__ = true;
+  if (window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V4__) return;
+  window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V4__ = true;
 
   const normalize = value => {
     const raw = String(value || '#/').trim();
@@ -59,10 +59,7 @@
   let raf = 0;
   const schedule = () => {
     cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => {
-      apply();
-      setTimeout(apply, 0);
-    });
+    raf = requestAnimationFrame(apply);
   };
 
   window.addEventListener('hashchange', schedule, { passive: true });
@@ -72,8 +69,10 @@
     if (event.target?.closest?.('#main-header a.nav-link, #main-header .mobile-drawer-link')) schedule();
   }, true);
 
+  // Watch only for header insertion/replacement. Watching class/href would observe
+  // our own active-state writes and cause an unnecessary render loop.
   const observer = new MutationObserver(schedule);
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'href'] });
+  observer.observe(document.body, { childList: true, subtree: true });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply, { once: true });
   else apply();
