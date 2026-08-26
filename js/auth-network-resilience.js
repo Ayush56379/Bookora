@@ -1,7 +1,7 @@
 // Bookora authentication network resilience layer.
-// Firebase remains the identity authority. Backend auth is preferred, but a
-// temporary Render cold-start/rate-limit must never turn a valid Firebase
-// login into a fake "authentication server is taking too long" failure.
+// Firebase is the identity authority. Protected API routes accept the Firebase
+// ID token directly, so this layer must never make a secondary auth-network
+// request that can fail independently of the real Firebase session.
 (() => {
   if (window.__BOOKORA_AUTH_NETWORK_RESILIENCE__) return;
   window.__BOOKORA_AUTH_NETWORK_RESILIENCE__ = true;
@@ -43,39 +43,24 @@
     } catch (_) { return {}; }
   };
 
-  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-  async function requestWithDeadline(input, init, timeoutMs) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try { return await originalFetch(input, { ...init, signal: controller.signal }); }
-    finally { clearTimeout(timer); }
-  }
-
-  async function realAuthExchange(init) {
-    let lastError = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const response = await requestWithDeadline(`${API_ROOT}${AUTH_PATH}`, init, 6000);
-        if (response.ok) return response;
-        const status = response.status;
-        if (![408, 425, 429, 500, 502, 503, 504].includes(status)) return response;
-        lastError = new Error(`Bookora auth gateway HTTP ${status}`);
-        const retryAfter = Number(response.headers.get('Retry-After') || 0);
-        await sleep(Math.min(4500, Math.max(700, retryAfter * 1000 || 800 * (attempt + 1))));
-      } catch (error) {
-        lastError = error;
-        await sleep(700 * (attempt + 1));
-      }
-    }
-    throw lastError || new Error('Bookora authentication gateway unavailable');
-  }
-
-  async function fallbackAuthResponse() {
+  // Compatibility response for older frontend code that still calls
+  // /api/auth/firebase. No network request is made. The protected API calls
+  // themselves use the real Firebase ID token through api-auth-bridge.js.
+  async function localAuthResponse() {
     const user = firebaseUser();
-    if (!user) return null;
+    if (!user) {
+      return new Response(JSON.stringify({ success: false, error: 'Firebase authentication is required.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+      });
+    }
     const token = await firebaseToken(false);
-    if (!token) return null;
+    if (!token) {
+      return new Response(JSON.stringify({ success: false, error: 'Firebase ID token is unavailable.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+      });
+    }
     const profile = cachedProfile(user);
     const email = String(user.email || profile.email || '').trim().toLowerCase();
     const isAdmin = email === MASTER_ADMIN_EMAIL || String(profile.role || '').toLowerCase() === 'admin';
@@ -91,42 +76,27 @@
       seller_status: profile.seller_status || 'none',
       status: profile.status || 'active'
     };
-    return {
+    return new Response(JSON.stringify({
       success: true,
-      // This is the real Firebase ID token. The backend verifies Firebase
-      // tokens directly on protected routes when the server session is down.
       token,
       user: mergedUser,
       is_admin: isAdmin,
       is_seller: isAdmin || profile.seller_status === 'approved' || ['creator', 'seller'].includes(String(profile.role || '').toLowerCase()),
       seller_status: profile.seller_status || 'none',
       direct_firebase_auth: true
-    };
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+    });
   }
 
   window.fetch = async (input, init = {}) => {
     if (!isBackend(input)) return originalFetch(input, init);
     const path = backendPath(input);
 
-    if (path === AUTH_PATH) {
-      try {
-        return await realAuthExchange(init);
-      } catch (error) {
-        const fallback = await fallbackAuthResponse();
-        if (fallback) {
-          console.warn('[Bookora Auth] Backend auth gateway unavailable; using verified Firebase direct-auth fallback.');
-          return new Response(JSON.stringify(fallback), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
-          });
-        }
-        throw error;
-      }
-    }
+    // Kill the old fragile session-exchange network path completely.
+    if (path === AUTH_PATH) return localAuthResponse();
 
-    // Protected backend routes can verify Firebase ID tokens directly. This
-    // prevents a transient server-session exchange outage from logging out a
-    // user who is still authenticated by Firebase.
     const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
     if (!headers.has('Authorization')) {
       const token = await firebaseToken(false);
@@ -145,5 +115,5 @@
     return response;
   };
 
-  console.info('[Bookora Auth] Network resilience + Firebase direct-auth fallback installed.');
+  console.info('[Bookora Auth] Direct Firebase authentication network layer installed.');
 })();
