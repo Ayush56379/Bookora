@@ -55,6 +55,9 @@ class BookoraState {
     if (saved === 'admin' && this.isAdmin) return 'admin';
     if (saved === 'seller' && this.isSeller) return 'seller';
     if (saved === 'buyer' && !!user) return 'buyer';
+    // Only use a role-based default when no valid mode has ever been chosen.
+    // Once the user explicitly switches mode, that selection is authoritative
+    // across refreshes, route changes and Firebase session hydration.
     if (!saved) return this.isAdmin ? 'admin' : this.isSeller ? 'seller' : 'buyer';
     return 'buyer';
   }
@@ -199,6 +202,8 @@ class BookoraState {
     this.isAuthenticated = true;
     this.isAdmin = isMasterAdmin || user.role === 'admin';
     this.isSeller = this.isAdmin || user.seller_status === 'approved' || user.role === 'creator' || user.role === 'seller';
+    // IMPORTANT: Firebase hydration must never silently change the selected UI
+    // mode. Keep the explicit persisted mode until the user changes it.
     this.activeMode = this.resolvePersistedMode(user);
     localStorage.setItem('bookora_user_profile', JSON.stringify(user));
     localStorage.setItem('bookora_active_mode', this.activeMode);
@@ -241,10 +246,7 @@ class BookoraState {
       const { db } = await this.getFirebase();
       const booksSnapshot = await db.collection('books').where('status', '==', 'approved').get();
       const firestoreBooks = booksSnapshot.docs.map(doc => ({ id: String(doc.id), ...doc.data() })).map(book => this.normalizeBook(book)).filter(Boolean).filter(book => book.status === 'approved');
-      this.books = firestoreBooks;
-      publicSyncSucceeded = true;
-      this.booksLoaded = true;
-      if (firestoreBooks.length) this.persistCatalogCache(this.books);
+      if (firestoreBooks.length) { this.books = firestoreBooks; this.persistCatalogCache(this.books); publicSyncSucceeded = true; }
       try {
         const categorySnapshot = await db.collection('categories').get();
         if (!categorySnapshot.empty) this.categories = categorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -288,7 +290,6 @@ class BookoraState {
           this.books = backendBooks;
           this.persistCatalogCache(this.books);
           publicSyncSucceeded = true;
-          this.booksLoaded = true;
         }
       } catch (error) { console.warn('Backend sync failed:', error.message); }
     }
@@ -326,11 +327,35 @@ class BookoraState {
   async toggleWishlist(bookId) { if (!this.isAuthenticated || !this.currentUser?.uid) throw new Error('Please login first.'); const { db } = await this.getFirebase(); const uid = this.currentUser.uid; const normalizedId = String(bookId); const wishlistRef = db.collection('wishlists').doc(uid); const snapshot = await wishlistRef.get(); let ids = snapshot.exists && Array.isArray(snapshot.data()?.bookIds) ? snapshot.data().bookIds.map(id => String(id)) : []; let isAdded; if (ids.includes(normalizedId)) { ids = ids.filter(id => id !== normalizedId); this.wishlist.delete(normalizedId); isAdded = false; } else { ids.push(normalizedId); this.wishlist.add(normalizedId); isAdded = true; } await wishlistRef.set({ userId: uid, bookIds: ids, updatedAt: window.firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); this.notify('WISHLIST_UPDATED', { bookId: normalizedId, isAdded }); return isAdded; }
   isInWishlist(bookId) { return this.wishlist.has(String(bookId)); }
   hasPurchased(bookId) { return this.library.has(String(bookId)); }
-  normalizeBook(book) { if (!book || typeof book !== 'object') return null; const b = { ...book }; b.id = String(b.id ?? b.bookId ?? ''); b.status = String(b.status ?? '').toLowerCase(); b.source_type = b.source_type || b.sourceType || 'internal'; b.category = b.category || 'Other'; b.title = b.title || 'Untitled eBook'; b.author = b.author || b.seller_name || b.sellerName || 'Bookora Creator'; b.description = b.description || ''; b.slug = b.slug || b.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); b.cover_url = b.cover_url || b.coverUrl || b.cover_image_url || b.coverImageUrl || ''; b.cover_file_id = b.cover_file_id || b.coverFileId || ''; b.pdf_file_id = b.pdf_file_id || b.pdfFileId || b.file_id || b.fileId || ''; b.pdf_url = b.pdf_url || b.pdfUrl || b.file_url || b.fileUrl || b.download_url || b.downloadUrl || ''; b.sample_pdf_url = b.sample_pdf_url || b.samplePdfUrl || b.preview_pdf_url || b.previewPdfUrl || ''; b.created_at = b.created_at || b.createdAt || b.updated_at || b.updatedAt || ''; b.is_new = Boolean(b.is_new ?? b.isNew); b.is_trending = Boolean(b.is_trending ?? b.isTrending); b.is_bestseller = Boolean(b.is_bestseller ?? b.isBestseller); b.price = Number(b.price || 0); return b; }
+
+  normalizeBook(book) {
+    if (!book || typeof book !== 'object') return null;
+    const b = { ...book };
+    b.id = String(b.id ?? b.bookId ?? '');
+    b.status = String(b.status ?? '').toLowerCase();
+    b.source_type = b.source_type || b.sourceType || 'internal';
+    b.category = b.category || 'Other';
+    b.title = b.title || 'Untitled eBook';
+    b.author = b.author || b.seller_name || b.sellerName || 'Bookora Creator';
+    b.description = b.description || '';
+    b.slug = b.slug || b.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    b.cover_url = b.cover_url || b.coverUrl || b.cover_image_url || b.coverImageUrl || '';
+    b.cover_file_id = b.cover_file_id || b.coverFileId || '';
+    b.pdf_file_id = b.pdf_file_id || b.pdfFileId || b.file_id || b.fileId || '';
+    b.pdf_url = b.pdf_url || b.pdfUrl || b.file_url || b.fileUrl || b.download_url || b.downloadUrl || '';
+    b.sample_pdf_url = b.sample_pdf_url || b.samplePdfUrl || b.preview_pdf_url || b.previewPdfUrl || '';
+    b.created_at = b.created_at || b.createdAt || b.updated_at || b.updatedAt || '';
+    b.is_new = Boolean(b.is_new ?? b.isNew);
+    b.is_trending = Boolean(b.is_trending ?? b.isTrending);
+    b.is_bestseller = Boolean(b.is_bestseller ?? b.isBestseller);
+    b.price = Number(b.price || 0);
+    return b;
+  }
+
   getApprovedBooks() { return (Array.isArray(this.books) ? this.books : []).map(book => this.normalizeBook(book)).filter(Boolean).filter(book => book.status === 'approved'); }
   getTrendingBooks() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_trending); return (flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))).slice(0, 24); }
   getBestSellers() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_bestseller); return (flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))).slice(0, 24); }
-  getNewReleases() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_new); return flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0)); }
+  getNewReleases() { const books = this.getApprovedBooks(); const flagged = books.filter(book => book.is_new); return (flagged.length ? flagged : [...books].sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0))); }
   getExternalBooks() { return this.getApprovedBooks().filter(book => book.source_type === 'external'); }
   getBookBySlug(slug) { const wanted = decodeURIComponent(String(slug || '')).trim().replace(/^\/+|\/+$/g, '').toLowerCase(); if (!wanted) return null; return this.getApprovedBooks().find(book => { const bookSlug = String(book.slug || '').trim().replace(/^\/+|\/+$/g, '').toLowerCase(); const bookId = String(book.id || '').trim().toLowerCase(); const titleSlug = String(book.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); return bookSlug === wanted || bookId === wanted || titleSlug === wanted; }) || null; }
   getCategoryBySlug(slug) { return this.categories.find(category => category.slug === slug); }
