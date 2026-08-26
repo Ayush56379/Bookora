@@ -7,7 +7,7 @@
   window.__BOOKORA_ADMIN_BOOKS_FAST_EDIT__ = true;
 
   const CACHE_KEY = 'bookora_admin_books_v1';
-  const state = { books: [], loaded: false, bound: false, loading: false, timer: 0 };
+  const state = { books: [], loaded: false, bound: false, loading: false, timer: 0, routeBooted: false };
 
   const esc = value => String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -72,7 +72,7 @@
     const all = sorted(state.books);
     const visible = all.filter(book => {
       const status = String(book.status || 'pending').toLowerCase();
-      const text = `${book.title || ''} ${book.author || ''} ${book.seller_name || ''} ${book.seller_id || ''} ${book.id || ''} ${book.category || ''}`.toLowerCase();
+      const text = `${book.title || ''} ${book.author || ''} ${book.seller_name || ''} ${book.seller_email || ''} ${book.seller_id || ''} ${book.id || ''} ${book.category || ''}`.toLowerCase();
       return (filter === 'all' || status === filter) && (!search || text.includes(search));
     });
     const count = status => all.filter(book => String(book.status || 'pending').toLowerCase() === status).length;
@@ -98,6 +98,14 @@
         : `${status !== 'approved' ? `<button class="ab-btn ab-ok" data-ab-action="approved" data-ab-id="${esc(book.id)}">Approve</button>` : ''}${status !== 'rejected' ? `<button class="ab-btn ab-no" data-ab-action="rejected" data-ab-id="${esc(book.id)}">Reject</button>` : ''}<button class="ab-btn" style="background:#2563eb;color:#fff" data-ab-edit-id="${esc(book.id)}">Edit</button><button class="ab-btn ab-remove" data-ab-remove-id="${esc(book.id)}">Remove</button>`;
       return `<tr><td><b class="${status === 'removed' ? 'ab-status-removed' : ''}">${esc(book.title || 'Untitled')}</b><div style="color:#94a3b8">${esc(book.author || '')}</div><div style="color:#94a3b8;font-size:11px">${esc(book.category || '')}</div></td><td><span class="ab-source ab-source-${source}">${source.toUpperCase()}</span></td><td>₹${Number(book.price || 0).toLocaleString('en-IN')}</td><td>${esc(seller)}</td><td><b style="color:${statusColor}">${esc(status.toUpperCase())}</b></td><td>${esc(created)}</td><td>${action}</td></tr>`;
     }).join('');
+  };
+
+  const injectEditorStyles = () => {
+    if (document.getElementById('bookora-admin-book-editor-css')) return;
+    const style = document.createElement('style');
+    style.id = 'bookora-admin-book-editor-css';
+    style.textContent = `.baeb-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.48);backdrop-filter:blur(3px);z-index:9998}.baeb-modal{position:fixed;z-index:9999;left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,calc(100vw - 28px));max-height:calc(100vh - 32px);overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:20px;box-shadow:0 25px 70px rgba(15,23,42,.25);padding:24px;font-family:Inter,system-ui,sans-serif}.baeb-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.baeb-kicker{font-size:11px;font-weight:800;color:#2563eb;letter-spacing:.08em}.baeb-head h2{margin:5px 0 4px;color:#0f172a;font-size:26px}.baeb-head p{margin:0;color:#64748b;font-size:13px}.baeb-close{width:36px;height:36px;border:0;border-radius:10px;background:#f1f5f9;color:#334155;font-size:24px;cursor:pointer}.baeb-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.baeb-modal label{display:flex;flex-direction:column;gap:7px;color:#334155;font-size:13px;font-weight:700;margin-bottom:14px}.baeb-modal input,.baeb-modal select,.baeb-modal textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;padding:11px 12px;background:#fff;color:#0f172a;font:500 14px Inter,system-ui,sans-serif;outline:none}.baeb-modal input:focus,.baeb-modal select:focus,.baeb-modal textarea:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}.baeb-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:8px}.baeb-cancel,.baeb-save{border:0;border-radius:10px;padding:11px 18px;font-weight:800;cursor:pointer}.baeb-cancel{background:#f1f5f9;color:#334155}.baeb-save{background:#2563eb;color:#fff}.baeb-save:disabled{opacity:.65;cursor:wait}@media(max-width:650px){.baeb-grid{grid-template-columns:1fr}.baeb-modal{padding:18px}}`;
+    document.head.appendChild(style);
   };
 
   const loadAll = async (showCache = true) => {
@@ -139,6 +147,7 @@
   const openEditor = id => {
     const book = state.books.find(item => String(item.id) === String(id));
     if (!book) return;
+    injectEditorStyles();
     document.getElementById('bookora-admin-book-editor')?.remove();
     const modal = document.createElement('div');
     modal.id = 'bookora-admin-book-editor';
@@ -193,29 +202,27 @@
         setTimeout(() => loadAll(false), 0);
       }
     }, true);
-    document.getElementById('ab-search')?.addEventListener('input', render);
-    document.getElementById('ab-filter')?.addEventListener('change', render);
   };
 
   const boot = () => {
-    if (!isAdminBooksRoute()) return;
+    if (!isAdminBooksRoute()) { state.routeBooted = false; return; }
+    injectEditorStyles();
     bind();
-    loadCache();
-    if (state.books.length) render();
-    loadAll(false);
-    subscribe();
+    if (!state.routeBooted) {
+      state.routeBooted = true;
+      loadCache();
+      if (state.books.length) render();
+      if (!state.loaded) loadAll(false);
+      subscribe();
+    } else if (document.getElementById('ab-list') && state.books.length) {
+      render();
+    }
   };
 
-  window.addEventListener('hashchange', () => { if (isAdminBooksRoute()) boot(); });
+  window.addEventListener('hashchange', () => boot());
   const observer = new MutationObserver(() => {
-    if (isAdminBooksRoute()) {
-      bind();
-      if (document.getElementById('ab-list')) {
-        if (state.books.length) render();
-        clearTimeout(state.timer); state.timer = setTimeout(() => loadAll(false), 150);
-      }
-    }
+    if (isAdminBooksRoute()) boot();
   });
   observer.observe(document.body, { childList: true, subtree: true });
-  setInterval(() => { if (isAdminBooksRoute()) boot(); }, 2000);
+  setInterval(() => boot(), 2500);
 })();
