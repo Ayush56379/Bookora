@@ -1,8 +1,6 @@
 // External seller authentication/session bridge.
-// Firebase is the identity authority, while the existing Bookora backend
-// protected routes use the server-issued Bookora session token. This runtime
-// bridges the two only for external seller/publish endpoints and never trusts
-// cached profile data as authentication.
+// Firebase is the identity authority, while existing Bookora backend protected
+// routes use the server-issued Bookora session token.
 import { state } from './state.js';
 import { getFreshFirebaseIdToken } from './firebase-authenticated-fetch.js?v=20260823-3';
 
@@ -67,8 +65,7 @@ async function exchangeFirebaseForBookoraSession(firebaseToken, forceRefresh = f
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.success || !data?.token) {
       const retryAfter = response.headers.get('Retry-After');
-      const suffix = retryAfter ? ` (retry after ${retryAfter}s)` : '';
-      throw new Error(data?.error || `Bookora authentication session could not be established (${response.status})${suffix}`);
+      throw new Error(data?.error || `Bookora session exchange failed (${response.status})${retryAfter ? `; retry after ${retryAfter}s` : ''}`);
     }
     persistToken(data.token, user?.uid || data.user?.uid || data.user?.firebaseUid || '');
     return data.token;
@@ -77,14 +74,14 @@ async function exchangeFirebaseForBookoraSession(firebaseToken, forceRefresh = f
 }
 
 async function persistVerifiedToken(forceRefresh = false) {
+  const existing = getStoredToken();
+  if (existing && !forceRefresh) return existing;
   try {
-    const existing = getStoredToken();
-    if (existing && !forceRefresh) return existing;
     const firebaseToken = await getFreshFirebaseIdToken(forceRefresh);
     if (!firebaseToken) return existing;
     return await exchangeFirebaseForBookoraSession(firebaseToken, forceRefresh);
   } catch (error) {
-    console.warn('[External Seller Auth] session exchange skipped:', error?.message || error);
+    console.warn('[External Seller Auth] lazy session exchange skipped:', error?.message || error);
     return getStoredToken();
   }
 }
@@ -95,35 +92,25 @@ if (!window.__BOOKORA_EXTERNAL_SELLER_SESSION_BRIDGE__) {
   const originalFetch = window.fetch.bind(window);
   window.fetch = async function externalSellerSessionFetch(input, init = {}) {
     if (!isExternalProtectedRequest(input)) return originalFetch(input, init);
-
     const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
     const authorization = String(headers.get('Authorization') || '').trim();
     if (!authorization.toLowerCase().startsWith('bearer ')) return originalFetch(input, init);
-
     const suppliedToken = authorization.slice(7).trim();
     if (!isFirebaseJwt(suppliedToken)) return originalFetch(input, init);
 
     let backendToken = getStoredToken();
     if (!backendToken) {
-      try {
-        backendToken = await exchangeFirebaseForBookoraSession(suppliedToken, false);
-      } catch (error) {
-        console.warn('[External Seller Auth] Firebase→Bookora exchange failed:', error?.message || error);
-      }
+      try { backendToken = await exchangeFirebaseForBookoraSession(suppliedToken, false); }
+      catch (error) { console.warn('[External Seller Auth] lazy exchange failed:', error?.message || error); }
     }
-
     if (!backendToken) return originalFetch(input, init);
     headers.set('Authorization', `Bearer ${backendToken}`);
     return originalFetch(input, { ...init, headers });
   };
 
-  // IMPORTANT: api-auth-bridge.js is the single owner of the normal
-  // Firebase→Bookora session warm-up. Do not make a second /api/auth/firebase
-  // request here; doing so can trigger backend/edge 429 responses on startup.
-  // This bridge only restores an existing token and exchanges lazily when an
-  // external protected request actually needs a session.
-  void persistVerifiedToken(false);
-
+  // Do not warm the backend session here. api-auth-bridge.js is the single
+  // owner of normal Firebase→Bookora session establishment. A second warm-up
+  // request during startup caused duplicate /api/auth/firebase calls and 429s.
   state.subscribe(event => {
     if (event === 'USER_LOGGED_OUT') {
       try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(UID_KEY); } catch (_) {}
