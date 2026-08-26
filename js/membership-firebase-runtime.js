@@ -7,6 +7,14 @@ function firebaseDb() { try { if (!window.firebase?.apps?.length) return null; r
 function uid() { return String(state.currentUser?.bookoraUserId || state.currentUser?.userId || state.currentUser?.id || '').trim(); }
 function activeDoc(data) { if (String(data?.accessStatus || 'active').toLowerCase() !== 'active') return false; const expiry = Date.parse(data?.expiresAt || ''); return !Number.isFinite(expiry) || expiry > Date.now(); }
 
+async function membershipConfig() {
+  const db = firebaseDb(); if (!db) return { trialIds: [], threeIds: [] };
+  try {
+    const data = (await db.collection('membershipConfig').doc('plans').get()).data() || {};
+    return { trialIds: Array.isArray(data.freeTrialBookIds) ? data.freeTrialBookIds.map(String).slice(0, 2) : [], threeIds: Array.isArray(data.threeMonthBookIds) ? data.threeMonthBookIds.map(String).slice(0, 200) : [] };
+  } catch (_) { return { trialIds: [], threeIds: [] }; }
+}
+
 async function syncLibraryFromFirebase() {
   const db = firebaseDb(), userId = uid(); if (!db || !userId) return false;
   try {
@@ -27,12 +35,23 @@ async function syncMembershipFromFirebase() {
 }
 
 async function fixedTrialBooks() {
-  const db = firebaseDb(); if (!db) return [];
-  try {
-    const doc = await db.collection('membershipConfig').doc('plans').get();
-    const ids = Array.isArray(doc.data()?.freeTrialBookIds) ? doc.data().freeTrialBookIds.map(String).slice(0, 2) : [];
-    return ids.map(id => state.getBookById?.(id) || state.getApprovedBooks().find(book => String(book.id) === id)).filter(Boolean);
-  } catch (_) { return []; }
+  const { trialIds } = await membershipConfig();
+  return trialIds.map(id => state.getBookById?.(id) || state.getApprovedBooks().find(book => String(book.id) === id)).filter(Boolean);
+}
+
+async function patchPricingCards() {
+  if (!location.hash.startsWith('#/pricing')) return;
+  const { trialIds, threeIds } = await membershipConfig();
+  const trialCard = document.querySelector('.bookora-membership-card[data-plan="free_trial"]');
+  const threeCard = document.querySelector('.bookora-membership-card[data-plan="three_month"]');
+  if (trialCard) {
+    const p = trialCard.querySelector('p'); if (p) p.textContent = 'Every user receives the same 2 eBooks for 48 hours.';
+    const list = trialCard.querySelector('ul'); if (list) list.innerHTML = '<li style="display:flex;gap:9px;align-items:flex-start;color:#334155;font-size:13.5px;"><span>✓</span><span>Same 2 eBooks for every user</span></li><li style="display:flex;gap:9px;align-items:flex-start;color:#334155;font-size:13.5px;"><span>✓</span><span>Access for 2 days</span></li><li style="display:flex;gap:9px;align-items:flex-start;color:#334155;font-size:13.5px;"><span>✓</span><span>One trial per account</span></li><li style="display:flex;gap:9px;align-items:flex-start;color:#334155;font-size:13.5px;"><span>✓</span><span>No payment required</span></li>';
+  }
+  if (threeCard) {
+    const p = threeCard.querySelector('p'); if (p) p.textContent = `Access to the same ${threeIds.length || 200} selected eBooks for 3 months.`;
+    const list = threeCard.querySelector('ul'); if (list) list.innerHTML = `<li style="display:flex;gap:9px;align-items:flex-start;color:#334155;font-size:13.5px;"><span>✓</span><span>Same ${threeIds.length || 200} eBooks for every user</span></li><li style="display:flex;gap:9px;align-items:flex-start;color:#334155;font-size:13.5px;"><span>✓</span><span>Valid for 3 months</span></li><li style="display:flex;gap:9px;align-items:flex-start;color:#334155;font-size:13.5px;"><span>✓</span><span>One-time Cashfree payment</span></li><li style="display:flex;gap:9px;align-items:flex-start;color:#334155;font-size:13.5px;"><span>✓</span><span>No auto-renewal</span></li>`;
+  }
 }
 
 async function installFixedTrialUi() {
@@ -66,17 +85,17 @@ async function startFixedTrial(button) {
 function install() {
   if (installed) return; installed = true;
   state.subscribe(async event => {
-    if (['USER_LOGGED_IN', 'DATA_SYNCED', 'MEMBERSHIP_ACTIVATED'].includes(event)) { await syncMembershipFromFirebase(); await syncLibraryFromFirebase(); setTimeout(installFixedTrialUi, 0); }
+    if (['USER_LOGGED_IN', 'DATA_SYNCED', 'MEMBERSHIP_ACTIVATED'].includes(event)) { await syncMembershipFromFirebase(); await syncLibraryFromFirebase(); setTimeout(patchPricingCards, 0); setTimeout(installFixedTrialUi, 0); }
   });
   document.addEventListener('click', event => {
     const target = event.target instanceof Element ? event.target : null;
     const freeTrialPlanButton = target?.closest('.bookora-membership-action[data-plan-id="free_trial"]');
-    if (freeTrialPlanButton) setTimeout(installFixedTrialUi, 0);
+    if (freeTrialPlanButton) setTimeout(() => { patchPricingCards(); installFixedTrialUi(); }, 0);
     const trialButton = target?.closest('#bookora-trial-start');
     if (trialButton?.dataset.bookoraFixedTrial === 'true') { event.preventDefault(); event.stopImmediatePropagation(); startFixedTrial(trialButton); }
   }, true);
-  window.addEventListener('hashchange', () => setTimeout(installFixedTrialUi, 0));
-  setTimeout(async () => { await syncMembershipFromFirebase(); await syncLibraryFromFirebase(); await installFixedTrialUi(); }, 1200);
+  window.addEventListener('hashchange', () => setTimeout(() => { patchPricingCards(); installFixedTrialUi(); }, 0));
+  setTimeout(async () => { await syncMembershipFromFirebase(); await syncLibraryFromFirebase(); await patchPricingCards(); await installFixedTrialUi(); }, 1200);
 }
 
 install();
