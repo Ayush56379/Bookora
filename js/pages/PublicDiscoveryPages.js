@@ -3,6 +3,8 @@ import { state } from '../state.js';
 import { renderBookCard } from '../components/BookCard.js';
 import { renderCategoryCard } from '../components/CategoryCard.js';
 import { updateSEO } from '../utils/seo.js';
+// Category directory only: hydrate the rendered directory from Firebase-backed state.
+import '../public-category-data-runtime-fix.js?v=20260826-2';
 
 export function renderCategoriesDirectoryPage() {
   updateSEO({ title: 'Browse All Categories', description: 'Explore complete topic categories on Bookora.' });
@@ -11,12 +13,12 @@ export function renderCategoriesDirectoryPage() {
       <div class="container">
         <div style="margin-bottom: 2.5rem;">
           <h1 style="font-family: var(--font-display); font-size: 2.2rem; font-weight: 800; color: var(--text-primary);">
-            Explore Categories (${state.categories.length})
+            Explore Categories (${Array.isArray(state.categories) ? state.categories.length : 0})
           </h1>
           <p style="font-size: 0.95rem; color: var(--text-secondary);">Discover publications by topic.</p>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem;">
-          ${state.categories.map(c => renderCategoryCard(c)).join('')}
+          ${state.categories.map(c => renderCategoryCard({ ...c, count: Number(c?.count || c?.bookCount || c?.publicationCount || 0) })).join('')}
         </div>
       </div>
     </div>
