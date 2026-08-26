@@ -21,18 +21,11 @@ async function renderSellerWallet(){
   finally{rendering=false;}
 }
 
-// Wallet must not take ownership of SPA navigation. When the user leaves
-// Wallet, explicitly hand routing back to the core SPA router so every
-// header/menu option opens normally instead of leaving Wallet rendered.
+// Wallet only owns rendering while its own route is active.
+// The core SPA router already owns all other hash routes, so Wallet must
+// never call the core router again after the user clicks another header item.
 function handleWalletNavigation(){
-  if(isWalletRoute()){
-    setTimeout(renderSellerWallet,0);
-    return;
-  }
-  setTimeout(()=>{
-    try{ window.__BOOKORA_APP_INSTANCE__?.route?.(true,true); }
-    catch(e){ console.warn('Wallet navigation handoff skipped:',e); }
-  },0);
+  if(isWalletRoute()) setTimeout(renderSellerWallet,0);
 }
 
 window.addEventListener('hashchange',handleWalletNavigation);
