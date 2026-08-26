@@ -1,0 +1,39 @@
+name: Activate Admin Firebase Auth Users Runtime
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  activate:
+    if: ${{ !contains(github.event.head_commit.message, '[admin-auth-users-runtime-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Activate runtime
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          text = p.read_text()
+          tag = '<script type="module" src="js/admin-users-firebase-auth-runtime.js?v=20260826-1"></script>'
+          if tag not in text:
+              marker = '<script src="js/admin-books-fast-edit.js?v=20260826-1" defer></script>'
+              if marker not in text:
+                  marker = '</body>'
+              text = text.replace(marker, marker + ('\n  ' + tag if marker != '</body>' else '\n  ' + tag), 1)
+              p.write_text(text)
+      - name: Commit activation
+        shell: bash
+        run: |
+          git config user.name "bookora-admin-fix"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Activate Admin Firebase Auth users runtime [admin-auth-users-runtime-fixed]"
+          git push
