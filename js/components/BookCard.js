@@ -39,7 +39,7 @@ export function renderBookCard(book) {
   const original = Number(book.price || 0);
   const discount = Number(book.discount || 0);
   const gradient = book.cover_gradient || 'linear-gradient(145deg,#172554 0%,#2563EB 55%,#60A5FA 100%)';
-  return `<article class="book-card book-card-premium" data-book-id="${esc(id)}" tabindex="0" role="link" aria-label="Open ${title}">
+  return `<article class="book-card book-card-premium" data-book-id="${esc(id)}" data-book-slug="${slug}" tabindex="0" role="link" aria-label="Open ${title}">
     <div class="book-cover-container book-cover-premium" style="background:${gradient}">
       ${cover ? `<img class="book-cover-image" src="${esc(cover)}" alt="Cover of ${title}" loading="eager" fetchpriority="high" decoding="async" onerror="this.style.display='none';this.parentElement.classList.add('cover-image-failed')">` : ''}
       <div class="book-cover-fallback"><span>${category}</span><strong>${title}</strong>${subtitle ? `<small>${subtitle}</small>` : ''}<small>${author}</small></div>
@@ -55,6 +55,33 @@ export function renderBookCard(book) {
       <div class="book-card-price-row"><div><div class="book-card-price">${formatPrice(sale,currency)}</div>${(discount > 0 || original > sale) ? `<div class="book-card-old-price">${formatPrice(original,currency)}</div>` : ''}</div>${internal ? (purchased ? `<a href="#/library" class="btn btn-secondary btn-sm book-buy-btn">Read</a>` : `<a href="#/checkout/${slug}" class="btn btn-primary btn-sm book-buy-btn">Buy Now</a>`) : `<a href="${esc(book.buy_url || book.source_url || '#')}" target="_blank" rel="noopener noreferrer" class="btn btn-external btn-sm book-buy-btn">View &amp; Buy ↗</a>`}</div>
     </div>
   </article>`;
+}
+
+// Global card navigation: every non-action area of every shared ebook card opens
+// that exact ebook's existing detail route. Buttons and links keep their own action.
+if (!window.__BOOKORA_BOOK_CARD_NAV_HANDLER__) {
+  window.__BOOKORA_BOOK_CARD_NAV_HANDLER__ = true;
+  const openCard = card => {
+    const slug = String(card?.dataset?.bookSlug || '').trim();
+    const id = String(card?.dataset?.bookId || '').trim();
+    const target = slug || id;
+    if (target) window.location.hash = `#/book/${target}`;
+  };
+  document.addEventListener('click', event => {
+    const card = event.target.closest('.book-card[data-book-id]');
+    if (!card) return;
+    // These elements have their own behavior and must never trigger card navigation.
+    if (event.target.closest('button, a, input, select, textarea, [role="button"]')) return;
+    openCard(card);
+  }, false);
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const card = event.target.closest?.('.book-card[data-book-id]');
+    if (!card) return;
+    if (event.target.closest('button, a, input, select, textarea, [role="button"]')) return;
+    event.preventDefault();
+    openCard(card);
+  }, false);
 }
 
 // Wishlist is intentionally handled here because this is the shared ebook-card
@@ -78,17 +105,10 @@ if (!window.__BOOKORA_WISHLIST_CARD_HANDLER__) {
       button.classList.toggle('active', added);
       button.textContent = added ? '♥' : '♡';
       button.setAttribute('aria-label', added ? 'Remove from Wishlist' : 'Add to Wishlist');
-
-      // After saving, immediately take the user to Wishlist so the action is
-      // visible and consistent wherever the ebook card appears.
-      if (added) window.location.hash = '#/wishlist';
-      else window.location.hash = '#/wishlist';
+      window.location.hash = '#/wishlist';
     } catch (error) {
       console.warn('[Bookora Wishlist] action failed:', error?.message || error);
-      // Existing login/navigation flow can handle unauthenticated users.
-      if (/login|authenticated/i.test(String(error?.message || ''))) {
-        window.location.hash = '#/login';
-      }
+      if (/login|authenticated/i.test(String(error?.message || ''))) window.location.hash = '#/login';
     } finally {
       button.disabled = false;
     }
