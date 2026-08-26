@@ -5,6 +5,8 @@ import { renderCategoryCard } from '../components/CategoryCard.js';
 import { updateSEO } from '../utils/seo.js';
 // Category directory only: hydrate the rendered directory from Firebase-backed state.
 import '../public-category-data-runtime-fix.js?v=20260826-2';
+// Best Sellers: use the current Firestore-approved catalog with authoritative sales ordering.
+import '../best-sellers-firebase-runtime.js?v=20260826-1';
 
 export function renderCategoriesDirectoryPage() {
   updateSEO({ title: 'Browse All Categories', description: 'Explore complete topic categories on Bookora.' });
