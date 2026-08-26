@@ -2,27 +2,24 @@
 // Buyer navigation must have exactly ONE active item, matching the current SPA hash.
 (() => {
   'use strict';
-  if (window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V2__) return;
-  window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V2__ = true;
+  if (window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V3__) return;
+  window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V3__ = true;
 
   const normalize = value => {
-    const raw = String(value || '#/').trim();
+    const raw = String(value || '').trim();
     if (!raw || raw === '#') return '#/';
     return raw.replace(/\/+$/, '') || '#/';
   };
 
-  const buyerRoutes = [
-    ['#/', h => h === '#/'],
-    ['#/explore', h => h === '#/explore' || h.startsWith('#/explore/') || h.startsWith('#/explore?')],
-    ['#/categories', h => h === '#/categories' || h.startsWith('#/categories/') || h.startsWith('#/categories?')],
-    ['#/best-sellers', h => h === '#/best-sellers' || h.startsWith('#/best-sellers/') || h.startsWith('#/best-sellers?')],
-    ['#/new-releases', h => h === '#/new-releases' || h.startsWith('#/new-releases/') || h.startsWith('#/new-releases?')],
-    ['#/pricing', h => h === '#/pricing' || h.startsWith('#/pricing/') || h.startsWith('#/pricing?')]
-  ];
-
   const getCurrentTarget = () => {
-    const hash = normalize(window.location.hash || '#/');
-    return buyerRoutes.find(([, test]) => test(hash))?.[0] || null;
+    const hash = normalize(window.location.hash);
+    if (hash === '#/' || hash === '#/home' || hash.startsWith('#/home?') || hash.startsWith('#/home/')) return '#/';
+    if (hash === '#/explore' || hash.startsWith('#/explore/') || hash.startsWith('#/explore?')) return '#/explore';
+    if (hash === '#/categories' || hash.startsWith('#/categories/') || hash.startsWith('#/categories?')) return '#/categories';
+    if (hash === '#/best-sellers' || hash.startsWith('#/best-sellers/') || hash.startsWith('#/best-sellers?')) return '#/best-sellers';
+    if (hash === '#/new-releases' || hash.startsWith('#/new-releases/') || hash.startsWith('#/new-releases?')) return '#/new-releases';
+    if (hash === '#/pricing' || hash.startsWith('#/pricing/') || hash.startsWith('#/pricing?')) return '#/pricing';
+    return null;
   };
 
   const applyBuyerState = () => {
@@ -30,9 +27,8 @@
     if (!header) return;
     const nav = header.querySelector('.desktop-nav');
     if (!nav) return;
-
-    // Seller/Admin nav does not contain the buyer Home link.
-    if (!nav.querySelector('a.nav-link[href="#/"]')) return;
+    const homeLink = nav.querySelector('a.nav-link[href="#/"]');
+    if (!homeLink) return;
 
     const target = getCurrentTarget();
     if (!target) return;
@@ -46,7 +42,6 @@
       link.style.removeProperty('color');
       link.style.removeProperty('font-weight');
       link.style.removeProperty('box-shadow');
-
       if (active) {
         link.classList.add('active');
         link.setAttribute('aria-current', 'page');
@@ -70,7 +65,7 @@
   window.addEventListener('bookora:route-changed', schedule);
   window.addEventListener('bookora:header-rendered', schedule);
   document.addEventListener('click', event => {
-    if (event.target?.closest?.('#main-header a.nav-link, #main-header .mobile-drawer-link')) setTimeout(applyBuyerState, 0);
+    if (event.target?.closest?.('#main-header a.nav-link, #main-header .mobile-drawer-link')) setTimeout(schedule, 0);
   }, true);
 
   const observer = new MutationObserver(() => {
