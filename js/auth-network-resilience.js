@@ -47,39 +47,35 @@
 
   async function requestWithDeadline(input, init, timeoutMs) {
     const controller = new AbortController();
-    const externalSignal = init?.signal;
-    let timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const next = { ...init, signal: controller.signal };
-      return await originalFetch(input, next);
-    } finally {
-      clearTimeout(timer);
-      if (externalSignal?.aborted) controller.abort();
-    }
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try { return await originalFetch(input, { ...init, signal: controller.signal }); }
+    finally { clearTimeout(timer); }
   }
 
   async function realAuthExchange(init) {
     let lastError = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const response = await requestWithDeadline(`${API_ROOT}${AUTH_PATH}`, init, 6500);
+        const response = await requestWithDeadline(`${API_ROOT}${AUTH_PATH}`, init, 6000);
         if (response.ok) return response;
         const status = response.status;
         if (![408, 425, 429, 500, 502, 503, 504].includes(status)) return response;
         lastError = new Error(`Bookora auth gateway HTTP ${status}`);
         const retryAfter = Number(response.headers.get('Retry-After') || 0);
-        await sleep(Math.min(6000, Math.max(800, retryAfter * 1000 || 900 * (attempt + 1))));
+        await sleep(Math.min(4500, Math.max(700, retryAfter * 1000 || 800 * (attempt + 1))));
       } catch (error) {
         lastError = error;
-        await sleep(900 * (attempt + 1));
+        await sleep(700 * (attempt + 1));
       }
     }
     throw lastError || new Error('Bookora authentication gateway unavailable');
   }
 
-  function fallbackAuthResponse() {
+  async function fallbackAuthResponse() {
     const user = firebaseUser();
     if (!user) return null;
+    const token = await firebaseToken(false);
+    if (!token) return null;
     const profile = cachedProfile(user);
     const email = String(user.email || profile.email || '').trim().toLowerCase();
     const isAdmin = email === MASTER_ADMIN_EMAIL || String(profile.role || '').toLowerCase() === 'admin';
@@ -97,10 +93,9 @@
     };
     return {
       success: true,
-      // The backend directly verifies Firebase ID tokens on protected routes.
-      // This fallback is therefore an authenticated Firebase token, not a
-      // fabricated server credential.
-      token: '__BOOKORA_FIREBASE_DIRECT__',
+      // This is the real Firebase ID token. The backend verifies Firebase
+      // tokens directly on protected routes when the server session is down.
+      token,
       user: mergedUser,
       is_admin: isAdmin,
       is_seller: isAdmin || profile.seller_status === 'approved' || ['creator', 'seller'].includes(String(profile.role || '').toLowerCase()),
@@ -113,12 +108,11 @@
     if (!isBackend(input)) return originalFetch(input, init);
     const path = backendPath(input);
 
-    // Only the Firebase session-exchange endpoint gets retries/fallback.
     if (path === AUTH_PATH) {
       try {
         return await realAuthExchange(init);
       } catch (error) {
-        const fallback = fallbackAuthResponse();
+        const fallback = await fallbackAuthResponse();
         if (fallback) {
           console.warn('[Bookora Auth] Backend auth gateway unavailable; using verified Firebase direct-auth fallback.');
           return new Response(JSON.stringify(fallback), {
