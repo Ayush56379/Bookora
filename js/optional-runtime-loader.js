@@ -62,7 +62,8 @@
     './wallet-cashfree-payout.js?v=20260826-1',
     './smart-search-runtime.js?v=20260822-1',
     './active-mode-persistence.js?v=20260826-1',
-    './membership-firebase-runtime.js?v=20260826-1'
+    './membership-firebase-runtime.js?v=20260826-1',
+    './membership-autopay-runtime.js?v=20260826-1'
   ];
 
   const loadOne = async src => {
