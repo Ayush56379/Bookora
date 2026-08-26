@@ -16,7 +16,6 @@ const RELEASE_FIELDS = [
 let unsubscribe = null;
 let starting = false;
 let rerenderTimer = null;
-let lastSnapshotSignature = '';
 
 function toMillis(value) {
   if (value == null || value === '') return 0;
@@ -86,10 +85,6 @@ function renderCurrentNewReleases() {
   }, 0);
 }
 
-function snapshotSignature(books) {
-  return books.map(book => `${book.id}:${releaseMillis(book)}:${String(book.updatedAt || book.updated_at || '')}`).join('|');
-}
-
 async function startRealtimeListener() {
   if (unsubscribe || starting) return;
   starting = true;
@@ -106,9 +101,6 @@ async function startRealtimeListener() {
     const query = db.collection('books').where('status', '==', 'approved');
     unsubscribe = query.onSnapshot(snapshot => {
       const books = normalizeAndSort(snapshot.docs.map(doc => ({ id: String(doc.id), ...doc.data() })));
-      const signature = snapshotSignature(books);
-      if (signature === lastSnapshotSignature && state.books.length) return;
-      lastSnapshotSignature = signature;
       state.books = books;
       state.booksLoaded = true;
       state.persistCatalogCache(books);
@@ -129,7 +121,6 @@ async function startRealtimeListener() {
 function stopRealtimeListener() {
   if (typeof unsubscribe === 'function') unsubscribe();
   unsubscribe = null;
-  lastSnapshotSignature = '';
 }
 
 function handleRouteChange() {
