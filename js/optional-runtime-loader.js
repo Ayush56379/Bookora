@@ -61,7 +61,8 @@
     './book-detail-related-mobile-fix.js?v=20260822-1',
     './seller-wallet-route.js?v=20260826-1',
     './wallet-cashfree-payout.js?v=20260826-1',
-    './smart-search-runtime.js?v=20260822-1'
+    './smart-search-runtime.js?v=20260822-1',
+    './active-mode-persistence.js?v=20260826-1'
   ];
 
   const loadOne = async src => {
