@@ -1,6 +1,4 @@
 // Bookora Explore — resilient filter runtime
-// This is intentionally event-delegated so it survives SPA re-renders and
-// cannot depend on one specific ExplorePage instance remaining mounted.
 (() => {
   'use strict';
   if (window.__BOOKORA_EXPLORE_FILTER_RUNTIME_FIX__) return;
@@ -11,19 +9,6 @@
   let ready = false;
   let rendering = false;
   let queued = false;
-
-  const load = async () => {
-    try {
-      [stateModule, cardModule] = await Promise.all([
-        import('./state.js?v=explore-filter-runtime-20260826-1'),
-        import('./components/BookCard.js?v=explore-filter-runtime-20260826-1')
-      ]);
-      ready = true;
-      scheduleRender();
-    } catch (error) {
-      console.error('[Explore filters] runtime load failed:', error);
-    }
-  };
 
   const page = () => document.querySelector('.explore-page');
   const value = (selector, fallback = '') => page()?.querySelector(selector)?.value ?? fallback;
@@ -36,19 +21,16 @@
   const lower = v => text(v).toLocaleLowerCase();
 
   const priceOf = book => {
-    const candidates = [book?.sale_price, book?.salePrice, book?.selling_price, book?.sellingPrice, book?.price, book?.amount];
-    for (const candidate of candidates) {
+    for (const candidate of [book?.sale_price, book?.salePrice, book?.selling_price, book?.sellingPrice, book?.price, book?.amount]) {
       const n = Number(candidate);
       if (Number.isFinite(n)) return n;
     }
     return 0;
   };
-
   const ratingOf = book => {
     const n = Number(book?.rating ?? book?.average_rating ?? book?.averageRating ?? 0);
     return Number.isFinite(n) ? n : 0;
   };
-
   const categoryOf = book => text(book?.category ?? book?.category_name ?? book?.categoryName ?? book?.genre ?? '');
   const sourceOf = book => lower(book?.source_type ?? book?.sourceType ?? book?.book_source ?? 'internal') || 'internal';
   const dateOf = book => new Date(book?.created_at ?? book?.createdAt ?? book?.published_at ?? book?.publishedAt ?? 0).getTime() || 0;
@@ -73,7 +55,6 @@
     const p = page();
     const grid = p?.querySelector('#explore-books-grid');
     if (!p || !grid || !ready || rendering) return;
-
     rendering = true;
     try {
       const search = lower(value('#filter-search-input'));
@@ -81,14 +62,12 @@
       const source = lower(checked('filter-source') || 'all');
       const rating = Number(checked('filter-rating') || 0) || 0;
       const min = Math.max(0, number('#filter-min-price', 0));
-      const requestedMax = Math.max(0, number('#filter-max-price', 999999));
-      const max = Math.max(min, requestedMax);
+      const max = Math.max(min, Math.max(0, number('#filter-max-price', 999999)));
       const sort = value('#catalog-sort-select', 'popular');
 
       let books = allBooks().filter(book => {
         if (search) {
-          const haystack = [book?.title, book?.author, book?.description, book?.subtitle, book?.category, book?.category_name, ...(Array.isArray(book?.tags) ? book.tags : [])]
-            .map(lower).join(' ');
+          const haystack = [book?.title, book?.author, book?.description, book?.subtitle, book?.category, book?.category_name, ...(Array.isArray(book?.tags) ? book.tags : [])].map(lower).join(' ');
           if (!haystack.includes(search)) return false;
         }
         if (category && lower(categoryOf(book)) !== lower(category)) return false;
@@ -135,8 +114,7 @@
   };
 
   const scheduleRender = () => {
-    if (!ready) return;
-    if (queued) return;
+    if (!ready || queued) return;
     queued = true;
     requestAnimationFrame(() => {
       queued = false;
@@ -147,6 +125,7 @@
   const reset = () => {
     const p = page();
     if (!p) return;
+    p.querySelector('#filter-search-input')?.setAttribute('value', '');
     const search = p.querySelector('#filter-search-input');
     const min = p.querySelector('#filter-min-price');
     const max = p.querySelector('#filter-max-price');
@@ -161,6 +140,19 @@
     p.querySelector('input[name="filter-source"][value="all"]')?.click();
     p.querySelector('input[name="filter-rating"][value="0"]')?.click();
     scheduleRender();
+  };
+
+  const load = async () => {
+    try {
+      [stateModule, cardModule] = await Promise.all([
+        import('./state.js?v=explore-filter-runtime-20260826-1'),
+        import('./components/BookCard.js?v=explore-filter-runtime-20260826-1')
+      ]);
+      ready = true;
+      scheduleRender();
+    } catch (error) {
+      console.error('[Explore filters] runtime load failed:', error);
+    }
   };
 
   document.addEventListener('input', event => {
@@ -178,13 +170,11 @@
   document.addEventListener('click', event => {
     const target = event.target?.closest?.('button,[role="button"]');
     if (!target || !page()) return;
-
     if (target.id === 'explore-runtime-reset' || target.id === 'reset-filters-btn') {
       event.preventDefault();
       reset();
       return;
     }
-
     const preset = target.closest('[data-max-price]');
     if (preset) {
       event.preventDefault();
@@ -198,13 +188,13 @@
     }
   }, true);
 
-  window.addEventListener('hashchange', () => setTimeout(scheduleRender, 30));
-  window.addEventListener('bookora:catalog-updated', () => setTimeout(scheduleRender, 30));
-
-  const observer = new MutationObserver(() => {
-    if (document.querySelector('.explore-page')) scheduleRender();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('hashchange', () => setTimeout(scheduleRender, 50));
+  window.addEventListener('bookora:catalog-updated', () => setTimeout(scheduleRender, 50));
+  let attempts = 0;
+  const bootTimer = setInterval(() => {
+    if (page()) scheduleRender();
+    if (++attempts >= 30) clearInterval(bootTimer);
+  }, 300);
 
   load();
 })();
