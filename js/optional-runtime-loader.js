@@ -31,7 +31,7 @@
     './catalog-visibility-hotfix.js?v=20260823-1',
     './auth-session-bridge.js?v=20260821-3',
     './firebase-auth-token-bridge.js?v=20260821-9',
-    './wishlist-permission-fix.js?v=20260820-2',
+    './wishlist-permission-fix.js?v=20260826-1',
     './payment-route-stability-hotfix.js?v=20260821-1',
     './settings-route-sync-hotfix.js?v=20260822-1',
     './profile-menu-stability.js?v=20260822-1',
@@ -47,9 +47,6 @@
     './google-profile-photo-fix.js?v=20260819-1',
     './book-detail-loading-fix.js?v=20260819-1',
     './book-detail-media-hotfix.js?v=20260819-2',
-    './final-click-safety.js?v=20260823-1',
-    './ai-click-fix.js?v=20260823-1',
-    './seller-wallet-route.js?v=20260823-1',
     './book-detail-complete.js?v=20260823-1',
     './book-detail-permanent-fix.js?v=20260819-6',
     './book-detail-reviews-runtime.js?v=20260823-3',
@@ -70,8 +67,6 @@
     catch (error) { console.warn('[Bookora optional runtime skipped]', src, error); }
   };
 
-  // IMPORTANT: authentication resilience must not wait for core boot/idle time.
-  // It patches the backend auth exchange with a verified Firebase fallback.
   loadOne(EARLY_AUTH_RUNTIME);
 
   const start = async () => {
