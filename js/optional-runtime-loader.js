@@ -4,8 +4,8 @@
 // relative to this file as ./<module>, never ./js/<module>.
 (() => {
   const modules = [
-    './auth-network-resilience.js?v=20260826-1',
-    './api-auth-bridge.js?v=20260823-1',
+    './auth-network-resilience.js?v=20260826-2',
+    './api-auth-bridge.js?v=20260826-4',
     './external-publish-scan-permanent-fix.js?v=20260823-3',
     './firestore-book-sync.js?v=20260823-10',
     './google-drive-resumable-bridge.js?v=20260823-6',
@@ -63,25 +63,8 @@
     './book-detail-related-mobile-fix.js?v=20260822-1',
     './smart-search-runtime.js?v=20260822-1'
   ];
-
-  const loadOne = async src => {
-    try {
-      await import(src);
-    } catch (error) {
-      console.warn('[Bookora optional runtime skipped]', src, error);
-    }
-  };
-
-  const start = async () => {
-    if (!window.__BOOKORA_CORE_BOOTED__) return;
-    for (const src of modules) await loadOne(src);
-  };
-
-  const waitForCore = () => {
-    if (window.__BOOKORA_CORE_BOOTED__) return start();
-    setTimeout(waitForCore, 250);
-  };
-
-  if ('requestIdleCallback' in window) requestIdleCallback(waitForCore, { timeout: 3000 });
-  else setTimeout(waitForCore, 1500);
+  const loadOne = async src => { try { await import(src); } catch (error) { console.warn('[Bookora optional runtime skipped]', src, error); } };
+  const start = async () => { if (!window.__BOOKORA_CORE_BOOTED__) return; for (const src of modules) await loadOne(src); };
+  const waitForCore = () => { if (window.__BOOKORA_CORE_BOOTED__) return start(); setTimeout(waitForCore, 250); };
+  if ('requestIdleCallback' in window) requestIdleCallback(waitForCore, { timeout: 3000 }); else setTimeout(waitForCore, 1500);
 })();
