@@ -2,8 +2,8 @@
 // Exactly one navigation item is blue and it always matches the currently open route.
 (() => {
   'use strict';
-  if (window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V4__) return;
-  window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V4__ = true;
+  if (window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V5__) return;
+  window.__BOOKORA_HEADER_ACTIVE_ROUTE_FIX_V5__ = true;
 
   const normalize = value => {
     const raw = String(value || '#/').trim();
@@ -35,7 +35,6 @@
     const links = Array.from(header.querySelectorAll('a.nav-link'));
     if (!links.length) return;
     const target = currentTarget();
-
     links.forEach(link => {
       const href = normalize(link.getAttribute('href') || '');
       const active = !!target && href === target;
@@ -62,18 +61,25 @@
     raf = requestAnimationFrame(apply);
   };
 
-  window.addEventListener('hashchange', schedule, { passive: true });
-  window.addEventListener('bookora:route-changed', schedule);
-  window.addEventListener('bookora:header-rendered', schedule);
-  document.addEventListener('click', event => {
-    if (event.target?.closest?.('#main-header a.nav-link, #main-header .mobile-drawer-link')) schedule();
-  }, true);
+  const install = () => {
+    if (!document.body) return false;
+    window.addEventListener('hashchange', schedule, { passive: true });
+    window.addEventListener('bookora:route-changed', schedule);
+    window.addEventListener('bookora:header-rendered', schedule);
+    document.addEventListener('click', event => {
+      if (event.target?.closest?.('#main-header a.nav-link, #main-header .mobile-drawer-link')) schedule();
+    }, true);
+    // Observe only DOM insertion/replacement. Never observe attributes because
+    // this module changes classes/styles itself.
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+    apply();
+    return true;
+  };
 
-  // Watch only for header insertion/replacement. Watching class/href would observe
-  // our own active-state writes and cause an unnecessary render loop.
-  const observer = new MutationObserver(schedule);
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply, { once: true });
-  else apply();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install, { once: true });
+  } else {
+    install();
+  }
 })();
