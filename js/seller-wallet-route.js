@@ -20,6 +20,21 @@ async function renderSellerWallet(){
   }catch(e){console.error('Seller wallet route error:',e);}
   finally{rendering=false;}
 }
-window.addEventListener('hashchange',()=>setTimeout(renderSellerWallet,0));
+
+// Wallet must not take ownership of SPA navigation. When the user leaves
+// Wallet, explicitly hand routing back to the core SPA router so every
+// header/menu option opens normally instead of leaving Wallet rendered.
+function handleWalletNavigation(){
+  if(isWalletRoute()){
+    setTimeout(renderSellerWallet,0);
+    return;
+  }
+  setTimeout(()=>{
+    try{ window.__BOOKORA_APP_INSTANCE__?.route?.(true,true); }
+    catch(e){ console.warn('Wallet navigation handoff skipped:',e); }
+  },0);
+}
+
+window.addEventListener('hashchange',handleWalletNavigation);
 state.subscribe((event)=>{if(['USER_LOGGED_IN','DATA_SYNCED','MODE_CHANGED'].includes(event)&&isWalletRoute())setTimeout(renderSellerWallet,0);});
 setTimeout(renderSellerWallet,0);
