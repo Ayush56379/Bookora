@@ -31,7 +31,7 @@
     './catalog-visibility-hotfix.js?v=20260823-1',
     './auth-session-bridge.js?v=20260821-3',
     './firebase-auth-token-bridge.js?v=20260821-9',
-    './wishlist-permission-fix.js?v=20260826-1',
+    './wishlist-permission-fix.js?v=20260826-2',
     './payment-route-stability-hotfix.js?v=20260821-1',
     './settings-route-sync-hotfix.js?v=20260822-1',
     './profile-menu-stability.js?v=20260822-1',
