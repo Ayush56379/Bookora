@@ -1,8 +1,8 @@
 // Bookora public category data — Firebase-backed names and live approved-book counts.
 (() => {
   'use strict';
-  if (window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V2__) return;
-  window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V2__ = true;
+  if (window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V3__) return;
+  window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V3__ = true;
 
   const esc = value => String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -13,9 +13,31 @@
 
   const normalizeName = value => String(value || '').trim().replace(/\s+/g, ' ');
 
+  const renderCard = c => `
+    <a href="#/category/${encodeURIComponent(c.slug)}" class="category-card" data-slug="${esc(c.slug)}">
+      <div class="category-icon-box">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+      </div>
+      <div><h4 style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:2px;">${esc(c.name)}</h4><span style="font-size:0.78rem;color:var(--text-muted);">${Number(c.count || 0)} Publications</span></div>
+      <div class="category-arrow"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"></path></svg></div>
+    </a>
+  `;
+
+  const renderBookCard = async book => {
+    try {
+      const module = await import('./components/BookCard.js?v=category-data-runtime-card-1');
+      return module.renderBookCard(book);
+    } catch (_) {
+      return '';
+    }
+  };
+
   const sync = async () => {
     try {
-      const { state } = await import('./state.js?v=category-data-runtime-20260826-2');
+      const [{ state }, cardModule] = await Promise.all([
+        import('./state.js?v=category-data-runtime-20260826-3'),
+        import('./components/BookCard.js?v=category-data-runtime-card-1')
+      ]);
       const sourceCategories = Array.isArray(state.categories) ? state.categories : [];
       const books = typeof state.getApprovedBooks === 'function' ? state.getApprovedBooks() : [];
 
@@ -47,12 +69,9 @@
       };
 
       sourceCategories.forEach(add);
-      // If an approved Firebase book has a category that is not yet present in
-      // the categories collection, expose it too so the live catalog is complete.
       countByName.forEach(entry => {
         if (!seen.has(entry.name.toLowerCase())) add({ name: entry.name, count: entry.count });
       });
-
       state.categories = categories;
 
       const explore = document.querySelector('.explore-page');
@@ -63,12 +82,9 @@
           list.innerHTML = `<label class="filter-option"><input type="radio" name="filter-category" value="" ${selected === '' ? 'checked' : ''}><span>All Categories</span></label>${categories.map(c => `
             <label class="filter-option"><input type="radio" name="filter-category" value="${esc(c.name)}" ${selected === c.name ? 'checked' : ''}><span>${esc(c.name)}</span><span class="count">${Number(c.count || 0)}</span></label>
           `).join('')}`;
-          list.querySelectorAll('input[name="filter-category"]').forEach(input => {
-            input.addEventListener('change', () => {
-              const sort = explore.querySelector('#catalog-sort-select');
-              sort?.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-          });
+          list.querySelectorAll('input[name="filter-category"]').forEach(input => input.addEventListener('change', () => {
+            explore.querySelector('#catalog-sort-select')?.dispatchEvent(new Event('change', { bubbles: true }));
+          }));
         }
       }
 
@@ -77,16 +93,25 @@
         const heading = dir.querySelector('h1');
         if (heading) heading.textContent = `Explore Categories (${categories.length})`;
         const grid = heading?.closest('.container')?.querySelector('div[style*="repeat(auto-fill"]');
-        if (grid) {
-          grid.innerHTML = categories.map(c => `
-            <a href="#/category/${encodeURIComponent(c.slug)}" class="category-card" data-slug="${esc(c.slug)}">
-              <div class="category-icon-box">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-              </div>
-              <div><h4 style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:2px;">${esc(c.name)}</h4><span style="font-size:0.78rem;color:var(--text-muted);">${Number(c.count || 0)} Publications</span></div>
-              <div class="category-arrow"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></div>
-            </a>
-          `).join('');
+        if (grid) grid.innerHTML = categories.map(renderCard).join('');
+      }
+
+      const categoryPage = document.querySelector('.category-page');
+      const hash = window.location.hash || '';
+      if (categoryPage && hash.startsWith('#/category/')) {
+        const slug = decodeURIComponent(hash.replace('#/category/', '').split('?')[0]).toLowerCase();
+        const category = categories.find(c => String(c.slug || '').toLowerCase() === slug) || categories.find(c => slugify(c.name) === slug);
+        if (category) {
+          const matchingBooks = books.filter(book => {
+            const name = normalizeName(book?.category || book?.category_name || book?.categoryName || '');
+            return name.toLowerCase() === category.name.toLowerCase() || slugify(name) === slug;
+          });
+          const countNode = categoryPage.querySelector('.container > div:first-child div[style*="font-size: 2.2rem"]');
+          if (countNode) countNode.textContent = String(matchingBooks.length);
+          const grid = categoryPage.querySelector('.container > div:nth-child(2)');
+          if (grid && matchingBooks.length && typeof cardModule.renderBookCard === 'function') {
+            grid.innerHTML = matchingBooks.map(cardModule.renderBookCard).join('');
+          }
         }
       }
     } catch (error) {
