@@ -1,0 +1,45 @@
+name: Repair Bookora state boot
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore complete state implementation and keep Firebase-first catalog
+        shell: bash
+        run: |
+          set -e
+          git checkout 04c3c2dae181a6862e58c9536572124f1fdd0aab -- js/state.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('js/state.js')
+          s = p.read_text()
+          old = """    try {\n      const backendBooks = await this.fetchBooksFromBackend();\n      if (backendBooks.length && (!publicSyncSucceeded || !this.books.length)) {\n        this.books = backendBooks;\n        this.persistCatalogCache(this.books);\n        publicSyncSucceeded = true;\n      }\n    } catch (error) { console.warn('Backend sync failed:', error.message); }"""
+          new = """    if (!publicSyncSucceeded) {\n      try {\n        const backendBooks = await this.fetchBooksFromBackend();\n        if (backendBooks.length) {\n          this.books = backendBooks;\n          this.persistCatalogCache(this.books);\n          publicSyncSucceeded = true;\n        }\n      } catch (error) { console.warn('Backend sync failed:', error.message); }\n    }"""
+          if old not in s:
+              raise SystemExit('Expected state sync block was not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          node --check js/state.js
+
+      - name: Commit repair and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/state.js
+          git diff --cached --quiet || git commit -m "fix: restore complete Bookora state and Firebase-first catalog"
+          git rm .github/workflows/repair-state-boot.yml
+          git commit -m "chore: remove one-time state repair workflow"
+          git push
