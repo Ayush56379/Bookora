@@ -40,7 +40,6 @@
     './homepage-catalog-enhancement.js?v=20260820-1',
     './homepage-catalog-cleanup.js?v=20260823-2',
     './homepage-seller-section-fix.js?v=20260820-1',
-    './homepage-seller-section-fix.js?v=20260820-1',
     './admin-settings-persistence-fix.js?v=20260820-1',
     './admin-settings-live-firestore.js?v=20260824-1',
     './google-profile-photo-fix.js?v=20260819-1',
