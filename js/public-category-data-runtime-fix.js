@@ -1,8 +1,8 @@
 // Bookora public category data — Firebase-backed names and live approved-book counts.
 (() => {
   'use strict';
-  if (window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V1__) return;
-  window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V1__ = true;
+  if (window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V2__) return;
+  window.__BOOKORA_PUBLIC_CATEGORY_DATA_FIX_V2__ = true;
 
   const esc = value => String(value ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -15,7 +15,7 @@
 
   const sync = async () => {
     try {
-      const { state } = await import('./state.js?v=category-data-runtime-20260826-1');
+      const { state } = await import('./state.js?v=category-data-runtime-20260826-2');
       const sourceCategories = Array.isArray(state.categories) ? state.categories : [];
       const books = typeof state.getApprovedBooks === 'function' ? state.getApprovedBooks() : [];
 
@@ -24,7 +24,9 @@
         const name = normalizeName(book?.category || book?.category_name || book?.categoryName || 'Other');
         if (!name) return;
         const key = name.toLowerCase();
-        countByName.set(key, (countByName.get(key) || 0) + 1);
+        const entry = countByName.get(key) || { name, count: 0 };
+        entry.count += 1;
+        countByName.set(key, entry);
       });
 
       const categories = [];
@@ -40,28 +42,18 @@
           name,
           slug: raw?.slug || slugify(name),
           description: raw?.description || `Explore ${name} eBooks on Bookora.`,
-          count: countByName.get(key) || 0
+          count: countByName.get(key)?.count || 0
         });
       };
 
       sourceCategories.forEach(add);
-      // If a Firebase book has a category that is not yet present in the
-      // categories collection, expose it as well so no live catalog category is lost.
-      countByName.forEach((count, key) => {
-        if (!seen.has(key)) add({ name: key, count });
+      // If an approved Firebase book has a category that is not yet present in
+      // the categories collection, expose it too so the live catalog is complete.
+      countByName.forEach(entry => {
+        if (!seen.has(entry.name.toLowerCase())) add({ name: entry.name, count: entry.count });
       });
 
-      // Keep categories with zero books only when they actually exist in the
-      // Firebase/initial category source. Their live count remains 0.
       state.categories = categories;
-
-      const categoryHtml = categories.map(c => `
-        <label class="filter-option">
-          <input type="radio" name="filter-category" value="${esc(c.name)}">
-          <span>${esc(c.name)}</span>
-          <span class="count">${Number(c.count || 0)}</span>
-        </label>
-      `).join('');
 
       const explore = document.querySelector('.explore-page');
       if (explore) {
