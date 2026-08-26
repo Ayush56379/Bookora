@@ -42,7 +42,7 @@
     './homepage-catalog-enhancement.js?v=20260820-1',
     './homepage-catalog-cleanup.js?v=20260823-2',
     './homepage-seller-section-fix.js?v=20260820-1',
-    './admin-settings-persistence-fix.js?v=20260820-1',
+    './admin-settings-persistence-fix.js?v=20260824-1',
     './admin-settings-live-firestore.js?v=20260824-1',
     './google-profile-photo-fix.js?v=20260819-1',
     './book-detail-loading-fix.js?v=20260819-1',
@@ -59,6 +59,8 @@
     './payment-auth-session-fix.js?v=20260820-2',
     './mobile-mode-switcher.js?v=20260823-boot3',
     './book-detail-related-mobile-fix.js?v=20260822-1',
+    './seller-wallet-route.js?v=20260826-1',
+    './wallet-cashfree-payout.js?v=20260826-1',
     './smart-search-runtime.js?v=20260822-1'
   ];
 
