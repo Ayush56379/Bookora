@@ -1,69 +1,22 @@
-/* Bookora permanent route stability + no-loading-flash patch.
- * The guard is deliberately local to the SPA router. It never monkey-patches
- * global hashchange listeners or DOM APIs.
- */
+/* Bookora route stability guard — event-safe and idle-free. */
 (() => {
   const install = () => {
     const app = window.__BOOKORA_APP_INSTANCE__;
-    if (!app || typeof app.route !== 'function') return false;
-    if (app.__stableRoutePatched) return true;
+    if (!app || typeof app.route !== 'function' || app.__stableRoutePatched) return !!app;
 
     const originalRoute = app.route.bind(app);
     app.route = async (force = false, navigation = false) => {
       const hash = window.location.hash || '#/';
       const main = document.querySelector('#main-content');
-      const sameRoute = app.lastHash === hash;
-
-      // A background/synthetic event for the exact route already on screen
-      // must never repaint the page. This is the key no-blink invariant.
-      if (sameRoute && main) return;
-
-      const root = app.root;
-      let descriptor;
-      let patchedRoot = false;
-      if (root) {
-        let proto = root;
-        while (proto && !descriptor) {
-          descriptor = Object.getOwnPropertyDescriptor(proto, 'innerHTML');
-          proto = Object.getPrototypeOf(proto);
-        }
-        if (descriptor?.set) {
-          const originalSetter = descriptor.set;
-          const originalGetter = descriptor.get;
-          try {
-            Object.defineProperty(root, 'innerHTML', {
-              configurable: true,
-              enumerable: descriptor.enumerable,
-              get: originalGetter ? () => originalGetter.call(root) : undefined,
-              set(value) {
-                const html = String(value ?? '');
-                if (html.includes('Loading Bookora…') || html.includes('Loading Bookora...')) {
-                  if (root.querySelector('#main-content')) return;
-                  const hiddenLoader = '<div aria-hidden="true" style="height:60vh;min-height:420px;visibility:hidden;pointer-events:none"></div>';
-                  originalSetter.call(root, html.replace(/<div[^>]*>Loading Bookora(?:…|\.\.\.)<\/div>/, hiddenLoader));
-                  return;
-                }
-                originalSetter.call(root, value);
-              }
-            });
-            patchedRoot = true;
-          } catch (error) { console.warn('[Bookora route stability] innerHTML guard unavailable', error); }
-        }
-      }
-      try {
-        return await originalRoute(force, navigation);
-      } finally {
-        if (patchedRoot) {
-          try { delete root.innerHTML; } catch (_) {}
-        }
-      }
+      if (!force && app.lastHash === hash && main) return;
+      return originalRoute(force, navigation);
     };
     app.__stableRoutePatched = true;
     return true;
   };
-  const started = performance.now();
-  const timer = setInterval(() => {
-    if (install() || performance.now() - started > 15000) clearInterval(timer);
-  }, 25);
-  install();
+
+  // app-safe is loaded before this deferred script in normal startup.
+  // Keep only a few low-frequency retries for slow devices; never poll every 25ms.
+  if (install()) return;
+  [100, 500, 1500].forEach(delay => setTimeout(install, delay));
 })();
