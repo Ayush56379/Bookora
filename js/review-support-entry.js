@@ -16,11 +16,8 @@
           return;
         }
       }
-      if (trigger) {
-        trigger.click();
-        return;
-      }
-      console.warn('[Bookora Support] Bookora AI could not be initialized.');
+      if (trigger) trigger.click();
+      else console.warn('[Bookora Support] Bookora AI could not be initialized.');
     } catch (error) {
       console.warn('[Bookora Support] AI assistant failed to open.', error);
     } finally {
@@ -28,14 +25,21 @@
     }
   };
 
+  const isSupportPage = () => (location.hash || '').split('?')[0] === '#/review-support';
+
   const add = () => {
-    if (document.getElementById('bookora-review-support-entry')) return;
-    if ((location.hash || '#/').split('?')[0] === '#/review-support') return;
+    if (isSupportPage() || document.getElementById('bookora-review-support-entry')) return;
     const b = document.createElement('button');
     b.id = 'bookora-review-support-entry';
     b.type = 'button';
     b.innerHTML = '<span>AI Bookora Support</span>';
-    Object.assign(b.style,{position:'fixed',right:'18px',bottom:'18px',zIndex:'45',display:'flex',alignItems:'center',justifyContent:'center',padding:'11px 15px',borderRadius:'999px',border:'0',background:'#2563eb',color:'#fff',font:'700 13px Inter,system-ui,sans-serif',textDecoration:'none',boxShadow:'0 10px 28px rgba(37,99,235,.28)',whiteSpace:'nowrap',cursor:'pointer'});
+    Object.assign(b.style, {
+      position:'fixed', right:'18px', bottom:'18px', zIndex:'45', display:'flex',
+      alignItems:'center', justifyContent:'center', padding:'11px 15px',
+      borderRadius:'999px', border:'0', background:'#2563eb', color:'#fff',
+      font:'700 13px Inter,system-ui,sans-serif', textDecoration:'none',
+      boxShadow:'0 10px 28px rgba(37,99,235,.28)', whiteSpace:'nowrap', cursor:'pointer'
+    });
     b.addEventListener('click', openBookoraAI);
     document.body.appendChild(b);
   };
@@ -59,15 +63,17 @@
     document.head.appendChild(style);
   };
 
-  const refresh=()=>{
-    const b=document.getElementById('bookora-review-support-entry');
-    const isPage=(location.hash||'').split('?')[0]==='#/review-support';
-    if(isPage){b?.remove();}
+  const refresh = () => {
+    const b = document.getElementById('bookora-review-support-entry');
+    if (isSupportPage()) b?.remove();
     else add();
     installHeroAnimation();
   };
-  window.addEventListener('hashchange',refresh);
-  new MutationObserver(refresh).observe(document.body,{childList:true,subtree:true});
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',refresh,{once:true});
-  else refresh();
+
+  window.addEventListener('hashchange', refresh);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', refresh, { once:true });
+  } else {
+    refresh();
+  }
 })();
