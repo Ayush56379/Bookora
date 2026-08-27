@@ -38,6 +38,26 @@
       }
     };
 
+    // Render is a server-side API dependency, not a prerequisite for painting
+    // the SPA. A sleeping/slow free Render instance must never leave a browser
+    // request hanging forever. Bound only ordinary API GET/HEAD calls; uploads,
+    // payments, AI requests and sample PDF downloads keep their existing timing.
+    if (!window.__BOOKORA_RENDER_FETCH_GUARD__) {
+      window.__BOOKORA_RENDER_FETCH_GUARD__ = true;
+      const nativeFetch = window.fetch.bind(window);
+      const renderHost = 'bookora-backend-x08l.onrender.com';
+      window.fetch = (input, init = {}) => {
+        let url = '';
+        try { url = typeof input === 'string' ? input : String(input?.url || ''); } catch (_) {}
+        const method = String(init?.method || (typeof input === 'object' && input?.method) || 'GET').toUpperCase();
+        const isRenderApi = url.includes(renderHost) && method === 'GET' && !/\/api\/books\/[^/]+\/sample(?:\?|$)/.test(url);
+        if (!isRenderApi || init?.signal) return nativeFetch(input, init);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort('Bookora Render request timeout'), 10000);
+        return nativeFetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+      };
+    }
+
     app.__stableRoutePatched = true;
     return true;
   };
