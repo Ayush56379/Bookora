@@ -1,56 +1,16 @@
 /* Bookora hero — ONLY the four book-style hero objects animate. */
-.home-hero-art .home-art-back {
-  animation: bookoraHeroBackFloat 5.2s ease-in-out infinite;
-  transform-origin: 50% 50%;
-  will-change: transform;
-}
+.home-hero-art .home-art-back { animation: bookoraHeroBackFloat 5.2s ease-in-out infinite; transform-origin: 50% 50%; will-change: transform; }
+.home-hero-art .home-art-mid { animation: bookoraHeroMidFloat 4.7s ease-in-out infinite; animation-delay: -1.2s; transform-origin: 50% 50%; will-change: transform; }
+.home-hero-art .home-art-front { animation: bookoraHeroFrontFloat 4.4s ease-in-out infinite; animation-delay: -.55s; transform-origin: 50% 50%; will-change: transform; }
+.home-hero-art .home-art-device { animation: bookoraHeroDeviceFloat 4.9s ease-in-out infinite; animation-delay: -1.8s; transform-origin: 50% 50%; will-change: transform; }
+@keyframes bookoraHeroBackFloat { 0%,100%{transform:translate(70px,-18px) rotate(8deg)} 50%{transform:translate(70px,-29px) rotate(9.5deg)} }
+@keyframes bookoraHeroMidFloat { 0%,100%{transform:translate(-52px,20px) rotate(-8deg)} 50%{transform:translate(-52px,9px) rotate(-6.5deg)} }
+@keyframes bookoraHeroFrontFloat { 0%,100%{transform:translateY(0) rotate(1deg)} 50%{transform:translateY(-10px) rotate(1.8deg)} }
+@keyframes bookoraHeroDeviceFloat { 0%,100%{transform:translate(0,0) rotate(7deg)} 50%{transform:translate(8px,-11px) rotate(10deg)} }
 
-.home-hero-art .home-art-mid {
-  animation: bookoraHeroMidFloat 4.7s ease-in-out infinite;
-  animation-delay: -1.2s;
-  transform-origin: 50% 50%;
-  will-change: transform;
-}
-
-.home-hero-art .home-art-front {
-  animation: bookoraHeroFrontFloat 4.4s ease-in-out infinite;
-  animation-delay: -.55s;
-  transform-origin: 50% 50%;
-  will-change: transform;
-}
-
-.home-hero-art .home-art-device {
-  animation: bookoraHeroDeviceFloat 4.9s ease-in-out infinite;
-  animation-delay: -1.8s;
-  transform-origin: 50% 50%;
-  will-change: transform;
-}
-
-@keyframes bookoraHeroBackFloat {
-  0%, 100% { transform: translate(70px, -18px) rotate(8deg); }
-  50% { transform: translate(70px, -29px) rotate(9.5deg); }
-}
-
-@keyframes bookoraHeroMidFloat {
-  0%, 100% { transform: translate(-52px, 20px) rotate(-8deg); }
-  50% { transform: translate(-52px, 9px) rotate(-6.5deg); }
-}
-
-@keyframes bookoraHeroFrontFloat {
-  0%, 100% { transform: translateY(0) rotate(1deg); }
-  50% { transform: translateY(-10px) rotate(1.8deg); }
-}
-
-@keyframes bookoraHeroDeviceFloat {
-  0%, 100% { transform: translate(0, 0) rotate(7deg); }
-  50% { transform: translate(8px, -11px) rotate(10deg); }
-}
+/* Header beside the logo: show only the Bookora brand name, not the tagline. */
+#main-header > .container > a > div:nth-child(2) > div:nth-child(2) { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-hero-art .home-art-back,
-  .home-hero-art .home-art-mid,
-  .home-hero-art .home-art-front,
-  .home-hero-art .home-art-device {
-    animation: none !important;
-  }
+  .home-hero-art .home-art-back,.home-hero-art .home-art-mid,.home-hero-art .home-art-front,.home-hero-art .home-art-device { animation:none!important; }
 }
