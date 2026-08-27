@@ -1,24 +1,11 @@
-// CategoryCard Component
+// CategoryCard Component — premium responsive category tile
+const esc = value => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;');
+
 export function renderCategoryCard(cat) {
-  return `
-    <a href="#/category/${cat.slug}" class="category-card animate-fade-in" data-slug="${cat.slug}">
-      <div class="category-icon-box">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-        </svg>
-      </div>
-      <div>
-        <h4 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">
-          ${cat.name}
-        </h4>
-        <span style="font-size: 0.78rem; color: var(--text-muted);">
-          ${cat.count} Publications
-        </span>
-      </div>
-      <div class="category-arrow">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
-      </div>
-    </a>
-  `;
+  const name = String(cat?.name || 'Category').trim();
+  const slug = String(cat?.slug || name.toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''));
+  const count = Number(cat?.count || cat?.bookCount || cat?.publicationCount || 0);
+  return `<a href="#/category/${encodeURIComponent(slug)}" class="category-card category-card-premium animate-fade-in" data-slug="${esc(slug)}" aria-label="Browse ${esc(name)} — ${count} publications"><div class="category-card-icon" aria-hidden="true"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></div><div class="category-card-copy"><h3>${esc(name)}</h3><p>${count} ${count === 1 ? 'Publication' : 'Publications'}</p></div><span class="category-card-arrow" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></a>`;
 }
+
+if (!document.getElementById('bookora-category-card-premium-css')) { const style=document.createElement('style'); style.id='bookora-category-card-premium-css'; style.textContent=`.category-card-premium{position:relative!important;display:flex!important;align-items:center!important;gap:14px!important;min-height:112px!important;padding:18px!important;background:#fff!important;border:1px solid #e5e7eb!important;border-radius:16px!important;text-decoration:none!important;box-shadow:0 4px 14px rgba(15,23,42,.055)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease!important;overflow:hidden!important}.category-card-premium:before{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:linear-gradient(180deg,#7c3aed,#2563eb)}.category-card-premium:hover{transform:translateY(-3px)!important;border-color:#c4b5fd!important;box-shadow:0 12px 28px rgba(15,23,42,.11)!important}.category-card-premium:focus-visible{outline:3px solid rgba(124,58,237,.2);outline-offset:2px}.category-card-icon{width:50px!important;height:50px!important;flex:0 0 50px!important;display:grid!important;place-items:center!important;border-radius:13px!important;background:linear-gradient(135deg,#f5f3ff,#eff6ff)!important;color:#6d28d9!important;border:1px solid #ddd6fe!important}.category-card-copy{min-width:0!important;flex:1!important}.category-card-copy h3{margin:0 0 5px!important;color:#0f172a!important;font-size:15px!important;font-weight:800!important;line-height:1.25!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}.category-card-copy p{margin:0!important;color:#64748b!important;font-size:12px!important;font-weight:600!important}.category-card-arrow{width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;border-radius:10px;background:#f8fafc;color:#64748b;transition:.18s ease}.category-card-premium:hover .category-card-arrow{background:#f5f3ff;color:#6d28d9;transform:translateX(2px)}@media(max-width:700px){.category-card-premium{min-height:96px!important;padding:14px!important;border-radius:13px!important}.category-card-icon{width:44px!important;height:44px!important;flex-basis:44px!important}.category-card-copy h3{font-size:14px!important}.category-card-arrow{width:30px;height:30px;flex-basis:30px}}`; document.head.appendChild(style); }
