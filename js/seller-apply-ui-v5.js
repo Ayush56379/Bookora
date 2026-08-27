@@ -12,11 +12,19 @@
 
     const account = form.querySelector('#' + ACCOUNT_ID);
     if (account) {
+      // Remove the previous V4 wrapper/control so only one eye control exists.
+      form.querySelectorAll('#seller-account-eye-v4').forEach(btn => btn.remove());
+      const oldWrap = account.closest('.seller-account-input-wrap-v4');
+      if (oldWrap) oldWrap.parentNode.insertBefore(account, oldWrap);
+      oldWrap?.remove();
+
       account.type = 'password';
       account.autocomplete = 'new-password';
       account.setAttribute('inputmode', 'numeric');
       account.setAttribute('data-lpignore', 'true');
       account.setAttribute('data-1p-ignore', 'true');
+      account.setAttribute('aria-describedby', 'seller-account-visibility-help-v5');
+
       const field = account.closest('.seller-field');
       if (field) {
         const holder = document.createElement('div');
@@ -30,6 +38,12 @@
         eye.setAttribute('aria-pressed', 'false');
         eye.innerHTML = '<span aria-hidden="true">&#128065;</span>';
         holder.appendChild(eye);
+        const help = document.createElement('span');
+        help.id = 'seller-account-visibility-help-v5';
+        help.className = 'seller-account-visibility-help-v5';
+        help.textContent = 'Your account number is hidden. Use the eye to view it.';
+        help.hidden = true;
+        holder.appendChild(help);
         eye.addEventListener('mousedown', e => e.preventDefault());
         eye.addEventListener('click', e => {
           e.preventDefault();
@@ -38,6 +52,7 @@
           account.type = visible ? 'password' : 'text';
           eye.setAttribute('aria-label', visible ? 'Show account number' : 'Hide account number');
           eye.setAttribute('aria-pressed', String(!visible));
+          help.hidden = true;
           account.focus({ preventScroll: true });
         });
       }
@@ -50,18 +65,20 @@
       box.checked = false;
       box.removeAttribute('checked');
       box.setAttribute('autocomplete', 'off');
+      label.classList.toggle('is-checked', box.checked);
       box.addEventListener('change', () => label.classList.toggle('is-checked', box.checked));
     });
 
     const style = document.createElement('style');
     style.id = 'seller-apply-ui-v5-styles';
     style.textContent = `
-      #${FORM_ID} .seller-account-control-v5{position:relative;width:100%;display:block}
-      #${FORM_ID} .seller-account-control-v5 input{width:100%!important;box-sizing:border-box!important;padding-right:3.25rem!important}
-      #${FORM_ID} .seller-account-eye-v5{position:absolute!important;right:8px!important;top:50%!important;transform:translateY(-50%)!important;width:36px!important;height:36px!important;min-width:36px!important;padding:0!important;margin:0!important;border:0!important;border-radius:9px!important;background:#f1f5f9!important;color:#334155!important;display:grid!important;place-items:center!important;cursor:pointer!important;z-index:5!important;line-height:1!important}
-      #${FORM_ID} .seller-account-eye-v5:hover{background:#e2e8f0!important}
+      #${FORM_ID} .seller-account-control-v5{position:relative!important;width:100%!important;display:block!important}
+      #${FORM_ID} .seller-account-control-v5 input{width:100%!important;box-sizing:border-box!important;padding-right:3.5rem!important}
+      #${FORM_ID} .seller-account-eye-v5{position:absolute!important;right:8px!important;top:50%!important;transform:translateY(-50%)!important;width:36px!important;height:36px!important;min-width:36px!important;padding:0!important;margin:0!important;border:1px solid #e2e8f0!important;border-radius:9px!important;background:#f8fafc!important;color:#334155!important;display:grid!important;place-items:center!important;cursor:pointer!important;z-index:20!important;line-height:1!important}
+      #${FORM_ID} .seller-account-eye-v5:hover{background:#eef2ff!important;border-color:var(--accent)!important}
       #${FORM_ID} .seller-account-eye-v5:focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px!important}
-      #${FORM_ID} .seller-check-v5{display:grid!important;grid-template-columns:24px minmax(0,1fr)!important;align-items:start!important;column-gap:12px!important;width:100%!important;box-sizing:border-box!important;padding:14px 16px!important;margin:0!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#fff!important;cursor:pointer!important;line-height:1.5!important;text-align:left!important}
+      #${FORM_ID} .seller-account-visibility-help-v5{display:none!important}
+      #${FORM_ID} .seller-check-v5{display:grid!important;grid-template-columns:24px minmax(0,1fr)!important;align-items:start!important;column-gap:12px!important;width:100%!important;box-sizing:border-box!important;padding:14px 16px!important;margin:0 0 10px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#fff!important;cursor:pointer!important;line-height:1.5!important;text-align:left!important}
       #${FORM_ID} .seller-check-v5:hover{border-color:var(--accent)!important;background:#faf7ff!important}
       #${FORM_ID} .seller-check-v5 input[type="checkbox"]{appearance:none!important;-webkit-appearance:none!important;width:22px!important;height:22px!important;min-width:22px!important;margin:0!important;border:2px solid #94a3b8!important;border-radius:6px!important;background:#fff!important;display:grid!important;place-items:center!important;cursor:pointer!important;box-sizing:border-box!important}
       #${FORM_ID} .seller-check-v5 input[type="checkbox"]::after{content:'✓';font-size:14px;font-weight:900;color:#fff;transform:scale(0);transition:transform .12s ease}
