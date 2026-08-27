@@ -1,14 +1,18 @@
 // Bookora Best Sellers - Firebase PAID-orders ranking.
-// Admins read Firestore directly for the fastest result; public users use the secure aggregation endpoint.
+// Firebase orders are the single source of truth for bestseller ranking.
 import { state } from './state.js';
 import { apiUrl } from './config.js';
 
 const CACHE_TTL = 60 * 1000;
-const REQUEST_TIMEOUT = 5000;
+const REQUEST_TIMEOUT = 8000;
 let lastHydratedAt = 0;
 let hydrationPromise = null;
 
-function idOf(book) { return String(book?.id || book?.bookId || book?.book_id || book?.bookoraLibraryId || '').trim(); }
+function idOf(book) { return String(book?.id || book?.bookId || book?.book_id || book?.bookoraLibraryId || book?.bookora_library_id || book?.libraryId || book?.library_id || '').trim(); }
+function aliasesOf(book) {
+  return [book?.id, book?.bookId, book?.book_id, book?.bookoraLibraryId, book?.bookora_library_id, book?.libraryId, book?.library_id, book?.canonicalBookId, book?.canonical_book_id]
+    .map(v => String(v || '').trim()).filter(Boolean);
+}
 function statusOf(value) { return String(value || '').trim().toUpperCase(); }
 function isAdminSession() {
   if (state.isAdmin) return true;
@@ -17,18 +21,24 @@ function isAdminSession() {
     return String(u?.email || '').trim().toLowerCase() === 'ayushprajpati6@gmail.com' || u?.role === 'admin' || u?.isMasterAdmin === true;
   } catch (_) { return false; }
 }
-function orderBookId(order) { return String(order?.productId || order?.bookId || order?.book_id || order?.bookoraLibraryId || order?.bookoraLibraryID || '').trim(); }
+function orderBookId(order) { return String(order?.productId || order?.bookId || order?.book_id || order?.bookoraLibraryId || order?.bookoraLibraryID || order?.bookora_library_id || '').trim(); }
 function isPaid(order) {
   return statusOf(order?.paymentStatus || order?.payment_status) === 'PAID' && !new Set(['REFUNDED','CANCELLED','FAILED','EXPIRED']).has(statusOf(order?.orderStatus));
 }
 function countRanking(orders) {
   const counts = new Map();
+  const latest = new Map();
   for (const order of orders || []) {
     if (!isPaid(order)) continue;
     const id = orderBookId(order);
-    if (id) counts.set(id, (counts.get(id) || 0) + 1);
+    if (!id) continue;
+    counts.set(id, (counts.get(id) || 0) + 1);
+    const raw = order?.paidAt || order?.paymentCompletedAt || order?.completedAt || order?.purchasedAt || order?.orderDate || order?.createdAt || order?.created_at || '';
+    const ms = raw?.toDate instanceof Function ? (() => { try { return raw.toDate().getTime(); } catch (_) { return 0; } })() : Date.parse(String(raw || '')) || Number(raw) || 0;
+    latest.set(id, Math.max(latest.get(id) || 0, ms));
   }
-  return [...counts.entries()].map(([bookId, salesCount]) => ({ bookId, salesCount })).sort((a,b) => b.salesCount - a.salesCount || a.bookId.localeCompare(b.bookId));
+  return [...counts.entries()].map(([bookId, salesCount]) => ({ bookId, salesCount, latestPurchaseAt: latest.get(bookId) || 0 }))
+    .sort((a,b) => b.salesCount - a.salesCount || b.latestPurchaseAt - a.latestPurchaseAt || a.bookId.localeCompare(b.bookId));
 }
 async function getAdminFirebaseData() {
   const { db } = await state.getFirebase();
@@ -52,17 +62,23 @@ async function getPublicRanking() {
   } finally { clearTimeout(timer); }
 }
 function finish(ranking, books) {
-  const byId = new Map((books || []).map(book => [idOf(book), book]).filter(([id]) => id));
+  const byAlias = new Map();
+  for (const book of books || []) for (const alias of aliasesOf(book)) byAlias.set(alias, book);
   const sales = new Map();
+  const latest = new Map();
   const ranked = [];
   for (const item of ranking || []) {
-    const id = String(item?.bookId || item?.productId || item?.book_id || '').trim();
+    const id = String(item?.bookId || item?.productId || item?.book_id || item?.bookoraLibraryId || '').trim();
     const salesCount = Number(item?.salesCount || item?.count || 0);
-    const book = byId.get(id);
-    if (!id || !book || !Number.isFinite(salesCount) || salesCount <= 0 || sales.has(id)) continue;
-    sales.set(id, salesCount); ranked.push(book);
+    const book = byAlias.get(id);
+    if (!id || !book || !Number.isFinite(salesCount) || salesCount <= 0) continue;
+    const canonicalId = idOf(book);
+    if (!canonicalId || sales.has(canonicalId)) continue;
+    sales.set(canonicalId, salesCount);
+    latest.set(canonicalId, Number(item?.latestPurchaseAt || 0));
+    ranked.push(book);
   }
-  ranked.sort((a,b) => (sales.get(idOf(b)) || 0) - (sales.get(idOf(a)) || 0));
+  ranked.sort((a,b) => (sales.get(idOf(b)) || 0) - (sales.get(idOf(a)) || 0) || (latest.get(idOf(b)) || 0) - (latest.get(idOf(a)) || 0) || idOf(a).localeCompare(idOf(b)));
   state.__bestSellerSales = sales;
   state.__bestSellerRanked = ranked.slice(0,24);
   state.__bestSellerLoading = false;
