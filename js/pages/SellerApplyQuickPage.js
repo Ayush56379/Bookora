@@ -4,159 +4,115 @@ import { updateSEO } from '../utils/seo.js';
 import { Toast } from '../components/Toast.js';
 
 let submitting = false;
+let profileUpload = { file: null, url: '', id: '', percent: 0, busy: false };
+const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;');
+const val = id => document.getElementById(id)?.value?.trim() || '';
+const chk = id => document.getElementById(id)?.checked === true;
+const input = (id,label,type='text',ph='',required=true,extra='') => `<div class="sf"><label for="${id}">${label}${required?' *':''}</label><input id="${id}" type="${type}" placeholder="${esc(ph)}" ${required?'required':''} ${extra}></div>`;
+const area = (id,label,ph,required=true) => `<div class="sf full"><label for="${id}">${label}${required?' *':''}</label><textarea id="${id}" rows="4" placeholder="${esc(ph)}" ${required?'required':''}></textarea></div>`;
+const select = (id,label,options,required=true) => `<div class="sf"><label for="${id}">${label}${required?' *':''}</label><select id="${id}" ${required?'required':''}><option value="">Select</option>${options.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></div>`;
+const check = (id,text) => `<label class="agreement"><input id="${id}" type="checkbox" required><span>${text}</span></label>`;
 
-const esc = value => String(value ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/\"/g, '&quot;').replace(/'/g, '&#039;');
+export function renderSellerApplyPage(){
+  updateSEO({title:'Become a Bookora Seller',description:'Five-step seller onboarding for Bookora authors and publishers.'});
+  const status=String(state.currentUser?.seller_status||'none').toLowerCase();
+  if(status==='pending') return `<main class="seller-page"><div class="seller-card result"><div class="result-icon">✓</div><h1>Application Already Submitted</h1><p>Your seller application is under admin review.</p><a class="btn btn-primary" href="#/">Back to Bookora</a></div></main>`;
+  if(status==='approved') return `<main class="seller-page"><div class="seller-card result"><div class="result-icon">✓</div><h1>Seller Account Approved</h1><p>You already have seller access.</p><a class="btn btn-primary" href="#/seller/dashboard">Open Seller Dashboard</a></div></main>`;
 
-const input = (id, label, type = 'text', placeholder = '', required = true, extra = '') => `
-  <div class="quick-field">
-    <label for="${id}">${label}${required ? ' *' : ''}</label>
-    <input id="${id}" type="${type}" placeholder="${esc(placeholder)}" ${required ? 'required' : ''} ${extra}>
-  </div>`;
+  return `<main class="seller-page"><div class="seller-card">
+    <div class="seller-badge">BOOKORA SELLER ONBOARDING</div><h1>Become a Bookora Seller</h1>
+    <p class="intro">Complete these five steps. Only your login email is supplied automatically; every other field must be entered by you.</p>
+    <div class="steps" aria-label="Seller onboarding progress">${[1,2,3,4,5].map((n,i)=>`<div class="step ${i===0?'active':''}" data-step-indicator="${n}"><b>${n}</b><span>${['Profile','Publishing','Rights','Payout','Agreement'][i]}</span></div>`).join('')}</div>
+    <form id="seller-five-form" novalidate>
+      <section class="step-panel active" data-step="1"><div class="panel-head"><span>STEP 1 OF 5</span><h2>Profile & Business Details</h2><p>Tell Bookora who is applying. Nothing except your login email is prefilled.</p></div>
+        <div class="grid">
+          ${input('s-store','Publisher / Store Name','text','Your author or publishing name')}
+          ${input('s-legal','Legal / Full Name','text','Your full legal name')}
+          ${input('s-email','Email','email',state.currentUser?.email||'',true,'readonly autocomplete="username"')}
+          ${input('s-phone','Phone Number','tel','+91 9876543210',true,'autocomplete="off" inputmode="tel"')}
+          ${input('s-country','Country','text','Country',true,'autocomplete="off"')}
+          ${input('s-state','State / Province','text','State / Province',true,'autocomplete="off"')}
+          ${input('s-city','City','text','City',true,'autocomplete="off"')}
+          ${input('s-postal','Postal / PIN Code','text','e.g. 110001',true,'autocomplete="off" inputmode="numeric"')}
+        </div>
+        ${area('s-address','Address','Full billing / contact address',true)}
+        <div class="grid">${select('s-type','Publisher Type',['Individual Author','Publisher','Small Publishing House','Educational Publisher'])}${input('s-books','Previously Published Books','number','0',true,'min="0" autocomplete="off"')}${input('s-website','Website (Optional)','url','https://yourwebsite.com',false,'autocomplete="off"')}${input('s-portfolio','Portfolio / Author Profile URL (Optional)','url','https://...',false,'autocomplete="off"')}</div>
+        <div class="profile-box"><div class="profile-title"><label>Profile Image *</label><small>Required for seller review</small></div><div id="profile-drop" class="profile-drop"><input id="profile-file" type="file" accept="image/jpeg,image/png,image/webp" hidden><div id="profile-preview" class="profile-preview">👤</div><div class="profile-copy"><strong>Drag & drop your profile photo here</strong><span>or click to browse • JPG, PNG, WebP • max 5 MB</span><small id="profile-status">Your image will be securely uploaded to Bookora's Google Drive storage.</small></div><button id="profile-browse" type="button" class="browse-btn">Choose image</button></div></div>
+      </section>
 
-const area = (id, label, placeholder, required = true) => `
-  <div class="quick-field full">
-    <label for="${id}">${label}${required ? ' *' : ''}</label>
-    <textarea id="${id}" rows="4" placeholder="${esc(placeholder)}" ${required ? 'required' : ''}></textarea>
-  </div>`;
+      <section class="step-panel" data-step="2"><div class="panel-head"><span>STEP 2 OF 5</span><h2>Publishing Experience</h2><p>Describe your catalogue, audience and digital publishing preferences.</p></div>
+        ${area('s-bio','Author Bio & Publishing Experience','Tell us about yourself, your publishing experience and the ebooks you plan to publish. Minimum 20 characters.')}
+        <div class="grid">${select('s-category','Main Genre / Category',['Fiction','Romance','Business','Finance','Education','Technology','Self Help','Productivity','Biography','Children','Health & Wellness','Exam Preparation','Other'])}${select('s-language','Main Publishing Language',['English','Hindi','Marathi','Bengali','Tamil','Telugu','Kannada','Malayalam','Gujarati','Punjabi','Urdu','Other'])}</div>
+        ${area('s-catalogue','Planned Digital Catalogue','Describe the ebooks you plan to publish on Bookora. Minimum 20 characters.')}
+        <div class="grid">${select('s-format','Ebook Formats',['EPUB','PDF','Both EPUB and PDF'])}${input('s-imprint','Publisher / Imprint Name (Optional)','text','Optional imprint name',false)}${select('s-isbn','ISBN Preference',['No ISBN / not applicable','I have ISBN','I will provide ISBN later'],false)}${select('s-drm','DRM Preference',['Default / Admin configured','Standard DRM','No DRM'],false)}${select('s-ai','AI-generated Content Disclosure',['No AI-generated material','AI-assisted material','AI-generated material'],false)}${select('s-sample','Sample / Preview Availability',['No sample','Free sample available','Preview available'],false)}</div>
+        ${area('s-accessibility','Accessibility Information (Optional)','Accessible text, alt text, screen-reader considerations, etc.',false)}
+      </section>
 
-const check = (id, text) => `<label class="quick-check"><input id="${id}" type="checkbox" required><span>${text}</span></label>`;
+      <section class="step-panel" data-step="3"><div class="panel-head"><span>STEP 3 OF 5</span><h2>Rights & Content Declarations</h2><p>These declarations let Bookora review digital publishing rights before approval.</p></div>
+        ${area('s-rights','Content / Distribution Rights Declaration','Explain that you own the copyright or have permission to distribute the digital content you submit.')}
+        <div class="declaration-grid">${check('s-copyright','I confirm that I own the copyright or have the necessary rights to publish this content on Bookora.')}${check('s-original','I confirm that the ebooks I submit are original or lawfully licensed for digital distribution.')}${check('s-distribution','I have the digital distribution rights for every title I submit.')}</div>
+      </section>
 
-const value = id => document.getElementById(id)?.value?.trim() || '';
-const checked = id => document.getElementById(id)?.checked === true;
+      <section class="step-panel" data-step="4"><div class="panel-head"><span>STEP 4 OF 5</span><h2>Payout & Tax Profile</h2><p>These details are used for the seller wallet and future earnings payouts. Sensitive identifiers are masked in admin-facing records.</p></div>
+        <div class="grid">${select('s-payout','Payout Method',['Bank Transfer','UPI','Bank Transfer + UPI'])}${input('s-bank','Bank Name','text','e.g. State Bank of India',true,'autocomplete="off"')}${input('s-holder','Account Holder Name','text','Name exactly as on bank account',true,'autocomplete="off"')}
+          <div class="sf"><label for="s-account">Account Number *</label><div class="secret"><input id="s-account" type="password" placeholder="Enter bank account number" required autocomplete="off" inputmode="numeric"><button id="account-eye" type="button" aria-label="Show account number" title="Show account number">◉</button></div></div>
+          ${input('s-ifsc','IFSC Code','text','e.g. SBIN0001234',true,'autocomplete="off" autocapitalize="characters"')}${input('s-upi','UPI ID (Optional)','text','Optional UPI ID',false,'autocomplete="off"')}${input('s-pan','PAN / Tax ID','text','ABCDE1234F',true,'maxlength="10" autocomplete="off" autocapitalize="characters"')}${select('s-tax','Tax Information Status',['Tax information available','Not applicable','Will provide later'])}
+        </div>${area('s-billing','Billing / Tax Address','Address associated with your payout/tax profile.',true)}
+      </section>
 
-export function renderSellerApplyPage() {
-  updateSEO({
-    title: 'Become a Bookora Seller',
-    description: 'Quick seller onboarding for authors and publishers on Bookora.'
-  });
-
-  const status = String(state.currentUser?.seller_status || 'none').toLowerCase();
-  if (status === 'pending') return `
-    <main class="quick-seller-page"><div class="quick-card quick-result">
-      <div class="quick-icon">✓</div><h1>Application Already Submitted</h1>
-      <p>Your seller application is under review. You do not need to submit it again.</p>
-      <a class="btn btn-primary" href="#/">Back to Bookora</a>
-    </div></main>`;
-  if (status === 'approved') return `
-    <main class="quick-seller-page"><div class="quick-card quick-result">
-      <div class="quick-icon">✓</div><h1>Seller Account Approved</h1>
-      <p>You already have seller access.</p>
-      <a class="btn btn-primary" href="#/seller/dashboard">Open Seller Dashboard</a>
-    </div></main>`;
-
-  return `
-    <main class="quick-seller-page">
-      <div class="quick-card">
-        <div class="quick-badge">QUICK SELLER ONBOARDING</div>
-        <h1>Become a Bookora Seller</h1>
-        <p class="quick-intro">Only the information needed for initial seller review is requested here. Payout and other profile details can be completed later from Seller Settings.</p>
-
-        <form id="quick-seller-form" novalidate>
-          <section class="quick-section">
-            <h2>Basic details</h2>
-            <div class="quick-grid">
-              ${input('quick-store', 'Publisher / Store Name', 'text', 'Your author or publishing name')}
-              ${input('quick-legal', 'Legal / Full Name', 'text', 'Your full name')}
-              ${input('quick-email', 'Email', 'email', state.currentUser?.email || '', true, 'readonly')}
-              ${input('quick-phone', 'Phone Number', 'tel', '+91 9876543210', true, 'autocomplete="tel" inputmode="tel"')}
-              <div class="quick-field"><label for="quick-type">Publisher Type *</label><select id="quick-type" required><option value="">Select</option><option value="Individual Author">Individual Author</option><option value="Publisher">Publisher</option><option value="Small Publishing House">Small Publishing House</option><option value="Educational Publisher">Educational Publisher</option></select></div>
-              <div class="quick-field"><label for="quick-category">Main Category *</label><select id="quick-category" required><option value="">Select</option><option>Fiction</option><option>Romance</option><option>Business</option><option>Finance</option><option>Education</option><option>Technology</option><option>Self Help</option><option>Productivity</option><option>Biography</option><option>Children</option><option>Health & Wellness</option><option>Exam Preparation</option><option>Other</option></select></div>
-              <div class="quick-field"><label for="quick-language">Main Publishing Language *</label><select id="quick-language" required><option value="">Select</option><option>English</option><option>Hindi</option><option>Marathi</option><option>Bengali</option><option>Tamil</option><option>Telugu</option><option>Kannada</option><option>Malayalam</option><option>Gujarati</option><option>Punjabi</option><option>Urdu</option><option>Other</option></select></div>
-              <div class="quick-field"><label for="quick-format">Ebook Format *</label><select id="quick-format" required><option value="">Select</option><option>EPUB</option><option>PDF</option><option>Both EPUB and PDF</option></select></div>
-            </div>
-            ${area('quick-bio', 'Author / Publishing Bio', 'Briefly describe who you are and what you publish. Minimum 20 characters.')}
-            ${area('quick-catalogue', 'What do you plan to publish?', 'Briefly describe the ebooks you plan to publish on Bookora. Minimum 20 characters.')}
-            ${area('quick-rights', 'Rights Declaration', 'Confirm that you own or have permission to distribute the ebooks you submit.')}
-          </section>
-
-          <section class="quick-section">
-            <h2>Confirm & submit</h2>
-            <div class="quick-checks">
-              ${check('quick-rights-confirm', 'I confirm that I own the copyright or have the necessary rights to publish my content.')}
-              ${check('quick-original', 'I confirm that the content I submit is original or lawfully licensed.')}
-              ${check('quick-distribution', 'I confirm that I have digital distribution rights for the content I submit.')}
-              ${check('quick-terms', 'I accept the Bookora Seller Agreement, marketplace rules and current royalty/pricing terms.')}
-              ${check('quick-privacy', 'I acknowledge the Bookora Privacy Policy and seller-data processing.')}
-              ${check('quick-content', 'I allow Bookora to review submitted content for copyright and policy compliance.')}
-              ${check('quick-pricing', 'I accept the seller royalty/commission settings configured by administration.')}
-            </div>
-            <button id="quick-seller-submit" type="submit" class="btn btn-primary quick-submit">Submit Seller Application</button>
-            <div id="quick-seller-status" class="quick-status" aria-live="polite"></div>
-          </section>
-        </form>
-      </div>
-    </main>
-    <style>
-      .quick-seller-page{min-height:85vh;background:var(--bg-secondary);padding:32px 16px 64px}.quick-card{max-width:820px;margin:auto;background:#fff;border:1px solid var(--border-subtle);border-radius:20px;padding:clamp(20px,4vw,40px);box-shadow:var(--shadow-md)}
-      .quick-badge{display:inline-block;padding:6px 10px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:11px;font-weight:800;letter-spacing:.06em}.quick-card h1{margin:12px 0 8px;font-size:clamp(28px,4vw,38px);color:var(--text-primary)}.quick-intro{margin:0 0 24px;color:var(--text-secondary);line-height:1.6}.quick-section{border-top:1px solid #e5e7eb;padding-top:24px;margin-top:24px}.quick-section h2{margin:0 0 16px;font-size:18px;color:var(--text-primary)}.quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.quick-field{margin:0}.quick-field.full{margin-top:14px}.quick-field label{display:block;font-size:13px;font-weight:700;color:#0f172a;margin-bottom:6px}.quick-field input,.quick-field select,.quick-field textarea{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid var(--border-medium);border-radius:10px;background:#fff;color:var(--text-primary);font:inherit}.quick-field textarea{resize:vertical}.quick-field input:focus,.quick-field select:focus,.quick-field textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,58,237,.1)}.quick-checks{display:grid;gap:10px}.quick-check{display:flex;align-items:flex-start;gap:9px;color:#334155;font-size:13px;line-height:1.45}.quick-check input{margin-top:3px}.quick-submit{margin-top:20px;width:100%;min-height:48px}.quick-status{min-height:24px;margin-top:12px;font-size:13px;text-align:center;color:#475569}.quick-result{text-align:center;margin-top:8vh}.quick-icon{font-size:42px;margin-bottom:8px}.quick-result p{color:var(--text-secondary);margin:0 0 20px}.quick-submit[disabled]{opacity:.65;cursor:not-allowed}@media(max-width:680px){.quick-grid{grid-template-columns:1fr}}
-    </style>`;
+      <section class="step-panel" data-step="5"><div class="panel-head"><span>STEP 5 OF 5</span><h2>Agreements & Submission</h2><p>Review the declarations below. You must actively tick every required box before submitting.</p></div>
+        <div class="review-card"><div><b>Application</b><span id="review-name">Not entered yet</span></div><div><b>Profile image</b><span id="review-image">Required</span></div><div><b>Payout</b><span id="review-payout">Not entered yet</span></div><div><b>Format</b><span id="review-format">Not entered yet</span></div></div>
+        <div class="declaration-grid">${check('s-terms','I accept the Bookora Seller Agreement, marketplace rules and current royalty/pricing terms.')}${check('s-privacy','I acknowledge the Bookora Privacy Policy and consent to processing the information required for seller onboarding.')}${check('s-content','I confirm that Bookora may review submitted digital content for copyright, rights and policy compliance.')}${check('s-pricing','I accept that Bookora may apply the seller royalty/commission settings configured by administration.')}</div>
+        <button id="seller-submit" type="submit" class="submit-btn">Submit Seller Application for Review</button><div id="seller-status" class="status" aria-live="polite"></div>
+      </section>
+      <div class="nav"><button type="button" id="back-step" class="nav-btn secondary" disabled>← Back</button><button type="button" id="next-step" class="nav-btn primary">Continue →</button></div>
+    </form>
+  </div></main>${styles()}`;
 }
 
-export async function initSellerApplyEvents() {
-  const form = document.getElementById('quick-seller-form');
-  if (!form) return;
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    if (submitting) return;
-    if (!form.checkValidity()) { form.reportValidity(); return; }
-    if (value('quick-bio').length < 20 || value('quick-catalogue').length < 20) {
-      Toast.error?.('Please enter at least 20 characters in the bio and catalogue description.');
-      return;
-    }
-    const submit = document.getElementById('quick-seller-submit');
-    const status = document.getElementById('quick-seller-status');
-    submitting = true;
-    submit.disabled = true;
-    submit.textContent = 'Submitting…';
-    status.textContent = 'Checking your application and saving it securely…';
-    try {
-      const selectedCategory = value('quick-category');
-      const selectedLanguage = value('quick-language');
-      const payload = {
-        publisherName: value('quick-store'),
-        legalName: value('quick-legal'),
-        email: value('quick-email'),
-        phone: value('quick-phone'),
-        publisherType: value('quick-type'),
-        authorBio: value('quick-bio'),
-        categories: selectedCategory ? [selectedCategory] : [],
-        languages: selectedLanguage ? [selectedLanguage] : [],
-        publishingDescription: value('quick-catalogue'),
-        ebookFormats: value('quick-format') ? [value('quick-format')] : [],
-        copyrightOwner: checked('quick-rights-confirm'),
-        originalContent: checked('quick-original'),
-        distributionRights: checked('quick-distribution'),
-        rightsDeclaration: value('quick-rights'),
-        termsAccepted: checked('quick-terms'),
-        privacyAccepted: checked('quick-privacy'),
-        contentRightsAccepted: checked('quick-content'),
-        pricingAccepted: checked('quick-pricing'),
-        termsVersion: '1.0',
-        privacyVersion: '1.0',
-        agreementVersion: '1.0'
-      };
-      const response = await apiFetch('/api/seller/apply', { method: 'POST', body: JSON.stringify(payload) });
-      let data = {};
-      try { data = await response.json(); } catch (_) {}
-      if (!response.ok || !data.success) {
-        const fields = Array.isArray(data.fields) ? data.fields.slice(0, 4).join(', ') : '';
-        throw new Error(data.error || fields || `Application failed (${response.status})`);
-      }
-      state.currentUser = { ...(state.currentUser || {}), seller_status: 'pending', sellerStatus: 'inactive' };
-      try { localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser)); } catch (_) {}
-      status.textContent = 'Application submitted successfully.';
-      Toast.success?.('Seller application submitted successfully.');
-      form.innerHTML = `<div class="quick-result"><div class="quick-icon">✓</div><h2>Application Submitted</h2><p>Your application is now pending admin review.</p><a class="btn btn-primary" href="#/">Back to Bookora</a></div>`;
-    } catch (error) {
-      console.error('[Bookora seller quick apply]', error);
-      status.textContent = error?.message || 'Application could not be submitted. Please try again.';
-      Toast.error?.(error?.message || 'Seller application could not be submitted.');
-      submit.disabled = false;
-      submit.textContent = 'Submit Seller Application';
-    } finally {
-      submitting = false;
-    }
+function styles(){return `<style>
+.seller-page{min-height:85vh;background:var(--bg-secondary);padding:30px 16px 70px}.seller-card{max-width:900px;margin:auto;background:#fff;border:1px solid var(--border-subtle);border-radius:22px;padding:clamp(20px,4vw,42px);box-shadow:var(--shadow-md)}.seller-badge{display:inline-block;padding:7px 11px;border-radius:999px;background:#f1edff;color:#6d28d9;font-size:11px;font-weight:800;letter-spacing:.07em}.seller-card h1{margin:12px 0 8px;font-size:clamp(28px,4vw,40px);color:var(--text-primary)}.intro{color:var(--text-secondary);line-height:1.6;margin:0 0 22px}.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:0 0 28px}.step{display:flex;align-items:center;gap:7px;color:#94a3b8;font-size:11px;font-weight:700}.step b{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#e2e8f0;color:#475569}.step.active,.step.done{color:#6d28d9}.step.active b,.step.done b{background:#7c3aed;color:#fff}.step-panel{display:none}.step-panel.active{display:block}.panel-head>span{font-size:11px;font-weight:800;letter-spacing:.08em;color:#7c3aed}.panel-head h2{margin:7px 0 5px;font-size:25px;color:#0f172a}.panel-head p{margin:0 0 22px;color:#64748b;line-height:1.5}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.sf label,.profile-title label{display:block;font-size:13px;font-weight:750;color:#0f172a;margin-bottom:6px}.sf input,.sf select,.sf textarea{width:100%;box-sizing:border-box;padding:12px 13px;border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#0f172a;font:inherit}.sf.full{margin-top:15px}.sf textarea{resize:vertical}.sf input:focus,.sf select:focus,.sf textarea:focus{outline:none;border-color:#7c3aed;box-shadow:0 0 0 3px rgba(124,58,237,.1)}.profile-box{margin-top:18px}.profile-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}.profile-title small{color:#dc2626;font-size:11px;font-weight:700}.profile-drop{min-height:112px;border:1.5px dashed #8b5cf6;border-radius:14px;background:#faf8ff;padding:16px;display:flex;align-items:center;gap:15px;cursor:pointer}.profile-preview{width:72px;height:72px;min-width:72px;border-radius:50%;overflow:hidden;background:#ede9fe;display:grid;place-items:center;font-size:25px;color:#7c3aed;border:3px solid #fff;box-shadow:0 1px 5px #cbd5e1}.profile-preview img{width:100%;height:100%;object-fit:cover}.profile-copy{display:flex;flex-direction:column;gap:4px;flex:1}.profile-copy strong{font-size:14px;color:#1e293b}.profile-copy span,.profile-copy small{font-size:11px;color:#64748b;line-height:1.4}.browse-btn{border:1px solid #c4b5fd;background:#fff;color:#6d28d9;border-radius:9px;padding:9px 12px;font-weight:700;cursor:pointer}.declaration-grid{display:grid;gap:11px;margin-top:18px}.agreement{display:flex;align-items:flex-start;gap:11px;padding:15px;border:1px solid #ddd6fe;border-radius:12px;background:#faf8ff;color:#334155;font-size:13px;line-height:1.5;cursor:pointer}.agreement input{margin-top:3px;width:17px;height:17px;accent-color:#7c3aed;flex:none}.secret{position:relative}.secret input{padding-right:50px}.secret button{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;border-radius:8px;background:#f1f5f9;color:#334155;cursor:pointer}.review-card{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:0 0 18px}.review-card>div{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #e2e8f0;border-radius:10px;font-size:12px}.review-card span{color:#64748b;text-align:right}.nav{display:flex;justify-content:space-between;gap:12px;margin-top:24px;padding-top:20px;border-top:1px solid #e2e8f0}.nav-btn,.submit-btn{border:0;border-radius:11px;min-height:46px;padding:0 18px;font-weight:800;font-size:14px;cursor:pointer}.nav-btn.primary,.submit-btn{background:#2563eb;color:#fff}.nav-btn.secondary{background:#f1f5f9;color:#334155}.nav-btn:disabled{opacity:.45;cursor:not-allowed}.submit-btn{width:100%;margin-top:20px}.submit-btn:disabled{opacity:.65;cursor:not-allowed}.status{min-height:24px;margin-top:11px;text-align:center;color:#475569;font-size:13px}.result{text-align:center;margin-top:8vh}.result-icon{font-size:46px;color:#16a34a}.result p{color:#64748b}.upload-modal{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:9999}.upload-box{width:min(360px,calc(100vw - 32px));background:#fff;border-radius:20px;padding:30px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)}.upload-ring{width:120px;height:120px;margin:0 auto 20px;position:relative}.upload-ring svg{width:120px;height:120px;transform:rotate(-90deg)}.upload-ring circle{fill:none;stroke-width:9}.upload-track{stroke:#e2e8f0}.upload-progress{stroke:#7c3aed;stroke-linecap:round;transition:stroke-dashoffset .25s}.upload-percent{position:absolute;inset:0;display:grid;place-items:center;font-size:24px;font-weight:800;color:#0f172a}.upload-box h3{margin:0 0 6px}.upload-box p{margin:0;color:#64748b;font-size:13px}@media(max-width:680px){.grid,.review-card{grid-template-columns:1fr}.steps{gap:3px}.step span{display:none}.step{justify-content:center}.profile-drop{flex-wrap:wrap}.browse-btn{width:100%}}
+</style>`}
+
+function showUploadModal(percent=0){let m=document.getElementById('seller-upload-modal');if(!m){m=document.createElement('div');m.id='seller-upload-modal';m.className='upload-modal';m.innerHTML=`<div class="upload-box"><div class="upload-ring"><svg viewBox="0 0 120 120"><circle class="upload-track" cx="60" cy="60" r="50"></circle><circle id="upload-progress" class="upload-progress" cx="60" cy="60" r="50" stroke-dasharray="314" stroke-dashoffset="314"></circle></svg><div id="upload-percent" class="upload-percent">0%</div></div><h3>Uploading profile image</h3><p>Please keep this page open.</p></div>`;document.body.appendChild(m)}m.style.display='grid';updateUploadModal(percent)}
+function updateUploadModal(percent){const p=Math.max(0,Math.min(100,Math.round(percent)));const ring=document.getElementById('upload-progress');const text=document.getElementById('upload-percent');if(ring)ring.style.strokeDashoffset=String(314-(314*p/100));if(text)text.textContent=p+'%'}
+function hideUploadModal(){const m=document.getElementById('seller-upload-modal');if(m)m.remove()}
+
+async function uploadProfile(file){
+  if(!file||!file.type.startsWith('image/')) throw new Error('Please select a valid image.');
+  if(file.size>5*1024*1024) throw new Error('Profile image must be 5 MB or smaller.');
+  profileUpload={...profileUpload,file,busy:true,percent:0,url:'',id:''};showUploadModal(0);
+  const start=await apiFetch('/api/books/upload-session/start',{method:'POST',body:JSON.stringify({name:file.name,mimeType:file.type,size:file.size,kind:'profile'})});
+  let sd={};try{sd=await start.json()}catch(_){ }
+  if(!start.ok||!sd.success) throw new Error(sd.error||`Profile upload could not start (${start.status})`);
+  const token=sd.upload_token;const chunkSize=Math.max(64*1024,Number(sd.chunk_size)||256*1024);let offset=Number(sd.next_offset)||0;
+  while(offset<file.size){
+    const end=Math.min(offset+chunkSize,file.size);const blob=file.slice(offset,end);const b64=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]||'');r.onerror=()=>reject(new Error('Could not read profile image.'));r.readAsDataURL(blob)});
+    const response=await apiFetch('/api/books/upload-session/chunk',{method:'POST',body:JSON.stringify({upload_token:token,offset,data:b64})});let d={};try{d=await response.json()}catch(_){ }
+    if(!response.ok||!d.success) throw new Error(d.error||`Profile upload failed (${response.status})`);
+    offset=Number(d.next_offset)||end;profileUpload.percent=Math.min(99,(offset/file.size)*100);updateUploadModal(profileUpload.percent);
+    if(d.done){profileUpload.file=file;profileUpload.url=String(d.file?.url||d.file?.webViewLink||d.file?.downloadUrl||d.file?.download_url||'');profileUpload.id=String(d.file?.id||'');break;}
+  }
+  if(!profileUpload.url){const st=await apiFetch('/api/books/upload-session/status',{method:'POST',body:JSON.stringify({upload_token:token})});let d={};try{d=await st.json()}catch(_){ }if(!st.ok||!d.success||!d.done)throw new Error(d.error||'Profile image upload did not finish.');profileUpload.url=String(d.file?.url||d.file?.webViewLink||d.file?.downloadUrl||d.file?.download_url||'');profileUpload.id=String(d.file?.id||'');}
+  if(!profileUpload.url) throw new Error('Profile image was uploaded but no Drive URL was returned.');
+  profileUpload.percent=100;profileUpload.busy=false;updateUploadModal(100);await new Promise(r=>setTimeout(r,350));hideUploadModal();return profileUpload;
+}
+
+function setProfilePreview(file){const p=document.getElementById('profile-preview');if(!p||!file)return;const url=URL.createObjectURL(file);p.innerHTML=`<img src="${url}" alt="Profile preview">`;p.dataset.objectUrl=url;document.getElementById('profile-status').textContent='Image uploaded successfully. This profile image will be linked to your seller record.'}
+
+export async function initSellerApplyEvents(){
+  const form=document.getElementById('seller-five-form');if(!form)return;
+  let step=1;const panels=[...form.querySelectorAll('.step-panel')];const next=document.getElementById('next-step');const back=document.getElementById('back-step');
+  const setStep=n=>{step=n;panels.forEach(p=>p.classList.toggle('active',Number(p.dataset.step)===step));document.querySelectorAll('[data-step-indicator]').forEach(el=>{const n=Number(el.dataset.stepIndicator);el.classList.toggle('active',n===step);el.classList.toggle('done',n<step)});back.disabled=step===1;next.style.display=step===5?'none':'inline-block';if(step===5){document.getElementById('review-name').textContent=val('s-store')||'Not entered';document.getElementById('review-image').textContent=profileUpload.url?'Uploaded ✓':'Required';document.getElementById('review-payout').textContent=val('s-bank')?`${val('s-bank')} ••••${val('s-account').slice(-4)}`:'Not entered';document.getElementById('review-format').textContent=val('s-format')||'Not entered';}window.scrollTo({top:document.querySelector('.seller-card').offsetTop-15,behavior:'smooth'})};
+  const validStep=()=>{const panel=panels[step-1];const required=[...panel.querySelectorAll('[required]')];for(const el of required){if(!el.checkValidity()){el.reportValidity();return false}}if(step===2&&(val('s-bio').length<20||val('s-catalogue').length<20)){Toast.error?.('Bio and catalogue description must be at least 20 characters.');return false}if(step===1&&!profileUpload.url){Toast.error?.('Please upload your profile image before continuing.');return false}return true};
+  next.addEventListener('click',()=>{if(validStep())setStep(Math.min(5,step+1))});back.addEventListener('click',()=>setStep(Math.max(1,step-1)));
+  const fileInput=document.getElementById('profile-file'),drop=document.getElementById('profile-drop');document.getElementById('profile-browse').addEventListener('click',e=>{e.stopPropagation();fileInput.click()});drop.addEventListener('click',()=>fileInput.click());drop.addEventListener('dragover',e=>{e.preventDefault();drop.style.background='#f1edff'});drop.addEventListener('dragleave',()=>drop.style.background='');drop.addEventListener('drop',e=>{e.preventDefault();drop.style.background='';if(e.dataTransfer.files[0])fileInput.files=e.dataTransfer.files;fileInput.dispatchEvent(new Event('change'))});
+  fileInput.addEventListener('change',async()=>{const file=fileInput.files?.[0];if(!file)return;try{setProfilePreview(file);await uploadProfile(file)}catch(err){hideUploadModal();profileUpload={file:null,url:'',id:'',percent:0,busy:false};Toast.error?.(err.message||'Profile image upload failed.');document.getElementById('profile-status').textContent=err.message||'Upload failed.'}});
+  const eye=document.getElementById('account-eye'),account=document.getElementById('s-account');eye.addEventListener('click',()=>{const show=account.type==='password';account.type=show?'text':'password';eye.textContent=show?'◉':'◌';eye.setAttribute('aria-label',show?'Hide account number':'Show account number')});
+  form.addEventListener('submit',async e=>{e.preventDefault();if(submitting)return;if(step!==5)return;if(!validStep())return;if(!profileUpload.url){Toast.error?.('Profile image upload is required.');return}
+    const button=document.getElementById('seller-submit'),status=document.getElementById('seller-status');submitting=true;button.disabled=true;button.textContent='Submitting application…';status.textContent='Validating all five steps and saving securely to Firebase…';
+    const category=val('s-category'),language=val('s-language'),format=val('s-format');
+    const payload={publisherName:val('s-store'),legalName:val('s-legal'),email:val('s-email'),phone:val('s-phone'),country:val('s-country'),state:val('s-state'),city:val('s-city'),address:val('s-address'),postalCode:val('s-postal'),publisherType:val('s-type'),previousBooksCount:val('s-books'),website:val('s-website'),portfolioUrl:val('s-portfolio'),profileImageUrl:profileUpload.url,profileImageId:profileUpload.id,authorBio:val('s-bio'),categories:category?[category]:[],languages:language?[language]:[],publishingDescription:val('s-catalogue'),ebookFormats:format?[format]:[],imprintName:val('s-imprint'),isbnPreference:val('s-isbn'),drmPreference:val('s-drm'),aiContentDisclosure:val('s-ai'),sampleAvailability:val('s-sample'),accessibilityInfo:val('s-accessibility'),rightsDeclaration:val('s-rights'),copyrightOwner:chk('s-copyright'),originalContent:chk('s-original'),distributionRights:chk('s-distribution'),payoutMethod:val('s-payout'),bankName:val('s-bank'),accountHolderName:val('s-holder'),accountNumber:val('s-account'),ifscCode:val('s-ifsc').toUpperCase(),upiId:val('s-upi'),pan:val('s-pan').toUpperCase(),taxInfoStatus:val('s-tax'),billingAddress:val('s-billing'),termsAccepted:chk('s-terms'),privacyAccepted:chk('s-privacy'),contentRightsAccepted:chk('s-content'),pricingAccepted:chk('s-pricing'),termsVersion:'1.0',privacyVersion:'1.0',agreementVersion:'1.0'};
+    try{const response=await apiFetch('/api/seller/apply',{method:'POST',body:JSON.stringify(payload)});let data={};try{data=await response.json()}catch(_){ }if(!response.ok||!data.success){const fields=Array.isArray(data.fields)?data.fields.slice(0,6).join(', '):'';throw new Error(data.error||fields||`Application failed (${response.status})`)}state.currentUser={...(state.currentUser||{}),seller_status:'pending',sellerStatus:'inactive'};try{localStorage.setItem('bookora_user_profile',JSON.stringify(state.currentUser))}catch(_){ }status.textContent='Application submitted successfully.';Toast.success?.('Seller application submitted successfully.');form.innerHTML='<div class="result"><div class="result-icon">✓</div><h2>Application Submitted</h2><p>Your seller application and payout profile are now pending admin review.</p><a class="btn btn-primary" href="#/">Back to Bookora</a></div>'}catch(err){console.error('[Bookora seller five-step onboarding]',err);status.textContent=err.message||'Application could not be submitted.';Toast.error?.(err.message||'Application could not be submitted.');button.disabled=false;button.textContent='Submit Seller Application'}finally{submitting=false}
   });
 }
