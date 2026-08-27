@@ -28,15 +28,6 @@ import { Toast } from './components/Toast.js';
     return data;
   }
 
-  function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
-      reader.onerror = () => reject(new Error('Could not read the profile image.'));
-      reader.readAsDataURL(file);
-    });
-  }
-
   function setStatus(text, kind = 'info') {
     const el = document.getElementById('seller-profile-image-status');
     if (!el) return;
@@ -76,11 +67,10 @@ import { Toast } from './components/Toast.js';
 
     uploadPromise = (async () => {
       setStatus('Uploading profile image to Google Drive…', 'loading');
-      await fileToBase64(file);
       const startRes = await fetch(`${API_ROOT}/api/books/upload-session/start`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size, kind: 'profile_image' })
+        body: JSON.stringify({ name: file.name, mimeType: file.type, size: file.size, kind: 'cover' })
       });
       const started = await json(startRes);
       const token = started.upload_token;
