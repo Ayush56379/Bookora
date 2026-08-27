@@ -1,18 +1,63 @@
-/* Bookora seller application UI V5: fixed account reveal control and checkbox layout. */
+/* Bookora seller application UI V5: fixed account reveal control, checkbox layout, and field policy. */
 (() => {
   'use strict';
   const FORM_ID = 'seller-apply-form';
+  const EMAIL_ID = 'apply-email';
   const ACCOUNT_ID = 'apply-account';
   const FLAG = '__BOOKORA_SELLER_UI_V5__';
+
+  const protectedField = el => el?.id === EMAIL_ID || el?.type === 'hidden' || el?.type === 'file';
+  function clearUnentered(form) {
+    form.querySelectorAll('input,textarea,select').forEach(el => {
+      if (protectedField(el) || el.type === 'checkbox' || el.dataset.userTouched === '1') return;
+      el.setAttribute('autocomplete', /account|bank|ifsc|pan|upi|holder/i.test(`${el.id} ${el.name} ${el.placeholder}`) ? 'new-password' : 'off');
+      el.setAttribute('data-lpignore', 'true');
+      el.setAttribute('data-1p-ignore', 'true');
+      if (el.tagName === 'SELECT') {
+        [...el.options].forEach(o => { o.selected = false; });
+        if (!el.multiple) {
+          if (!el.options[0] || el.options[0].value !== '') {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'Select an option';
+            el.insertBefore(option, el.firstChild);
+          }
+          el.value = '';
+        }
+      } else el.value = '';
+      el.removeAttribute('value');
+      el.removeAttribute('checked');
+    });
+    form.querySelectorAll('input[type="checkbox"]').forEach(box => {
+      if (box.dataset.userTouched !== '1') box.checked = false;
+      box.removeAttribute('checked');
+      box.setAttribute('autocomplete', 'off');
+    });
+    const email = form.querySelector('#' + EMAIL_ID);
+    const authEmail = String(window.__BOOKORA_AUTH_EMAIL__ || '').trim();
+    if (email) {
+      email.readOnly = true;
+      email.autocomplete = 'email';
+      if (authEmail) email.value = authEmail;
+    }
+  }
 
   function setup(form) {
     if (!form || form.id !== FORM_ID || form.dataset[FLAG]) return;
     form.dataset[FLAG] = '1';
     form.setAttribute('autocomplete', 'off');
 
+    const markTouched = event => {
+      const target = event.target;
+      if (target?.matches('input,textarea,select') && target.id !== EMAIL_ID) target.dataset.userTouched = '1';
+    };
+    ['input', 'change', 'paste', 'drop'].forEach(type => form.addEventListener(type, markTouched, true));
+
+    clearUnentered(form);
+
     const account = form.querySelector('#' + ACCOUNT_ID);
     if (account) {
-      // Remove the previous V4 wrapper/control so only one eye control exists.
+      // Remove any older V4 control/wrapper so there is exactly one stable eye button.
       form.querySelectorAll('#seller-account-eye-v4').forEach(btn => btn.remove());
       const oldWrap = account.closest('.seller-account-input-wrap-v4');
       if (oldWrap) oldWrap.parentNode.insertBefore(account, oldWrap);
@@ -23,7 +68,6 @@
       account.setAttribute('inputmode', 'numeric');
       account.setAttribute('data-lpignore', 'true');
       account.setAttribute('data-1p-ignore', 'true');
-      account.setAttribute('aria-describedby', 'seller-account-visibility-help-v5');
 
       const field = account.closest('.seller-field');
       if (field) {
@@ -38,12 +82,6 @@
         eye.setAttribute('aria-pressed', 'false');
         eye.innerHTML = '<span aria-hidden="true">&#128065;</span>';
         holder.appendChild(eye);
-        const help = document.createElement('span');
-        help.id = 'seller-account-visibility-help-v5';
-        help.className = 'seller-account-visibility-help-v5';
-        help.textContent = 'Your account number is hidden. Use the eye to view it.';
-        help.hidden = true;
-        holder.appendChild(help);
         eye.addEventListener('mousedown', e => e.preventDefault());
         eye.addEventListener('click', e => {
           e.preventDefault();
@@ -52,7 +90,6 @@
           account.type = visible ? 'password' : 'text';
           eye.setAttribute('aria-label', visible ? 'Show account number' : 'Hide account number');
           eye.setAttribute('aria-pressed', String(!visible));
-          help.hidden = true;
           account.focus({ preventScroll: true });
         });
       }
@@ -77,7 +114,6 @@
       #${FORM_ID} .seller-account-eye-v5{position:absolute!important;right:8px!important;top:50%!important;transform:translateY(-50%)!important;width:36px!important;height:36px!important;min-width:36px!important;padding:0!important;margin:0!important;border:1px solid #e2e8f0!important;border-radius:9px!important;background:#f8fafc!important;color:#334155!important;display:grid!important;place-items:center!important;cursor:pointer!important;z-index:20!important;line-height:1!important}
       #${FORM_ID} .seller-account-eye-v5:hover{background:#eef2ff!important;border-color:var(--accent)!important}
       #${FORM_ID} .seller-account-eye-v5:focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px!important}
-      #${FORM_ID} .seller-account-visibility-help-v5{display:none!important}
       #${FORM_ID} .seller-check-v5{display:grid!important;grid-template-columns:24px minmax(0,1fr)!important;align-items:start!important;column-gap:12px!important;width:100%!important;box-sizing:border-box!important;padding:14px 16px!important;margin:0 0 10px!important;border:1px solid #e2e8f0!important;border-radius:12px!important;background:#fff!important;cursor:pointer!important;line-height:1.5!important;text-align:left!important}
       #${FORM_ID} .seller-check-v5:hover{border-color:var(--accent)!important;background:#faf7ff!important}
       #${FORM_ID} .seller-check-v5 input[type="checkbox"]{appearance:none!important;-webkit-appearance:none!important;width:22px!important;height:22px!important;min-width:22px!important;margin:0!important;border:2px solid #94a3b8!important;border-radius:6px!important;background:#fff!important;display:grid!important;place-items:center!important;cursor:pointer!important;box-sizing:border-box!important}
