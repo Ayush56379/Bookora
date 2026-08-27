@@ -1,0 +1,90 @@
+/* Bookora Permanent Device Design System
+   This is NOT the AI Website Builder. These rules are the baseline UI contract
+   for every SPA page: responsive layout, readable type, and strict containment.
+   Keep business logic and page-specific behavior untouched. */
+
+:root{
+  --bo-page-gutter:clamp(12px,2.4vw,48px);
+  --bo-content-max:1440px;
+  --bo-text-min:0;
+}
+
+/* Fundamental containment for every page/component. */
+#app,#app *{box-sizing:border-box;min-width:var(--bo-text-min)}
+#app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container,
+#app main,#app section,#app article,#app aside,#app header,#app footer{max-width:100%}
+#app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{
+  width:100%;margin-inline:auto;padding-inline:var(--bo-page-gutter)
+}
+
+/* Flex/grid children must be allowed to shrink before their text overflows. */
+#app .container>*,#app .page-container>*,#app .content-container>*,#app .main-container>*,#app .section-container>*,
+#app [class*="grid"]>*,#app [class*="flex"]>*,#app .row>*,#app .column>*{min-width:0;max-width:100%}
+
+/* Typography: fluid, readable, and contained. */
+#app h1,#app h2,#app h3,#app h4,#app h5,#app h6,#app p,#app li,#app label,#app a,#app button,
+#app span,#app small,#app strong,#app td,#app th,#app legend,#app figcaption{
+  max-width:100%;overflow-wrap:anywhere;word-break:normal
+}
+#app h1{font-size:clamp(1.65rem,3.1vw,3rem);line-height:1.12}
+#app h2{font-size:clamp(1.35rem,2.45vw,2.25rem);line-height:1.18}
+#app h3{font-size:clamp(1.1rem,1.8vw,1.6rem);line-height:1.24}
+#app p,#app li{line-height:1.55}
+
+/* Cards and repeated content: text stays inside the card instead of changing
+   card width or escaping its boundaries. */
+#app [class*="card"],#app [class*="Card"],#app [class*="tile"],#app [class*="item"],
+#app [class*="badge"],#app [class*="chip"],#app [class*="pill"]{min-width:0;max-width:100%}
+#app [class*="card"] img,#app [class*="Card"] img,#app [class*="tile"] img{max-width:100%;height:auto}
+#app [class*="title"],#app [class*="Title"],#app [class*="author"],#app [class*="Author"],
+#app [class*="category"],#app [class*="Category"],#app [class*="price"],#app [class*="Price"]{min-width:0;max-width:100%;overflow-wrap:anywhere}
+
+/* Controls never push the page wider than the viewport. */
+#app button,#app input,#app select,#app textarea{max-width:100%;min-width:0}
+#app button{white-space:normal;overflow-wrap:anywhere}
+#app input,#app select,#app textarea{font-size:clamp(.9rem,1.3vw,1rem)}
+#app textarea{overflow-wrap:anywhere}
+
+/* Responsive rows naturally stack rather than collide. */
+#app .page-header,#app .section-header,#app .toolbar,#app .actions,#app .form-actions,#app .modal-actions,
+#app [class*="header-row"],#app [class*="action-row"]{min-width:0;max-width:100%;gap:clamp(8px,1.2vw,16px)}
+
+/* Tables remain readable: scroll the table, never the entire page. */
+#app .table-responsive,#app .table-wrap,#app .data-table-wrap,#app .admin-table-wrap,#app .orders-table-wrap{max-width:100%;overflow-x:auto}
+
+/* Images/media are never wider than their containing box. */
+#app img,#app picture,#app video,#app canvas,#app svg{max-width:100%}
+
+@media (min-width:1025px){
+  #app .container,#app .page-container,#app .content-container,#app .main-container,#app .section-container{max-width:var(--bo-content-max)}
+}
+
+@media (max-width:1024px){
+  #app .page-header,#app .section-header,#app .toolbar,#app .actions,#app .form-actions,#app .modal-actions{display:flex;flex-wrap:wrap}
+  #app [class*="grid"]{min-width:0}
+}
+
+@media (max-width:767px){
+  :root{--bo-page-gutter:clamp(10px,4vw,16px)}
+  #app h1{font-size:clamp(1.55rem,7.2vw,2.15rem)}
+  #app h2{font-size:clamp(1.3rem,6vw,1.8rem)}
+  #app h3{font-size:clamp(1.05rem,5vw,1.35rem)}
+  #app p,#app li{line-height:1.5}
+  #app .page-header,#app .section-header,#app .toolbar,#app .actions,#app .form-actions,#app .modal-actions{width:100%;align-items:stretch}
+  #app .page-header>*,#app .section-header>*,#app .toolbar>*,#app .actions>*,#app .form-actions>*,#app .modal-actions>*{max-width:100%;min-width:0}
+}
+
+@media (max-width:480px){
+  :root{--bo-page-gutter:10px}
+  #app button{max-width:100%}
+  #app .btn:not(.btn-sm){max-width:100%;white-space:normal}
+}
+
+@media (max-width:360px){
+  :root{--bo-page-gutter:8px}
+  #app h1{font-size:clamp(1.45rem,7.5vw,1.9rem)}
+  #app h2{font-size:clamp(1.25rem,6.5vw,1.65rem)}
+}
+
+/* Prevent accidental horizontal scrolling caused by long content. */
+html,body{max-width:100%;overflow-x:hidden}
