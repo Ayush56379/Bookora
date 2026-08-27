@@ -12,20 +12,17 @@
     if (!root) return;
     if (root.nodeType === Node.TEXT_NODE) { fixText(root); return; }
     if (root.nodeType !== Node.ELEMENT_NODE) return;
-    // Only inspect newly-added subtrees, never the entire document.
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) fixText(node);
   };
 
   const start = () => {
-    document.querySelectorAll('body *').forEach(() => {});
-    const initial = document.body;
-    if (initial) {
-      const walker = document.createTreeWalker(initial, NodeFilter.SHOW_TEXT);
-      let node;
-      while ((node = walker.nextNode())) fixText(node);
-    }
+    // One initial pass is acceptable; subsequent work is limited to added nodes.
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) fixText(node);
+
     let scheduled = false;
     const pending = new Set();
     const flush = () => {
@@ -34,9 +31,7 @@
       items.slice(0, 80).forEach(normalizeAdded);
     };
     const observer = new MutationObserver(mutations => {
-      for (const mutation of mutations) {
-        mutation.addedNodes?.forEach(node => pending.add(node));
-      }
+      for (const mutation of mutations) mutation.addedNodes?.forEach(node => pending.add(node));
       if (!scheduled && pending.size) {
         scheduled = true;
         (window.requestAnimationFrame || (fn => setTimeout(fn, 0)))(flush);
@@ -51,7 +46,6 @@
 
   // If an already-authenticated user lands on /login (for example from a
   // search result or an old bookmark), immediately return them to Bookora.
-  // This uses the locally restored state first, then Firebase auth as a backup.
   const redirectAuthenticatedAuthRoute = () => {
     const path = (location.hash || '#/').split('?')[0];
     if (!['#/login', '#/signup', '#/register'].includes(path)) return;
