@@ -33,3 +33,5 @@ This repository contains the complete, responsive Single Page Application (SPA) 
 1. Commit and push the `frontend/` directory to your GitHub repository (e.g. `your-username/bookora`).
 2. Go to **Repository Settings → Pages → Build and deployment → Branch: main / (root)**.
 3. In `frontend/js/config.js`, update `API_BASE_URL` with your deployed backend server URL (e.g., `https://api.yourdomain.com`).
+
+<!-- Seller Apply UI cache/deployment refresh marker: 2026-08-27 -->
