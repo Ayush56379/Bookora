@@ -57,7 +57,9 @@ class SafeApp {
       return { html: m.renderHomePage(), init: m.initHomePageEvents };
     }
     if (path === '/explore') {
-      const m = await safeImport('./pages/ExplorePage.js');
+      // EXPLORE_CANONICAL_V2: the legacy Explore renderer must never be reused.
+      // Query version is intentional: force browsers/CDNs to load the canonical V2 module.
+      const m = await safeImport('./pages/ExplorePage.js?v=20260827-v2');
       return { html: m.renderExplorePage(), init: m.initExploreEvents };
     }
     if (path === '/search') {
