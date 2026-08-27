@@ -89,12 +89,10 @@ class SafeApp {
       const type = path === '/best-sellers' ? 'bestsellers' : path === '/new-releases' ? 'new' : 'trending';
       return { html: m.renderCuratedCatalogPage(type) };
     }
-    // REVIEW_SUPPORT_ROUTE_V1
     if (path === '/review-support') {
       const m = await safeImport('./pages/ReviewSupportPage.js');
       return { html: m.renderReviewSupportPage(), init: m.initReviewSupportEvents };
     }
-
     if (path === '/pricing' || path === '/subscription') {
       const m = await safeImport('./pages/PricingPage.js');
       return { html: m.renderPricingPage(), init: m.initPricingEvents };
@@ -172,7 +170,7 @@ class SafeApp {
       return { html: m.renderPublishExternalPage(), init: m.initPublishExternalEvents };
     }
     if (path === '/seller/apply') {
-      const m = await safeImport('./pages/SellerApplyPage.js');
+      const m = await safeImport('./pages/SellerApplyPage.js?v=20260827-3');
       return { html: m.renderSellerApplyPage(), init: m.initSellerApplyEvents };
     }
     if (path === '/seller/settings') {
@@ -234,7 +232,7 @@ class SafeApp {
       } catch (error) {
         console.error('[Bookora] route failed:', error);
         const main = document.getElementById('main-content');
-        if (main) main.innerHTML = `<div style="min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,system-ui,sans-serif"><div><h2 style="color:#0f172a;margin-bottom:8px">This page could not be loaded</h2><p style="color:#64748b;margin-bottom:18px">Bookora is still running. Please try again.</p><button id="bookora-route-retry" type="button" style="padding:10px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Retry</button></div></div>`;
+        if (main) main.innerHTML = `<div style="min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,system-ui,sans-serif"><div><h2 style="color:#0f172a;margin-bottom:8px">This page could not be loaded</h2><p style="color:#64748b;margin-bottom:18px">Bookora is still running. Please try again.</p><button id="bookora-route-retry" type="button" style="padding:10px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Retry</button></div></main>`;
         document.getElementById('bookora-route-retry')?.addEventListener('click', () => this.route(true, false), { once: true });
       }
       this.lastHash = hash;
@@ -252,14 +250,9 @@ class SafeApp {
 
   init() {
     window.addEventListener('hashchange', () => this.route(true, true));
-    window.addEventListener('load', () => this.route(false, false));
-    state.subscribe(event => {
-      if (event === 'DATA_SYNCED') { window.dispatchEvent(new CustomEvent('bookora:catalog-updated')); return; }
-      if (['USER_LOGGED_IN','USER_LOGGED_OUT','MODE_CHANGED'].includes(event)) this.route(true, false);
-    });
-    this.route(false, false);
+    window.addEventListener('load', () => this.route(true, false), { once: true });
+    this.route(true, false);
   }
 }
 
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => new SafeApp(), { once: true });
-else new SafeApp();
+new SafeApp();
