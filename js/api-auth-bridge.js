@@ -3,9 +3,9 @@
   if (window.__BOOKORA_API_AUTH_BRIDGE__) return;
   window.__BOOKORA_API_AUTH_BRIDGE__ = true;
 
-  const API_ROOT = String(window.BOOKORA_API_URL || '').replace(/\/$/, '');
   const RETIRED_API_ROOT = 'https://bookora-backend-x081.onrender.com';
   const CURRENT_API_ROOT = 'https://bookora-backend-x08l.onrender.com';
+  const API_ROOT = CURRENT_API_ROOT;
   const normalizeBackendUrl = raw => String(raw || '').replace(RETIRED_API_ROOT, CURRENT_API_ROOT);
   const originalFetch = window.fetch.bind(window);
   let authUser = null;
@@ -16,13 +16,22 @@
   let firebaseAuthReady = new Promise(resolve => { firebaseAuthResolve = resolve; });
   let tokenPromise = null;
 
+  const normalizeInput = input => {
+    if (typeof input === 'string') return normalizeBackendUrl(input);
+    if (typeof Request !== 'undefined' && input instanceof Request) {
+      const normalizedUrl = normalizeBackendUrl(input.url);
+      if (normalizedUrl !== input.url) return new Request(normalizedUrl, input);
+    }
+    return input;
+  };
+
   const isBackendRequest = input => {
     const raw = typeof input === 'string' ? input : (input?.url || '');
     if (!raw) return false;
     try {
       const url = new URL(normalizeBackendUrl(raw), location.href);
-      return Boolean(API_ROOT) ? (url.href.startsWith(API_ROOT + '/') || url.href === API_ROOT) : url.pathname.startsWith('/api/');
-    } catch (_) { return String(normalizeBackendUrl(raw)).startsWith(API_ROOT) || String(raw).startsWith('/api/'); }
+      return url.href === API_ROOT || url.href.startsWith(API_ROOT + '/');
+    } catch (_) { return String(normalizeBackendUrl(raw)).startsWith(API_ROOT); }
   };
 
   const pathOf = input => {
@@ -49,10 +58,7 @@
     const instance = getAuthInstance();
     if (!instance?.onAuthStateChanged) return false;
     authListenerInstalled = true;
-    instance.onAuthStateChanged(user => {
-      authUser = user || null;
-      markAuthResolved();
-    });
+    instance.onAuthStateChanged(user => { authUser = user || null; markAuthResolved(); });
     return true;
   };
 
@@ -88,7 +94,7 @@
   setTimeout(() => { clearInterval(firebaseBootstrapTimer); markAuthResolved(); }, 15000);
 
   window.fetch = async (input, init = {}) => {
-    const normalizedInput = typeof input === 'string' ? normalizeBackendUrl(input) : input;
+    const normalizedInput = normalizeInput(input);
     if (!isBackendRequest(normalizedInput)) return originalFetch(normalizedInput, init);
     const path = pathOf(normalizedInput);
     const headers = new Headers(init?.headers || (normalizedInput instanceof Request ? normalizedInput.headers : undefined));
@@ -105,5 +111,5 @@
     return response;
   };
 
-  console.info('[Bookora API Auth] Direct Firebase ID-token backend auth bridge installed.');
+  console.info('[Bookora API Auth] Direct Firebase ID-token backend auth bridge installed. Current backend:', CURRENT_API_ROOT);
 })();
