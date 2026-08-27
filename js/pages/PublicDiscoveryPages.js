@@ -2,7 +2,7 @@
 import { state } from '../state.js';
 import { renderBookCard } from '../components/BookCard.js';
 import { updateSEO } from '../utils/seo.js';
-import '../best-sellers-firebase-runtime.js?v=20260826-2';
+import '../best-sellers-firebase-runtime.js?v=20260827-1';
 
 const esc = value => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;');
 const slugify = value => String(value || '').trim().toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
@@ -75,13 +75,32 @@ if (!window.__BOOKORA_FINAL_CATEGORY_SUBSCRIBER__) {
   });
 }
 
+function renderBestSellerState() {
+  if (state.__bestSellerLoading || state.__bestSellerRanked === null) {
+    return `<div style="background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:4rem 2rem;text-align:center;color:var(--text-secondary)"><div style="font-weight:700;margin-bottom:.5rem">Loading Best Sellers…</div><div style="font-size:.9rem;color:var(--text-muted)">Reading successful purchases from Firebase.</div></div>`;
+  }
+  if (state.__bestSellerError) {
+    return `<div style="background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:3rem 2rem;text-align:center;color:var(--text-secondary)"><div style="font-weight:700;margin-bottom:.5rem">Best Sellers could not be loaded</div><div style="font-size:.9rem;color:var(--text-muted)">${esc(state.__bestSellerError)}</div><button class="btn btn-secondary btn-sm" style="margin-top:1rem" onclick="window.dispatchEvent(new CustomEvent('bookora:best-sellers-retry'))">Retry</button></div>`;
+  }
+  return null;
+}
+
 export function renderCuratedCatalogPage(type='bestsellers') {
   const isBest=type==='bestsellers', isTrend=type==='trending';
   const title=isBest?'Best Sellers Leaderboard':isTrend?'Trending Now':'New Releases';
   updateSEO({title,description:`Explore ${title.toLowerCase()} on Bookora.`});
+  if (isBest) {
+    const stateView = renderBestSellerState();
+    if (stateView) return `<div class="curated-catalog-page animate-fade-in" style="background:var(--bg-secondary);min-height:85vh;padding:4rem 0 6rem"><div class="container"><div style="margin-bottom:2.5rem"><h1 style="font-family:var(--font-display);font-size:2.2rem;font-weight:800;color:var(--text-primary)">${title}</h1><p style="font-size:.95rem;color:var(--text-secondary)">Ranked by successful Firebase purchases.</p></div>${stateView}</div></div>`;
+  }
   const books=isBest?state.getBestSellers():isTrend?state.getTrendingBooks():state.getNewReleases();
-  const content=books.length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.5rem">${books.map(renderBookCard).join('')}</div>`:`<div style="background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:4rem 2rem;text-align:center;color:var(--text-muted)">No publications available in this section yet.</div>`;
-  return `<div class="curated-catalog-page animate-fade-in" style="background:var(--bg-secondary);min-height:85vh;padding:4rem 0 6rem"><div class="container"><div style="margin-bottom:2.5rem"><h1 style="font-family:var(--font-display);font-size:2.2rem;font-weight:800;color:var(--text-primary)">${title}</h1><p style="font-size:.95rem;color:var(--text-secondary)">Real-time curated marketplace selections.</p></div>${content}</div></div>`;
+  const content=books.length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1.5rem">${books.map(renderBookCard).join('')}</div>`:`<div style="background:#fff;border:1px solid var(--border-subtle);border-radius:var(--radius-xl);padding:4rem 2rem;text-align:center;color:var(--text-muted)">${isBest?'No successful purchases found yet.':'No publications available in this section yet.'}</div>`;
+  return `<div class="curated-catalog-page animate-fade-in" style="background:var(--bg-secondary);min-height:85vh;padding:4rem 0 6rem"><div class="container"><div style="margin-bottom:2.5rem"><h1 style="font-family:var(--font-display);font-size:2.2rem;font-weight:800;color:var(--text-primary)">${title}</h1><p style="font-size:.95rem;color:var(--text-secondary)">${isBest?'Ranked by successful Firebase purchases.':'Real-time curated marketplace selections.'}</p></div>${content}</div></div>`;
+}
+
+if (!window.__BOOKORA_BEST_SELLERS_RETRY__) {
+  window.__BOOKORA_BEST_SELLERS_RETRY__ = true;
+  window.addEventListener('bookora:best-sellers-retry', () => state.__hydrateBestSellers?.().then(() => window.__BOOKORA_APP_INSTANCE__?.requestRoute?.(true, false)));
 }
 
 export function renderAuthorsDirectoryPage() {
