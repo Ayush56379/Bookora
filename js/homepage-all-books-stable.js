@@ -1,11 +1,13 @@
 // Bookora — stable All eBooks section below Trending.
-// This renderer never watches its own DOM and never rebuilds unchanged cards.
+// Once real catalog data is rendered, this page session freezes it.
+// No automatic refresh/reorder/rebuild of the visible homepage catalog.
 (() => {
   if (window.__BOOKORA_ALL_EBOOKS_STABLE__) return;
   window.__BOOKORA_ALL_EBOOKS_STABLE__ = true;
 
   let busy = false;
   let timer = null;
+  let stableCatalogShown = false;
 
   async function getState() {
     try { return (await import('./state.js')).state; } catch (_) { return null; }
@@ -43,12 +45,13 @@
   }
 
   function schedule(delay = 100) {
+    if (stableCatalogShown) return;
     clearTimeout(timer);
     timer = setTimeout(() => { timer = null; render(); }, delay);
   }
 
   async function render() {
-    if (busy || !isHome()) return;
+    if (busy || stableCatalogShown || !isHome()) return;
     busy = true;
     try {
       const main = document.querySelector('#main-content');
@@ -67,10 +70,27 @@
       if (!state) return;
       const { renderBookCard } = await import('./components/BookCard.js');
       const books = getBooks(state);
-      const sig = signature(books);
 
-      // The most important anti-blink rule: same catalog = no DOM mutation.
-      if (section.dataset.catalogSignature === sig && section.querySelector('.bookora-all-ebooks-grid')) return;
+      // Do not freeze an empty/loading state. Freeze only after actual books exist.
+      if (!books.length) {
+        if (!section.querySelector('.bookora-all-ebooks-grid')) {
+          section.innerHTML = `
+            <div class="kdp-catalog-container">
+              <div class="kdp-section-head">
+                <div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Explore every approved eBook available in the Bookora store.</p></div>
+              </div>
+              <div class="bookora-all-ebooks-grid"><div class="kdp-loading-state"><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div></div>
+            </div>`;
+        }
+        return;
+      }
+
+      const sig = signature(books);
+      // First real catalog becomes the stable snapshot for this page session.
+      if (section.dataset.catalogSignature === sig && section.querySelector('.bookora-all-ebooks-grid')) {
+        stableCatalogShown = true;
+        return;
+      }
 
       section.innerHTML = `
         <div class="kdp-catalog-container">
@@ -82,19 +102,18 @@
             </div>
           </div>
           <div class="bookora-all-ebooks-grid">
-            ${books.length
-              ? books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('')
-              : `<div class="kdp-loading-state"><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div>`}
+            ${books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('')}
           </div>
         </div>`;
       section.dataset.catalogSignature = sig;
+      stableCatalogShown = true;
     } finally {
       busy = false;
     }
   }
 
-  // Only legitimate data/route events can request a refresh. There is NO
-  // MutationObserver here, so writing the section can never trigger itself.
+  // Events are allowed to finish the initial load only. After real data is
+  // visible, they are intentionally ignored so the catalog cannot blink/change.
   window.addEventListener('bookora:fast-catalog', () => schedule(80));
   window.addEventListener('bookora:catalog-updated', () => schedule(80));
   window.addEventListener('bookora:firebase-trending-updated', () => schedule(120));
