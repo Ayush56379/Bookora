@@ -1,10 +1,10 @@
-// Bookora — stable All eBooks section below Trending.
-// Once real catalog data is rendered, this page session freezes it.
-// No automatic refresh/reorder/rebuild of the visible homepage catalog.
+// Bookora homepage — performance-safe All eBooks section.
+// Never build thousands of book cards during the initial homepage paint.
 (() => {
   if (window.__BOOKORA_ALL_EBOOKS_STABLE__) return;
   window.__BOOKORA_ALL_EBOOKS_STABLE__ = true;
 
+  const INITIAL_BOOK_LIMIT = 24;
   let busy = false;
   let timer = null;
   let stableCatalogShown = false;
@@ -28,22 +28,7 @@
     return [...map.values()];
   }
 
-  function signature(books) {
-    return books.map(book => [
-      book.id || book.bookId || book.slug || '',
-      book.slug || '',
-      book.title || '',
-      book.author || book.seller_name || '',
-      book.cover_url || book.coverUrl || book.cover_image_url || book.coverImageUrl || book.cover || '',
-      book.price || '', book.sale_price || book.salePrice || '', book.discount || '',
-      book.pages || '', book.status || ''
-    ].map(v => String(v)).join('\u001f')).join('\u001e');
-  }
-
-  function isHome() {
-    return !!document.querySelector('#main-content .bookora-home-clean');
-  }
-
+  function isHome() { return !!document.querySelector('#main-content .bookora-home-clean'); }
   function schedule(delay = 100) {
     if (stableCatalogShown) return;
     clearTimeout(timer);
@@ -57,7 +42,6 @@
       const main = document.querySelector('#main-content');
       const trending = document.getElementById('bookora-smart-trending');
       if (!main || !trending) return;
-
       let section = document.getElementById('bookora-all-ebooks-section');
       if (!section) {
         section = document.createElement('section');
@@ -65,64 +49,31 @@
         section.className = 'kdp-catalog-section bookora-all-ebooks-section';
         trending.insertAdjacentElement('afterend', section);
       }
-
       const state = await getState();
       if (!state) return;
-      const { renderBookCard } = await import('./components/BookCard.js');
-      const books = getBooks(state);
-
-      // Do not freeze an empty/loading state. Freeze only after actual books exist.
-      if (!books.length) {
+      const allBooks = getBooks(state);
+      if (!allBooks.length) {
         if (!section.querySelector('.bookora-all-ebooks-grid')) {
-          section.innerHTML = `
-            <div class="kdp-catalog-container">
-              <div class="kdp-section-head">
-                <div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Explore every approved eBook available in the Bookora store.</p></div>
-              </div>
-              <div class="bookora-all-ebooks-grid"><div class="kdp-loading-state"><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div></div>
-            </div>`;
+          section.innerHTML = '<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Explore approved eBooks available in the Bookora store.</p></div></div><div class="bookora-all-ebooks-grid"><div class="kdp-loading-state"><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div></div></div>';
         }
         return;
       }
 
-      const sig = signature(books);
-      // First real catalog becomes the stable snapshot for this page session.
-      if (section.dataset.catalogSignature === sig && section.querySelector('.bookora-all-ebooks-grid')) {
-        stableCatalogShown = true;
-        return;
-      }
-
-      section.innerHTML = `
-        <div class="kdp-catalog-container">
-          <div class="kdp-section-head">
-            <div>
-              <span class="kdp-kicker">BOOKORA STORE</span>
-              <h2>All eBooks</h2>
-              <p>Explore every approved eBook available in the Bookora store.</p>
-            </div>
-          </div>
-          <div class="bookora-all-ebooks-grid">
-            ${books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('')}
-          </div>
-        </div>`;
-      section.dataset.catalogSignature = sig;
+      // Bound the first paint. Rendering the complete Firestore catalog at once
+      // can monopolize the browser main thread and make clicks/navigation appear frozen.
+      const books = allBooks.slice(0, INITIAL_BOOK_LIMIT);
+      const { renderBookCard } = await import('./components/BookCard.js');
+      const cards = books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('');
+      section.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Showing the first ${books.length} approved eBooks for a fast homepage.</p></div><a href="#/explore" class="kdp-view-all">View all <span>→</span></a></div><div class="bookora-all-ebooks-grid">${cards}</div></div>`;
       stableCatalogShown = true;
-    } finally {
-      busy = false;
-    }
+    } finally { busy = false; }
   }
 
-  // Events are allowed to finish the initial load only. After real data is
-  // visible, they are intentionally ignored so the catalog cannot blink/change.
   window.addEventListener('bookora:fast-catalog', () => schedule(80));
-  window.addEventListener('bookora:catalog-updated', () => schedule(80));
+  window.addEventListener('bookora:catalog-updated', () => schedule(100));
   window.addEventListener('bookora:firebase-trending-updated', () => schedule(120));
   window.addEventListener('hashchange', () => schedule(120));
-
-  getState().then(state => {
-    try { state?.subscribe?.(() => schedule(150)); } catch (_) {}
-  });
-
+  getState().then(state => { try { state?.subscribe?.(() => schedule(150)); } catch (_) {} });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => schedule(0), { once: true });
   else schedule(0);
 })();
