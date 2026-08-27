@@ -93,6 +93,12 @@ class SafeApp {
       const m = await safeImport('./pages/ReviewSupportPage.js');
       return { html: m.renderReviewSupportPage(), init: m.initReviewSupportEvents };
     }
+    // REVIEW_SUPPORT_ROUTE_V1
+    if (path === '/review-support') {
+      const m = await safeImport('./pages/ReviewSupportPage.js');
+      return { html: m.renderReviewSupportPage(), init: m.initReviewSupportEvents };
+    }
+
     if (path === '/pricing' || path === '/subscription') {
       const m = await safeImport('./pages/PricingPage.js');
       return { html: m.renderPricingPage(), init: m.initPricingEvents };
