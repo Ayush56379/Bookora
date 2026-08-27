@@ -1,67 +1,49 @@
-// CategoryPage Component
+// Canonical Firebase category page
 import { state } from '../state.js';
 import { renderBookCard } from '../components/BookCard.js';
 import { updateSEO } from '../utils/seo.js';
 
-export function renderCategoryPage(slug) {
-  const category = state.getCategoryBySlug(slug) || {
-    name: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-    description: 'Explore top publications in this category.',
-    count: 0
+const esc = value => String(value ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;');
+const slugify = value => String(value || '').trim().toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+
+function categoryValues(book) {
+  const out=[];
+  const add=value=>{
+    if(value==null||value==='') return;
+    if(Array.isArray(value)) return value.forEach(add);
+    if(typeof value==='object') return add(value.name||value.title||value.category||value.label||value.slug||value.id);
+    const text=String(value).trim().replace(/\s+/g,' '); if(text) out.push(text);
   };
-
-  updateSEO({
-    title: `${category.name} eBooks`,
-    description: category.description || `Browse top ${category.name} eBooks on Bookora.`
-  });
-
-  const books = state.getApprovedBooks().filter(b => 
-    b.category.toLowerCase() === category.name.toLowerCase() ||
-    b.category.toLowerCase().replace(/[^a-z0-9]/g, '-') === slug
-  );
-
-  return `
-    <div class="category-page animate-fade-in" style="background: var(--bg-secondary); min-height: 80vh; padding: 3.5rem 0 5rem 0;">
-      <div class="container">
-        
-        <!-- Category Banner Card -->
-        <div style="background: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 2.5rem; margin-bottom: 2.5rem; box-shadow: var(--shadow-sm); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem;">
-          <div style="max-width: 680px;">
-            <a href="#/explore" style="font-size: 0.8rem; font-weight: 600; color: var(--accent); margin-bottom: 0.5rem; display: inline-block;">
-              ← Back to All Categories
-            </a>
-            <h1 style="font-family: var(--font-display); font-size: 2.4rem; font-weight: 800; color: var(--text-primary); letter-spacing: -0.02em; margin-bottom: 0.5rem;">
-              ${category.name}
-            </h1>
-            <p style="font-size: 1.05rem; color: var(--text-secondary); line-height: 1.6;">
-              ${category.description}
-            </p>
-          </div>
-
-          <div style="text-align: right;">
-            <div style="font-size: 2.2rem; font-weight: 800; color: var(--accent); font-family: var(--font-display);">
-              ${books.length}
-            </div>
-            <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">
-              Publications Found
-            </div>
-          </div>
-        </div>
-
-        <!-- Books Grid -->
-        ${books.length > 0 ? `
-          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.5rem;">
-            ${books.map(b => renderBookCard(b)).join('')}
-          </div>
-        ` : `
-          <div style="background: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 4rem 2rem; text-align: center;">
-            <h3 style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem;">No eBooks in ${category.name} Yet</h3>
-            <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1.5rem;">Be the first author to publish in this category!</p>
-            <a href="#/publish" class="btn btn-primary btn-sm">Publish Your eBook</a>
-          </div>
-        `}
-
-      </div>
-    </div>
-  `;
+  add(book?.category); add(book?.categories); add(book?.category_name); add(book?.categoryName);
+  return [...new Set(out)];
 }
+
+function matchesCategory(book, wantedSlug, wantedName) {
+  return categoryValues(book).some(value => slugify(value) === wantedSlug || value.trim().toLowerCase() === wantedName.trim().toLowerCase());
+}
+
+function findCategory(slug) {
+  const wantedSlug=slugify(decodeURIComponent(String(slug||'')));
+  const books=state.getApprovedBooks();
+  const names=[];
+  books.forEach(book=>categoryValues(book).forEach(name=>{
+    if(!names.some(x=>x.toLowerCase()===name.toLowerCase())) names.push(name);
+  }));
+  return names.find(name=>slugify(name)===wantedSlug) || decodeURIComponent(String(slug||'')).replace(/-/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
+}
+
+export function renderCategoryPage(slug) {
+  const categoryName=findCategory(slug);
+  const wantedSlug=slugify(categoryName);
+  const books=state.getApprovedBooks().filter(book=>matchesCategory(book,wantedSlug,categoryName));
+  updateSEO({title:`${categoryName} eBooks`,description:`Browse published ${categoryName} eBooks on Bookora.`});
+
+  return `<div class="canonical-category-page animate-fade-in"><div class="container">
+    <div class="canonical-category-head"><a href="#/categories">← Back to Categories</a><h1>${esc(categoryName)}</h1><span>${books.length} ${books.length===1?'Publication':'Publications'}</span></div>
+    ${books.length ? `<div class="canonical-category-books">${books.map(b=>renderBookCard(b)).join('')}</div>` : `<div class="canonical-category-empty"><strong>No published eBooks in this category.</strong><span>This category currently has no approved Firebase books.</span></div>`}
+  </div></div>`;
+}
+
+if(!document.getElementById('bookora-canonical-category-page-css')){const s=document.createElement('style');s.id='bookora-canonical-category-page-css';s.textContent=`
+.canonical-category-page{background:var(--bg-secondary);min-height:85vh;padding:36px 0 64px}.canonical-category-head{display:flex;align-items:center;gap:18px;margin-bottom:24px;flex-wrap:wrap}.canonical-category-head a{width:100%;color:var(--accent);font-size:13px;font-weight:700;text-decoration:none}.canonical-category-head h1{margin:0;font:800 2.15rem/1.15 var(--font-display,Inter,sans-serif);color:var(--text-primary);letter-spacing:-.03em}.canonical-category-head span{padding:7px 10px;background:#fff;border:1px solid var(--border-subtle);border-radius:9px;color:var(--text-muted);font-size:12px;font-weight:700}.canonical-category-books{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}.canonical-category-empty{background:#fff;border:1px solid var(--border-subtle);border-radius:14px;padding:48px 20px;text-align:center;display:flex;flex-direction:column;gap:8px}.canonical-category-empty strong{color:var(--text-primary)}.canonical-category-empty span{color:var(--text-muted);font-size:13px}@media(max-width:650px){.canonical-category-page{padding:25px 0 50px}.canonical-category-head h1{font-size:1.8rem}.canonical-category-books{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
+`;document.head.appendChild(s)}
