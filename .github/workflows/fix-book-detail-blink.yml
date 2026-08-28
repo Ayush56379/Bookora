@@ -1,0 +1,62 @@
+name: Fix book detail route blink
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-book-detail-blink.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch SPA route rendering
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('js/app-safe.js')
+          text = p.read_text(encoding='utf-8')
+          old = '''      const {header,footer}=await this.shell();
+      this.root.innerHTML=`${header}<main id="main-content" style="flex:1;min-height:60vh"><div style="padding:60px 20px;text-align:center;color:#64748b">Loading Bookora…</div></main>${footer}`;
+      try{
+        const page=await this.loadPage(path,params); const main=document.getElementById('main-content'); if(!main)throw new Error('main-content was not created');
+        main.innerHTML=page.html||'';
+'''
+          new = '''      // Do not replace the whole application shell with a loading screen on
+      // internal SPA navigation. That caused the visible blink/flicker on book
+      // detail pages because header + main were destroyed and recreated before
+      // the new page module finished loading.
+      //
+      // First boot still creates the shell normally. On later route changes we
+      // keep the existing header/footer mounted and atomically swap only the
+      // main content after the destination page has finished rendering.
+      const hasShell = !!document.getElementById('main-content');
+      if (!hasShell) {
+        const {header,footer}=await this.shell();
+        this.root.innerHTML=`${header}<main id="main-content" style="flex:1;min-height:60vh"></main>${footer}`;
+      }
+      try{
+        const page=await this.loadPage(path,params); const main=document.getElementById('main-content'); if(!main)throw new Error('main-content was not created');
+        // Commit the new page only after loadPage has completed, so the current
+        // page remains visible if a destination module is slow or fails.
+        main.innerHTML=page.html||'';
+'''
+          if old not in text:
+              raise SystemExit('Expected app-safe route render block was not found; refusing unsafe edit.')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git diff --check
+      - name: Commit patch
+        run: |
+          git config user.name "bookora-ai"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/app-safe.js
+          git commit -m "fix: prevent SPA route loading blink" || exit 0
+          git push origin main
