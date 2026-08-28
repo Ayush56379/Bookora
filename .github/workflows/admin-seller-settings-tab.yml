@@ -1,0 +1,85 @@
+name: Add Seller Management to Admin Settings
+on:
+  push:
+    paths:
+      - '.github/workflows/admin-seller-settings-tab.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add seller tab bridge
+        shell: python
+        run: |
+          from pathlib import Path
+          bridge = Path('js/admin-seller-settings-tab-bridge.js')
+          bridge.write_text(r'''// Bookora: permanent Seller entry inside Admin Settings.
+// The existing Admin Sellers page remains the single management surface and
+// already reads live Firestore seller records and exposes review controls.
+(() => {
+  const SETTINGS_ROUTE = '#/admin/settings';
+  const SELLERS_ROUTE = '#/admin/sellers';
+  let observer;
+  let preloaded = false;
+
+  const onSettings = () => (location.hash || '#/').split('?')[0] === SETTINGS_ROUTE;
+
+  const ensureSellerTab = () => {
+    if (!onSettings()) return;
+    const side = document.querySelector('.admin-settings .as-side');
+    if (!side || side.querySelector('[data-bookora-seller-settings-tab]')) return;
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'as-tab';
+    tab.setAttribute('data-bookora-seller-settings-tab', '1');
+    tab.setAttribute('aria-label', 'Open seller management');
+    tab.innerHTML = '<span>👥 Sellers</span><span>›</span>';
+    side.appendChild(tab);
+    prefetchSellers();
+  };
+
+  const prefetchSellers = () => {
+    if (preloaded) return;
+    preloaded = true;
+    import('./pages/AdminSellersPage.js?v=20260828-seller-settings').catch(() => { preloaded = false; });
+  };
+
+  document.addEventListener('click', event => {
+    const tab = event.target?.closest?.('[data-bookora-seller-settings-tab]');
+    if (!tab || !onSettings()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    location.hash = SELLERS_ROUTE;
+  }, true);
+
+  observer = new MutationObserver(ensureSellerTab);
+  const start = () => {
+    ensureSellerTab();
+    const root = document.getElementById('app') || document.body;
+    if (root) observer.observe(root, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
+  window.addEventListener('hashchange', ensureSellerTab, true);
+})();
+''', encoding='utf-8')
+
+          index = Path('index.html')
+          s = index.read_text(encoding='utf-8')
+          tag = '<script src="js/admin-seller-settings-tab-bridge.js?v=20260828-1" defer></script>'
+          if tag not in s:
+              marker = '<script src="js/admin-settings-emergency-route-fix.js?v=20260826-1" defer></script>'
+              if marker not in s:
+                  raise SystemExit('admin settings script marker not found')
+              s = s.replace(marker, marker + '\n  ' + tag, 1)
+              index.write_text(s, encoding='utf-8')
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/admin-seller-settings-tab-bridge.js index.html
+          git diff --cached --quiet && exit 0 || true
+          git commit -m 'Add seller management entry to admin settings'
+          git push
