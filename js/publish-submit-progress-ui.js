@@ -1,6 +1,6 @@
-// BOOKORA_PUBLISH_SUBMIT_PROGRESS_UI_V2
-// Adds clear overall upload progress (percent + uploaded/total MB) and fixes
-// Step 5 button spacing without changing the resumable upload implementation.
+// BOOKORA_PUBLISH_SUBMIT_PROGRESS_UI_V3
+// Clear overall upload progress (percent + uploaded/total MB).
+// IMPORTANT: never show "Upload successful" before the real upload reaches 100%.
 (() => {
   const MB = 1024 * 1024;
   const getTotalBytes = () => {
@@ -9,16 +9,37 @@
     return (pdf?.size || 0) + (cover?.size || 0);
   };
 
+  const showSuccessOnlyAt100 = label => {
+    if (!label || label.dataset.bookoraUploadComplete === '1') return false;
+    const text = label.textContent || '';
+    const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
+    if (!match) return false;
+    const percent = Number(match[1]);
+    if (!Number.isFinite(percent) || percent < 100) return false;
+    label.dataset.bookoraUploadComplete = '1';
+    label.dataset.progressPercent = '100';
+    label.innerHTML = '<strong>Upload successful</strong><span class="bookora-upload-mb" style="display:block;margin-top:5px;font-weight:600;color:var(--text-secondary);font-size:.86rem;">100% uploaded</span>';
+    return true;
+  };
+
   const updateProgressDetails = () => {
     const label = document.getElementById('upload-progress-label');
     if (!label) return;
+    if (showSuccessOnlyAt100(label)) return;
+
     const total = getTotalBytes();
     if (!total) return;
     const existing = label.querySelector('.bookora-upload-mb');
-    const baseText = existing ? label.firstChild?.textContent?.trim() || label.dataset.baseText || '' : label.textContent.trim();
+    const baseText = existing
+      ? label.firstChild?.textContent?.trim() || label.dataset.baseText || ''
+      : label.textContent.trim();
     const match = baseText.match(/(\d+(?:\.\d+)?)\s*%/);
     if (!match) return;
     const percent = Math.max(0, Math.min(100, Number(match[1])));
+    if (percent >= 100) {
+      showSuccessOnlyAt100(label);
+      return;
+    }
     const uploaded = total * percent / 100;
     const mbText = `${(uploaded / MB).toFixed(2)} MB / ${(total / MB).toFixed(2)} MB uploaded`;
     if (label.dataset.progressPercent === String(percent) && existing?.textContent === mbText) return;
