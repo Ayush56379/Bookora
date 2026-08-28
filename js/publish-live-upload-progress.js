@@ -1,4 +1,4 @@
-// BOOKORA LIVE UPLOAD PROGRESS + STEP 5 SPACING + PUBLISH SUCCESS + AI PRECHECK REMOVAL
+// BOOKORA LIVE UPLOAD PROGRESS + DIRECT DRIVE MB PROGRESS + STEP 5 SPACING + PUBLISH SUCCESS + AI PRECHECK REMOVAL
 (() => {
   const MB = 1024 * 1024;
   const sessions = new Map();
@@ -6,6 +6,7 @@
   const completed = { pdf: 0, cover: 0 };
   let lastPercent = -1;
   let publishFinalized = false;
+  let directCurrent = null;
 
   const isPublish = () => {
     const r = (window.location.hash || '').split('?')[0];
@@ -26,42 +27,21 @@
       if (actions && actions.parentElement === step) step.insertBefore(box, actions);
       else step.appendChild(box);
     }
-
     const submit = document.getElementById('submit-pub-btn');
     const back = step.querySelector('.prev-step-btn');
     const actions = submit?.closest('div');
     if (actions) {
-      actions.style.display = 'flex';
-      actions.style.flexWrap = 'wrap';
-      actions.style.justifyContent = 'space-between';
-      actions.style.alignItems = 'center';
-      actions.style.gap = '16px';
-      actions.style.marginTop = '20px';
-      actions.style.paddingTop = '4px';
-      actions.style.width = '100%';
-      actions.style.boxSizing = 'border-box';
+      actions.style.display = 'flex'; actions.style.flexWrap = 'wrap'; actions.style.justifyContent = 'space-between';
+      actions.style.alignItems = 'center'; actions.style.gap = '16px'; actions.style.marginTop = '20px'; actions.style.paddingTop = '4px'; actions.style.width = '100%'; actions.style.boxSizing = 'border-box';
     }
-    [back, submit].forEach(button => {
-      if (!button) return;
-      button.style.margin = '0';
-      button.style.boxSizing = 'border-box';
-      button.style.minHeight = '48px';
-      button.style.flexShrink = '0';
-    });
+    [back, submit].forEach(button => { if (!button) return; button.style.margin = '0'; button.style.boxSizing = 'border-box'; button.style.minHeight = '48px'; button.style.flexShrink = '0'; });
     if (submit) submit.style.marginLeft = 'auto';
-
-    if (publishFinalized && submit) {
-      submit.disabled = true;
-      submit.textContent = 'Upload Successful ✓';
-      submit.style.opacity = '1';
-      submit.style.cursor = 'default';
-    }
+    if (publishFinalized && submit) { submit.disabled = true; submit.textContent = 'Upload Successful ✓'; submit.style.opacity = '1'; submit.style.cursor = 'default'; }
     return box;
   }
 
   function setProgress(title, percent, uploaded, total) {
-    const box = ensureUI();
-    if (!box) return;
+    const box = ensureUI(); if (!box) return;
     const p = Math.max(0, Math.min(100, Math.round(percent)));
     box.style.display = 'block';
     const titleEl = document.getElementById('bookora-upload-progress-title');
@@ -80,30 +60,54 @@
     const total = totals.pdf + totals.cover;
     const uploaded = total || (completed.pdf + completed.cover);
     setProgress('Upload successful ✓', 100, uploaded, total || uploaded);
-    const note = document.getElementById('bookora-upload-success-note');
-    if (note) note.style.display = 'block';
+    const note = document.getElementById('bookora-upload-success-note'); if (note) note.style.display = 'block';
     const submit = document.getElementById('submit-pub-btn');
-    if (submit) {
-      submit.disabled = true;
-      submit.textContent = 'Upload Successful ✓';
-      submit.style.cursor = 'default';
-      submit.style.opacity = '1';
-    }
+    if (submit) { submit.disabled = true; submit.textContent = 'Upload Successful ✓'; submit.style.cursor = 'default'; submit.style.opacity = '1'; }
   }
 
-  function parseBody(body) {
-    if (typeof body !== 'string') return null;
-    try { return JSON.parse(body); } catch (_) { return null; }
+  function parseBody(body) { if (typeof body !== 'string') return null; try { return JSON.parse(body); } catch (_) { return null; } }
+
+  function directDrivePutWithProgress(url, init, total, kind) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', url, true);
+      const headers = new Headers(init.headers || {});
+      headers.forEach((value, key) => xhr.setRequestHeader(key, value));
+      const body = init.body;
+      const size = Number(total || body?.size || 0);
+      setProgress('Uploading ' + (kind === 'cover' ? 'cover' : 'PDF') + ' directly to Drive...', 0, 0, size);
+      xhr.upload.onprogress = e => {
+        const loaded = e.lengthComputable ? e.loaded : 0;
+        if (size > 0) setProgress('Uploading ' + (kind === 'cover' ? 'cover' : 'PDF') + ' directly to Drive...', loaded / size * 100, loaded, size);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (size > 0) setProgress((kind === 'cover' ? 'Cover' : 'PDF') + ' uploaded ✓', 100, size, size);
+          resolve(new Response(xhr.responseText || '', { status: xhr.status, statusText: xhr.statusText }));
+        } else reject(new Error('Google Drive upload failed (' + xhr.status + ').'));
+      };
+      xhr.onerror = () => reject(new Error('Google Drive upload network error.'));
+      xhr.onabort = () => reject(new Error('Upload cancelled.'));
+      xhr.send(body);
+    });
   }
 
   const originalFetch = window.fetch.bind(window);
-  window.fetch = async function(input, init) {
+  window.fetch = async function(input, init = {}) {
     const url = typeof input === 'string' ? input : input?.url || '';
     const body = init?.body;
     let path = url;
     try { path = new URL(url, location.href).pathname; } catch (_) {}
 
-    if (!isPublish() || (!path.includes('/api/books/upload-session/') && !path.endsWith('/api/books/create'))) {
+    // The new direct uploader sends one PUT straight to Google's upload URL.
+    // Use XHR only for this PUT so the browser exposes upload progress events.
+    if (isPublish() && String(init?.method || '').toUpperCase() === 'PUT' && /googleapis\.com|googleusercontent\.com/i.test(url) && body instanceof Blob && directCurrent) {
+      const current = directCurrent;
+      directCurrent = null;
+      return directDrivePutWithProgress(url, init, current.size, current.kind);
+    }
+
+    if (!isPublish() || (!path.includes('/api/books/upload-session/') && !path.includes('/api/books/upload-direct-session/') && !path.endsWith('/api/books/create'))) {
       return originalFetch(input, init);
     }
 
@@ -114,36 +118,31 @@
       if (path.endsWith('/api/books/create')) {
         const data = await result.clone().json().catch(() => ({}));
         if (result.ok && data?.success === true) showPublishSuccess();
+      } else if (path.endsWith('/upload-direct-session/start') && payload?.kind && Number(payload.size) > 0) {
+        const data = await result.clone().json().catch(() => ({}));
+        if (result.ok && data?.upload_url) {
+          directCurrent = { kind: String(payload.kind).toLowerCase() === 'cover' ? 'cover' : 'pdf', size: Number(payload.size), uploadUrl: String(data.upload_url) };
+          setProgress('Preparing direct Drive upload...', 0, 0, Number(payload.size));
+        }
       } else if (path.endsWith('/start') && payload?.kind && Number(payload.size) > 0) {
         const data = await result.clone().json().catch(() => ({}));
         const token = String(data.upload_token || '').trim();
         if (token) {
           const kind = String(payload.kind).toLowerCase() === 'cover' ? 'cover' : 'pdf';
           sessions.set(token, { kind, size: Number(payload.size), completed: Number(data.next_offset) || 0 });
-          totals[kind] = Number(payload.size);
-          completed[kind] = Number(data.next_offset) || 0;
-          render();
+          totals[kind] = Number(payload.size); completed[kind] = Number(data.next_offset) || 0; render();
         }
       } else if (path.endsWith('/chunk') && payload?.upload_token) {
         const session = sessions.get(String(payload.upload_token));
         if (session) {
-          const data = await result.clone().json().catch(() => ({}));
-          const next = Number(data.next_offset);
-          if (result.ok && Number.isFinite(next)) {
-            session.completed = Math.max(session.completed, Math.min(session.size, next));
-            completed[session.kind] = session.completed;
-            render();
-          }
+          const data = await result.clone().json().catch(() => ({})); const next = Number(data.next_offset);
+          if (result.ok && Number.isFinite(next)) { session.completed = Math.max(session.completed, Math.min(session.size, next)); completed[session.kind] = session.completed; render(); }
         }
       } else if (path.endsWith('/status') && payload?.upload_token) {
         const session = sessions.get(String(payload.upload_token));
         if (session) {
           const data = await result.clone().json().catch(() => ({}));
-          if (data.done) {
-            session.completed = session.size;
-            completed[session.kind] = session.size;
-            render();
-          }
+          if (data.done) { session.completed = session.size; completed[session.kind] = session.size; render(); }
         }
       }
     } catch (error) { console.warn('[Bookora upload progress]', error); }
@@ -151,8 +150,7 @@
   };
 
   function render() {
-    const total = totals.pdf + totals.cover;
-    if (!total || publishFinalized) return;
+    const total = totals.pdf + totals.cover; if (!total || publishFinalized) return;
     const uploaded = Math.min(totals.pdf, completed.pdf) + Math.min(totals.cover, completed.cover);
     const percent = uploaded / total * 100;
     const title = completed.pdf < totals.pdf ? 'Uploading PDF to Drive...' : completed.cover < totals.cover ? 'Uploading cover to Drive...' : 'Files uploaded ✓';
@@ -162,24 +160,14 @@
   function watch() {
     ensureUI();
     const observer = new MutationObserver(() => {
-      ensureUI();
-      if (publishFinalized) return;
-      const button = document.getElementById('submit-pub-btn');
-      const text = button?.textContent || '';
-      if (/Uploading PDF|Uploading cover/i.test(text) && totals.pdf + totals.cover > 0 && lastPercent < 0) {
-        setProgress(text, 0, 0, totals.pdf + totals.cover);
-      }
+      ensureUI(); if (publishFinalized) return;
+      const button = document.getElementById('submit-pub-btn'); const text = button?.textContent || '';
+      if (/Uploading PDF|Uploading cover/i.test(text) && totals.pdf + totals.cover > 0 && lastPercent < 0) setProgress(text, 0, 0, totals.pdf + totals.cover);
     });
     observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
     window.addEventListener('hashchange', () => setTimeout(ensureUI, 50));
   }
 
-  // PERMANENTLY REMOVE THE INTERNAL PUBLISH AI PRECHECK.
-  // publish-enhancements.js installs a capture submit listener on the form and
-  // calls runAiDetection() before uploading. This document-level capture listener
-  // runs first, sets allowOriginalSubmit, and lets the original publish handler
-  // proceed without invoking any AI request. The separate AI Support feature is
-  // untouched.
   document.addEventListener('submit', event => {
     if (!isPublish()) return;
     const form = event.target;
@@ -197,6 +185,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { watch(); cleanStaleAiNotice(); }, { once: true });
   else { watch(); cleanStaleAiNotice(); }
-
   new MutationObserver(cleanStaleAiNotice).observe(document.documentElement, { childList: true, subtree: true });
 })();
