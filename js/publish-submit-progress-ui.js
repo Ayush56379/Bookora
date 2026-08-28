@@ -1,4 +1,4 @@
-// BOOKORA_PUBLISH_SUBMIT_PROGRESS_UI_V1
+// BOOKORA_PUBLISH_SUBMIT_PROGRESS_UI_V2
 // Adds clear overall upload progress (percent + uploaded/total MB) and fixes
 // Step 5 button spacing without changing the resumable upload implementation.
 (() => {
@@ -12,14 +12,23 @@
   const updateProgressDetails = () => {
     const label = document.getElementById('upload-progress-label');
     if (!label) return;
-    const match = label.textContent.match(/(\d+(?:\.\d+)?)\s*%/);
-    if (!match) return;
-    const percent = Math.max(0, Math.min(100, Number(match[1])));
     const total = getTotalBytes();
     if (!total) return;
+    const existing = label.querySelector('.bookora-upload-mb');
+    const baseText = existing ? label.firstChild?.textContent?.trim() || label.dataset.baseText || '' : label.textContent.trim();
+    const match = baseText.match(/(\d+(?:\.\d+)?)\s*%/);
+    if (!match) return;
+    const percent = Math.max(0, Math.min(100, Number(match[1])));
     const uploaded = total * percent / 100;
-    label.dataset.baseText = label.textContent;
-    label.innerHTML = `${label.textContent}<span class="bookora-upload-mb" style="display:block;margin-top:5px;font-weight:600;color:var(--text-secondary);font-size:.86rem;">${(uploaded / MB).toFixed(2)} MB / ${(total / MB).toFixed(2)} MB uploaded</span>`;
+    const mbText = `${(uploaded / MB).toFixed(2)} MB / ${(total / MB).toFixed(2)} MB uploaded`;
+    if (label.dataset.progressPercent === String(percent) && existing?.textContent === mbText) return;
+    label.dataset.baseText = baseText;
+    label.dataset.progressPercent = String(percent);
+    if (!existing) {
+      label.innerHTML = `${baseText}<span class="bookora-upload-mb" style="display:block;margin-top:5px;font-weight:600;color:var(--text-secondary);font-size:.86rem;">${mbText}</span>`;
+    } else {
+      existing.textContent = mbText;
+    }
   };
 
   const styleStep5 = () => {
