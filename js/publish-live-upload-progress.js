@@ -1,10 +1,11 @@
-// BOOKORA LIVE UPLOAD PROGRESS + STEP 5 SPACING
+// BOOKORA LIVE UPLOAD PROGRESS + STEP 5 SPACING + PUBLISH SUCCESS
 (() => {
   const MB = 1024 * 1024;
   const sessions = new Map();
   const totals = { pdf: 0, cover: 0 };
   const completed = { pdf: 0, cover: 0 };
   let lastPercent = -1;
+  let publishFinalized = false;
 
   const isPublish = () => {
     const r = (window.location.hash || '').split('?')[0];
@@ -19,7 +20,7 @@
       box = document.createElement('div');
       box.id = 'bookora-live-upload-progress';
       box.style.cssText = 'display:none;margin:1.25rem 0 1.5rem;padding:1rem 1.1rem;border:1px solid #dbe4f0;border-radius:14px;background:#f8fafc;box-sizing:border-box;width:100%;overflow:hidden;';
-      box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;"><strong id="bookora-upload-progress-title" style="font-size:.95rem;color:#0f172a;">Upload progress</strong><strong id="bookora-upload-progress-percent" style="font-size:.95rem;color:#2563eb;">0%</strong></div><div style="height:10px;width:100%;background:#e2e8f0;border-radius:999px;overflow:hidden;"><div id="bookora-upload-progress-fill" style="height:100%;width:0%;border-radius:999px;background:#2563eb;transition:width .2s ease;"></div></div><div id="bookora-upload-progress-bytes" style="margin-top:8px;font-size:.84rem;color:#64748b;line-height:1.45;">0 MB / 0 MB uploaded</div>';
+      box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;"><strong id="bookora-upload-progress-title" style="font-size:.95rem;color:#0f172a;">Upload progress</strong><strong id="bookora-upload-progress-percent" style="font-size:.95rem;color:#2563eb;">0%</strong></div><div style="height:10px;width:100%;background:#e2e8f0;border-radius:999px;overflow:hidden;"><div id="bookora-upload-progress-fill" style="height:100%;width:0%;border-radius:999px;background:#2563eb;transition:width .2s ease;"></div></div><div id="bookora-upload-progress-bytes" style="margin-top:8px;font-size:.84rem;color:#64748b;line-height:1.45;">0 MB / 0 MB uploaded</div><div id="bookora-upload-success-note" style="display:none;margin-top:10px;font-weight:700;color:#15803d;">✓ eBook uploaded successfully and submitted for admin review.</div>';
       const submit = document.getElementById('submit-pub-btn');
       const actions = submit?.closest('div');
       if (actions && actions.parentElement === step) step.insertBefore(box, actions);
@@ -48,6 +49,13 @@
       button.style.flexShrink = '0';
     });
     if (submit) submit.style.marginLeft = 'auto';
+
+    if (publishFinalized && submit) {
+      submit.disabled = true;
+      submit.textContent = 'Upload Successful ✓';
+      submit.style.opacity = '1';
+      submit.style.cursor = 'default';
+    }
     return box;
   }
 
@@ -67,6 +75,22 @@
     lastPercent = p;
   }
 
+  function showPublishSuccess() {
+    publishFinalized = true;
+    const total = totals.pdf + totals.cover;
+    const uploaded = total || (completed.pdf + completed.cover);
+    setProgress('Upload successful ✓', 100, uploaded, total || uploaded);
+    const note = document.getElementById('bookora-upload-success-note');
+    if (note) note.style.display = 'block';
+    const submit = document.getElementById('submit-pub-btn');
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = 'Upload Successful ✓';
+      submit.style.cursor = 'default';
+      submit.style.opacity = '1';
+    }
+  }
+
   function parseBody(body) {
     if (typeof body !== 'string') return null;
     try { return JSON.parse(body); } catch (_) { return null; }
@@ -79,13 +103,21 @@
     let path = url;
     try { path = new URL(url, location.href).pathname; } catch (_) {}
 
-    if (!isPublish() || !path.includes('/api/books/upload-session/')) return originalFetch(input, init);
+    if (!isPublish() || (!path.includes('/api/books/upload-session/') && !path.endsWith('/api/books/create'))) {
+      return originalFetch(input, init);
+    }
 
     const payload = parseBody(body);
     const result = await originalFetch(input, init);
 
     try {
-      if (path.endsWith('/start') && payload?.kind && Number(payload.size) > 0) {
+      if (path.endsWith('/api/books/create')) {
+        const data = await result.clone().json().catch(() => ({}));
+        // The backend reports success only after the book metadata is durably
+        // written. Therefore a successful create response is safe to show as
+        // the final publish state even if a later client-side UI step hangs.
+        if (result.ok && data?.success === true) showPublishSuccess();
+      } else if (path.endsWith('/start') && payload?.kind && Number(payload.size) > 0) {
         const data = await result.clone().json().catch(() => ({}));
         const token = String(data.upload_token || '').trim();
         if (token) {
@@ -123,7 +155,7 @@
 
   function render() {
     const total = totals.pdf + totals.cover;
-    if (!total) return;
+    if (!total || publishFinalized) return;
     const uploaded = Math.min(totals.pdf, completed.pdf) + Math.min(totals.cover, completed.cover);
     const percent = uploaded / total * 100;
     const title = completed.pdf < totals.pdf ? 'Uploading PDF to Drive...' : completed.cover < totals.cover ? 'Uploading cover to Drive...' : 'Files uploaded ✓';
@@ -134,6 +166,7 @@
     ensureUI();
     const observer = new MutationObserver(() => {
       ensureUI();
+      if (publishFinalized) return;
       const button = document.getElementById('submit-pub-btn');
       const text = button?.textContent || '';
       if (/Uploading PDF|Uploading cover/i.test(text) && totals.pdf + totals.cover > 0 && lastPercent < 0) {
