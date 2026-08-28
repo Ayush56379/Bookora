@@ -12,44 +12,17 @@
   const esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#039;');
   const mb = bytes => `${(Math.max(0, Number(bytes)||0) / 1048576).toFixed(2)} MB`;
 
-  function ensureProgressDetails(){
-    const box=document.getElementById('upload-progress-box');
-    if(!box) return null;
-    let details=document.getElementById('upload-live-details');
-    if(!details){
-      details=document.createElement('div');
-      details.id='upload-live-details';
-      details.style.cssText='display:grid;gap:8px;margin-top:14px;';
-      box.appendChild(details);
-    }
-    return details;
-  }
+  // Publishing intentionally has no visible upload-progress UI. Files still upload
+  // normally in the background; the user only sees the final submitting/success state.
+  function ensureProgressDetails(){ return null; }
 
   function setProgress(text, percent=null, detail='', stats=null){
     const button=document.getElementById('submit-pub-btn');
     const box=document.getElementById('upload-progress-box');
-    const label=document.getElementById('upload-progress-label');
-    const fill=document.getElementById('upload-progress-fill');
-    if(box) box.style.display='block';
-    if(button) button.textContent=text;
-    if(label) label.innerHTML=`<strong>${esc(text)}</strong>${detail?`<span style="display:block;color:#64748b;font-size:.8rem;margin-top:4px;">${esc(detail)}</span>`:''}`;
-    if(fill && Number.isFinite(percent)) fill.style.width=`${Math.max(0,Math.min(100,percent))}%`;
-    if(stats){
-      const details=ensureProgressDetails();
-      if(details){
-        const pdf=stats.pdf||{loaded:0,total:0};
-        const cover=stats.cover||{loaded:0,total:0};
-        const totalLoaded=(pdf.loaded||0)+(cover.loaded||0);
-        const totalSize=(pdf.total||0)+(cover.total||0);
-        const speed=stats.speedBytesPerSec||0;
-        details.innerHTML=`
-          <div style="display:flex;justify-content:space-between;gap:12px;font-size:.82rem;color:#334155;"><span>eBook</span><strong>${mb(pdf.loaded)} / ${mb(pdf.total)}</strong></div>
-          <div style="height:7px;background:#e2e8f0;border-radius:999px;overflow:hidden;"><div style="height:100%;width:${pdf.total?Math.min(100,pdf.loaded/pdf.total*100):0}%;background:var(--accent);transition:width .15s linear;"></div></div>
-          <div style="display:flex;justify-content:space-between;gap:12px;font-size:.82rem;color:#334155;margin-top:2px;"><span>Cover</span><strong>${mb(cover.loaded)} / ${mb(cover.total)}</strong></div>
-          <div style="height:7px;background:#e2e8f0;border-radius:999px;overflow:hidden;"><div style="height:100%;width:${cover.total?Math.min(100,cover.loaded/cover.total*100):0}%;background:var(--accent);transition:width .15s linear;"></div></div>
-          <div style="display:flex;justify-content:space-between;gap:12px;font-size:.78rem;color:#64748b;margin-top:2px;"><span>Total uploaded</span><strong>${mb(totalLoaded)} / ${mb(totalSize)}</strong></div>
-          ${speed>0?`<div style="font-size:.78rem;color:#64748b;">Speed: <strong>${speed>=1048576?(speed/1048576).toFixed(2)+' MB/s':(speed/1024).toFixed(0)+' KB/s'}</strong></div>`:''}`;
-      }
+    if(box) box.style.display='none';
+    if(button){
+      button.textContent=text;
+      button.disabled=true;
     }
   }
 
@@ -123,7 +96,6 @@
   }
 
   async function startDirect(file,kind){
-    setProgress(kind==='pdf'?'Preparing eBook upload…':'Preparing cover upload…',2,`0.00 MB / ${mb(file.size)} ready.`,{pdf:kind==='pdf'?{loaded:0,total:file.size}:{loaded:0,total:0},cover:kind==='cover'?{loaded:0,total:file.size}:{loaded:0,total:0}});
     const data=await api('/api/books/upload-direct-session/start',{method:'POST',body:JSON.stringify({name:file.name,mimeType:kind==='pdf'?'application/pdf':file.type,size:file.size,kind})});
     if(!data.upload_url) throw new Error('Secure upload session could not be created.');
     return data.upload_url;
@@ -141,7 +113,7 @@
         if(!e.lengthComputable)return;
         progressState.loaded=e.loaded;
         progressState.total=e.total||file.size;
-        onProgress();
+        if(typeof onProgress==='function') onProgress();
       };
       xhr.send(file);
     });
@@ -174,43 +146,30 @@
     const button=document.getElementById('submit-pub-btn'); if(button)button.disabled=true;
     const pdfState={loaded:0,total:input.pdf.size};
     const coverState={loaded:0,total:input.cover.size};
-    const startedAt=Date.now();
     const publishIdempotencyKey=`publish-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;
-    const drawProgress=stage=>{
-      const loaded=pdfState.loaded+coverState.loaded;
-      const total=pdfState.total+coverState.total;
-      const elapsed=Math.max(0.25,(Date.now()-startedAt)/1000);
-      const speed=loaded/elapsed;
-      const uploadPct=total?loaded/total:0;
-      const overall=2+(uploadPct*92);
-      setProgress(stage,overall,`${mb(loaded)} / ${mb(total)} uploaded.`,{pdf:pdfState,cover:coverState,speedBytesPerSec:speed});
-    };
+    const drawProgress=()=>{};
     try{
-      setProgress('Preparing upload…',2,`0.00 MB / ${mb(input.pdf.size+input.cover.size)} uploaded.`,{pdf:pdfState,cover:coverState});
+      setProgress('Submitting eBook…');
       const {user}=await getToken(false);
       const [pdfSession,coverSession]=await Promise.all([startDirect(input.pdf,'pdf'),startDirect(input.cover,'cover')]);
-      drawProgress('Uploading eBook…');
       const [pdfRaw,coverRaw]=await Promise.all([
-        putFile(pdfSession,input.pdf,'eBook','pdf',pdfState,()=>drawProgress('Uploading eBook…')),
-        putFile(coverSession,input.cover,'Cover','cover',coverState,()=>drawProgress('Uploading eBook…'))
+        putFile(pdfSession,input.pdf,'eBook','pdf',pdfState,drawProgress),
+        putFile(coverSession,input.cover,'Cover','cover',coverState,drawProgress)
       ]);
       pdfState.loaded=pdfState.total; coverState.loaded=coverState.total;
-      drawProgress('Upload complete ✓');
-      setProgress('Finishing submission…',95,`${mb(pdfState.loaded+coverState.loaded)} / ${mb(pdfState.total+coverState.total)} uploaded. Almost done.`,{pdf:pdfState,cover:coverState});
       const [pdfFile,coverFile]=await Promise.all([finalize(pdfRaw.id||pdfRaw.fileId||pdfRaw.file_id),finalize(coverRaw.id||coverRaw.fileId||coverRaw.file_id)]);
       const payload={action:'createBook',title:input.title,subtitle:input.subtitle,author:input.author,category:input.category,description:input.description,tags:input.tags,pages:input.pages,format:'PDF',price:input.price,sale_price:input.salePrice,cover_url:coverFile.url||coverFile.webViewLink||coverFile.downloadUrl||'',pdf_url:pdfFile.url||pdfFile.webViewLink||pdfFile.downloadUrl||'',cover_file_id:coverFile.id,pdf_file_id:pdfFile.id,status:'pending',idempotency_key:publishIdempotencyKey,publish_idempotency_key:publishIdempotencyKey};
       const bookResponse=await api('/api/books/create',{method:'POST',body:JSON.stringify(payload)});
       if(!bookResponse.book) throw new Error('The book could not be created. Please retry.');
       try{await saveFirestore(bookResponse.book,input,pdfFile,coverFile,user)}catch(syncError){console.warn('[Bookora publish] Firestore mirror skipped after backend success:',syncError); }
-      setProgress('Submitted successfully ✓',100,`${mb(pdfState.loaded+coverState.loaded)} uploaded. Your eBook has been sent for review.`,{pdf:pdfState,cover:coverState});
-      if(button)button.textContent='Submitted ✓';
-      const toast=window.Toast?.show||window.BookoraToast?.show; if(toast)toast('eBook submitted successfully for review.','success');
-      await sleep(900); window.location.hash='#/creator/dashboard';
+      setProgress('Submitted successfully ✓');
+      if(button){button.disabled=true;button.textContent='Published ✓';button.style.background='#059669';button.style.borderColor='#059669';}
+      const toast=window.Toast?.show||window.BookoraToast?.show; if(toast)toast('eBook published successfully and sent for admin review.','success');
+      await sleep(700); window.location.hash='#/creator/dashboard';
     }catch(error){
       console.error('[Bookora publish]',error);
-      if(button)button.disabled=false;
-      setProgress('Submission failed — Retry',0,'Something went wrong. Your selected files are still here; try again.',{pdf:pdfState,cover:coverState});
-      const toast=window.Toast?.show||window.BookoraToast?.show; if(toast)toast(error?.message||'Unable to submit the eBook.','error');
+      if(button){button.disabled=false;button.textContent='Upload & Submit';}
+      const toast=window.Toast?.show||window.BookoraToast?.show; if(toast)toast(error?.message||'Unable to publish the eBook.','error');
     }
   }
 
