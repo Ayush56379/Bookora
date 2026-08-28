@@ -1,0 +1,66 @@
+name: Harden publish success and admin review
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch publish runtime
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('js/publish-direct-drive-runtime.js')
+          s = p.read_text(encoding='utf-8')
+          marker = "const startedAt=Date.now();"
+          if marker in s and 'publishIdempotencyKey' not in s:
+              s = s.replace(marker, "const startedAt=Date.now();\n    const publishIdempotencyKey=`publish-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;", 1)
+          old = "const payload={action:'createBook',title:input.title,subtitle:input.subtitle,author:input.author,category:input.category,description:input.description,tags:input.tags,pages:input.pages,format:'PDF',price:input.price,sale_price:input.salePrice,cover_url:coverFile.url||coverFile.webViewLink||coverFile.downloadUrl||'',pdf_url:pdfFile.url||pdfFile.webViewLink||pdfFile.downloadUrl||'',cover_file_id:coverFile.id,pdf_file_id:pdfFile.id,status:'pending'};"
+          new = "const payload={action:'createBook',title:input.title,subtitle:input.subtitle,author:input.author,category:input.category,description:input.description,tags:input.tags,pages:input.pages,format:'PDF',price:input.price,sale_price:input.salePrice,cover_url:coverFile.url||coverFile.webViewLink||coverFile.downloadUrl||'',pdf_url:pdfFile.url||pdfFile.webViewLink||pdfFile.downloadUrl||'',cover_file_id:coverFile.id,pdf_file_id:pdfFile.id,status:'pending',idempotency_key:publishIdempotencyKey,publish_idempotency_key:publishIdempotencyKey};"
+          if old in s:
+              s = s.replace(old, new, 1)
+          old_save = "await saveFirestore(bookResponse.book,input,pdfFile,coverFile,user);"
+          new_save = "try{await saveFirestore(bookResponse.book,input,pdfFile,coverFile,user)}catch(syncError){console.warn('[Bookora publish] Firestore mirror skipped after backend success:',syncError); }"
+          if old_save in s:
+              s = s.replace(old_save, new_save, 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Patch publish page metadata mirror
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('js/pages/PublishInternalPage.js')
+          s = p.read_text(encoding='utf-8')
+          # The backend book record is authoritative for moderation. A client-side
+          # Firestore mirror must never turn a successful backend publish into a failure.
+          s = s.replace("await persistBookMetadataToFirestore(book, input);", "try { await persistBookMetadataToFirestore(book, input); } catch (mirrorError) { console.warn('Firestore mirror skipped after successful publish:', mirrorError); }")
+          p.write_text(s, encoding='utf-8')
+      - name: Bump runtime cache
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('js/publish-direct-drive-runtime.js?v=20260828-1', 'js/publish-direct-drive-runtime.js?v=20260828-5')
+          s = s.replace('js/publish-direct-drive-runtime.js?v=20260828-4', 'js/publish-direct-drive-runtime.js?v=20260828-5')
+          p.write_text(s, encoding='utf-8')
+      - name: Commit hardening
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Publish hardening already applied."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/publish-direct-drive-runtime.js js/pages/PublishInternalPage.js index.html
+          git commit -m "fix: make publish success idempotent and admin-review safe"
+          git push
