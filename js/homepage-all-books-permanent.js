@@ -1,10 +1,11 @@
-// Bookora homepage — stable All eBooks section.
-// This section is independent of Trending. It must never depend on another
-// homepage runtime being present before it can render.
+// Bookora homepage — permanent All eBooks + mobile layout stability.
+// This file is intentionally self-contained so the All eBooks section does not
+// depend on a separate homepage runtime finishing first.
 (() => {
   if (window.__BOOKORA_ALL_EBOOKS_PERMANENT__) return;
   window.__BOOKORA_ALL_EBOOKS_PERMANENT__ = true;
 
+  const ALL_ID = 'bookora-all-ebooks-section';
   const LIMIT = 60;
   let busy = false;
   let timer = null;
@@ -13,80 +14,147 @@
     try { return (await import('./state.js')).state; } catch (_) { return null; }
   }
 
+  function isHome() { return !!document.querySelector('#main-content .bookora-home-clean'); }
+
   function getBooks(state) {
     const live = state?.getApprovedBooks?.() || [];
     const fast = Array.isArray(window.__BOOKORA_FAST_BOOKS__)
       ? window.__BOOKORA_FAST_BOOKS__.map(book => state.normalizeBook(book)).filter(Boolean)
       : [];
     const map = new Map();
-    [...live, ...fast].forEach(book => {
-      if (book && String(book.status || '').toLowerCase() === 'approved') {
-        const key = String(book.id || book.bookId || book.slug || book.title || '');
-        if (key) map.set(key, book);
-      }
-    });
+    for (const book of [...live, ...fast]) {
+      if (!book || String(book.status || '').toLowerCase() !== 'approved') continue;
+      const key = String(book.id || book.bookId || book.slug || book.title || '');
+      if (key) map.set(key, book);
+    }
     return [...map.values()];
   }
 
-  function isHome() { return !!document.querySelector('#main-content .bookora-home-clean'); }
+  function findTrendingSection() {
+    const sections = [...document.querySelectorAll('#main-content section, #main-content .kdp-catalog-section')];
+    for (const section of sections) {
+      const heading = section.querySelector('h1,h2,h3');
+      const text = String(heading?.textContent || '').trim().replace(/\s+/g, ' ');
+      if (/^trending(?:\s+ebooks?)?$/i.test(text) || /^trending\s+ebooks/i.test(text)) return section;
+    }
+    return sections.find(section => /\bTrending\s+eBooks?\b/i.test(String(section.textContent || ''))) || null;
+  }
 
-  function schedule(delay = 80) {
-    clearTimeout(timer);
-    timer = setTimeout(() => { timer = null; render(); }, delay);
+  function fallbackAnchor() {
+    return document.querySelector('#home-live-catalog')?.closest('.kdp-catalog-section')
+      || document.querySelector('#main-content .kdp-catalog-section');
+  }
+
+  function ensureSection() {
+    let section = document.getElementById(ALL_ID);
+    if (!section) {
+      section = document.createElement('section');
+      section.id = ALL_ID;
+      section.className = 'kdp-catalog-section bookora-all-ebooks-section';
+      section.innerHTML = '<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Loading approved eBooks…</p></div><a href="#/explore" class="kdp-view-all">View all <span>→</span></a></div><div class="kdp-loading-state"><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div></div>';
+    }
+
+    const trending = findTrendingSection();
+    const anchor = trending || fallbackAnchor();
+    if (anchor && section.previousElementSibling !== anchor) anchor.insertAdjacentElement('afterend', section);
+    return section;
   }
 
   async function render() {
     if (busy || !isHome()) return;
     busy = true;
     try {
-      const main = document.querySelector('#main-content');
-      if (!main) return;
-      let section = document.getElementById('bookora-all-ebooks-section');
-      if (!section) {
-        section = document.createElement('section');
-        section.id = 'bookora-all-ebooks-section';
-        section.className = 'kdp-catalog-section bookora-all-ebooks-section';
-        // Insert after the core Featured section, not after Trending.
-        const featured = main.querySelector('.kdp-catalog-section');
-        const trust = main.querySelector('.home-trust-clean');
-        if (featured) featured.insertAdjacentElement('afterend', section);
-        else if (trust) trust.insertAdjacentElement('beforebegin', section);
-        else main.appendChild(section);
-      }
-
+      const section = ensureSection();
       const state = await getState();
-      if (!state) return;
-      const allBooks = getBooks(state);
-      if (!allBooks.length) {
-        section.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Loading approved eBooks from Bookora.</p></div></div><div class="kdp-loading-state"><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div></div>`;
+      if (!state || !section) return;
+      const books = getBooks(state).slice(0, LIMIT);
+      if (!books.length) {
+        section.querySelector('.kdp-section-head p')?.replaceChildren(document.createTextNode('No approved eBooks are available yet.'));
         return;
       }
-
-      const books = allBooks.slice(0, LIMIT);
       const { renderBookCard } = await import('./components/BookCard.js');
       const cards = books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('');
-      section.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Showing ${books.length} approved eBooks. More are available in Explore.</p></div><a href="#/explore" class="kdp-view-all">View all <span>→</span></a></div><div class="bookora-all-ebooks-grid">${cards}</div></div>`;
+      section.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Showing ${books.length} approved eBooks. More are available in Explore.</p></div><a href="#/explore" class="kdp-view-all">View all <span>→</span></a></div><div class="bookora-all-ebooks-grid kdp-book-grid">${cards}</div></div>`;
+      ensureSection();
     } finally { busy = false; }
   }
 
-  window.addEventListener('bookora:fast-catalog', () => schedule(30));
-  window.addEventListener('bookora:catalog-updated', () => schedule(80));
-  window.addEventListener('hashchange', () => schedule(100));
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => schedule(0), { once: true });
-  else schedule(0);
-})();
+  function schedule(delay = 80) {
+    clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; render(); }, delay);
+  }
 
-if (!document.getElementById('bookora-all-ebooks-stable-styles')) {
-  const style = document.createElement('style');
-  style.id = 'bookora-all-ebooks-stable-styles';
-  style.textContent = `
-    #bookora-all-ebooks-section{width:100%!important;box-sizing:border-box!important;border-top:1px solid var(--border-subtle,#e2e8f0);padding-top:52px}
-    #bookora-all-ebooks-section .kdp-catalog-container{width:min(1240px,calc(100% - 40px));margin-inline:auto;box-sizing:border-box}
-    #bookora-all-ebooks-section .bookora-all-ebooks-grid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:22px!important;width:100%!important;box-sizing:border-box}
-    #bookora-all-ebooks-section .kdp-book-item{width:100%!important;min-width:0!important}
-    @media(max-width:1100px){#bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important}}
-    @media(max-width:800px){#bookora-all-ebooks-section .kdp-catalog-container{width:min(100% - 28px,1240px)}#bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important}}
-    @media(max-width:560px){#bookora-all-ebooks-section .bookora-all-ebooks-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}}
-  `;
-  document.head.appendChild(style);
-}
+  function enforceTrendingSix() {
+    if (!isHome()) return;
+    const trending = findTrendingSection();
+    if (!trending) return;
+    const grid = trending.querySelector('.kdp-book-grid, .bookora-all-ebooks-grid, [class*="book-grid"]');
+    if (!grid) return;
+    const items = [...grid.querySelectorAll(':scope > .kdp-book-item, :scope > *')];
+    if (items.length > 6) items.slice(6).forEach(item => item.remove());
+  }
+
+  function watchDom() {
+    const root = document.querySelector('#main-content');
+    if (!root || root.__bookoraAllBooksObserver) return;
+    const observer = new MutationObserver(() => {
+      if (!isHome()) return;
+      enforceTrendingSix();
+      const all = document.getElementById(ALL_ID);
+      const trending = findTrendingSection();
+      if (!all || (trending && all.previousElementSibling !== trending)) schedule(20);
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    root.__bookoraAllBooksObserver = observer;
+  }
+
+  function start() {
+    if (!isHome()) return;
+    watchDom();
+    enforceTrendingSix();
+    ensureSection();
+    schedule(0);
+    window.addEventListener('bookora:fast-catalog', () => schedule(30));
+    window.addEventListener('bookora:catalog-updated', () => schedule(80));
+    window.addEventListener('bookora:firebase-trending-updated', () => { enforceTrendingSix(); schedule(20); });
+    window.addEventListener('hashchange', () => setTimeout(start, 120));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
+
+  if (!document.getElementById('bookora-all-ebooks-stable-styles')) {
+    const style = document.createElement('style');
+    style.id = 'bookora-all-ebooks-stable-styles';
+    style.textContent = `
+      #${ALL_ID}{width:100%!important;box-sizing:border-box!important;border-top:1px solid var(--border-subtle,#e2e8f0)!important}
+      #${ALL_ID} .kdp-catalog-container{width:min(1240px,calc(100% - 40px));margin-inline:auto;box-sizing:border-box}
+      #${ALL_ID} .bookora-all-ebooks-grid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:22px!important;width:100%!important;align-items:stretch!important}
+      #${ALL_ID} .kdp-book-item{display:block!important;width:100%!important;min-width:0!important;max-width:none!important}
+      #${ALL_ID} .book-card{width:100%!important;min-width:0!important;max-width:none!important}
+      @media(max-width:1100px){#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important}}
+      @media(max-width:800px){#${ALL_ID} .kdp-catalog-container{width:min(100% - 28px,1240px)}#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important}}
+      @media(max-width:560px){#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}}
+      @media(max-width:560px){
+        .bookora-home-clean .kdp-book-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important;width:100%!important}
+        .bookora-home-clean .kdp-book-item{width:100%!important;min-width:0!important;max-width:none!important}
+        .bookora-home-clean .book-card-premium{width:100%!important;min-width:0!important;max-width:none!important;overflow:hidden!important}
+        .bookora-home-clean .book-card-info{min-width:0!important;width:100%!important;box-sizing:border-box!important;padding:.62rem!important}
+        .bookora-home-clean .book-card-meta-row{min-width:0!important;width:100%!important}
+        .bookora-home-clean .book-card-meta-row .badge{flex:0 1 auto!important;min-width:0!important;white-space:nowrap!important}
+        .bookora-home-clean .book-pages{min-width:0!important;max-width:48%!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+        .bookora-home-clean .book-card-title-link,.bookora-home-clean .book-card-title-link h3,.bookora-home-clean .book-card-author{min-width:0!important;max-width:100%!important;overflow:hidden!important}
+        .bookora-home-clean .book-card-title-link h3{font-size:.86rem!important;line-height:1.28!important;min-height:2.2rem!important;overflow-wrap:normal!important;word-break:normal!important}
+        .bookora-home-clean .book-card-author{font-size:.68rem!important;white-space:nowrap!important;text-overflow:ellipsis!important;overflow:hidden!important}
+        .bookora-home-clean .book-card-rating{min-width:0!important;white-space:nowrap!important;overflow:hidden!important}
+        .bookora-home-clean .book-card-price-row{min-width:0!important;align-items:center!important;gap:.35rem!important}
+        .bookora-home-clean .book-card-price-row>div:first-child{min-width:0!important;flex:1 1 auto!important}
+        .bookora-home-clean .book-card-price{font-size:.9rem!important;line-height:1.1!important;white-space:nowrap!important;word-break:keep-all!important}
+        .bookora-home-clean .book-card-old-price{white-space:nowrap!important}
+        .bookora-home-clean .book-buy-btn{flex:0 0 auto!important;white-space:nowrap!important;font-size:.65rem!important;padding:.38rem .55rem!important}
+        .bookora-home-clean .book-card-premium .book-wishlist-btn{width:32px!important;height:32px!important}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+})();
