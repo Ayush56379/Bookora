@@ -19,6 +19,7 @@
 
   const PUBLIC_GET_PATHS = new Set(['/api/books','/api/fx/rates','/api/trending','/api/bestsellers','/api/new-releases','/api/categories']);
   const SESSION_EXCHANGE_PATH = '/api/auth/firebase';
+  const DIRECT_FIREBASE_SECURITY_PATH = '/api/auth/security-event';
 
   const normalizeInput = input => {
     if (typeof input === 'string') return normalizeBackendUrl(input);
@@ -142,8 +143,9 @@
     const method = String(init?.method || (normalizedInput instanceof Request ? normalizedInput.method : 'GET')).toUpperCase();
     const headers = new Headers(init?.headers || (normalizedInput instanceof Request ? normalizedInput.headers : undefined));
 
-    // The exchange endpoint must receive the Firebase ID token directly.
-    if (path === SESSION_EXCHANGE_PATH) return originalFetch(normalizedInput, init);
+    // These endpoints must receive the Firebase ID token unchanged. They are
+    // security-sensitive identity events, not ordinary backend-session calls.
+    if (path === SESSION_EXCHANGE_PATH || path === DIRECT_FIREBASE_SECURITY_PATH) return originalFetch(normalizedInput, init);
 
     const isPublicGet = method === 'GET' && PUBLIC_GET_PATHS.has(path);
     if (isPublicGet) return originalFetch(normalizedInput, { ...init, headers });
