@@ -7,7 +7,7 @@
     './globalInteractions.js?v=20260827-2',
     './homepage-catalog-enhancement.js?v=20260820-1',
     './homepage-catalog-cleanup.js?v=20260823-2',
-    './homepage-seller-section-fix.js?v=20260823-2',
+    './homepage-seller-section-fix.js?v=20260820-1',
     './active-mode-persistence.js?v=20260826-1',
     './ai-single-trigger-permanent-fix.js?v=20260827-2'
   ];
