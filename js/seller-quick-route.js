@@ -1,7 +1,7 @@
 // Bookora permanent seller onboarding route override.
 // The legacy progress/profile overlays are intentionally not loaded here:
 // they duplicated the upload/save listeners and caused CORS errors.
-import './seller-profile-drive-firebase-hotfix.js?v=20260828-3';
+import './seller-profile-drive-firebase-hotfix.js?v=20260828-4-fast-storage';
 
 (() => {
   if (window.__BOOKORA_FINAL_SELLER_ROUTE_V3__) return;
@@ -12,7 +12,7 @@ import './seller-profile-drive-firebase-hotfix.js?v=20260828-3';
     const original = app.loadPage.bind(app);
     app.loadPage = async (path, params) => {
       if (path === '/seller/apply') {
-        const m = await import('./pages/SellerApplyQuickPage.js?v=20260828-drive-firebase-3');
+        const m = await import('./pages/SellerApplyQuickPage.js?v=20260828-fast-profile-4');
         return { html: m.renderSellerApplyPage(), init: m.initSellerApplyEvents };
       }
       return original(path, params);
