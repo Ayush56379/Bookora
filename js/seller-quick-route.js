@@ -1,7 +1,7 @@
 // Bookora permanent seller onboarding route override.
 // The legacy progress/profile overlays are intentionally not loaded here:
 // they duplicated the upload/save listeners and caused CORS errors.
-import './seller-profile-drive-firebase-hotfix.js?v=20260828-4-fast-storage';
+import './seller-profile-drive-firebase-hotfix.js?v=20260828-account-photo-1';
 
 (() => {
   if (window.__BOOKORA_FINAL_SELLER_ROUTE_V3__) return;
