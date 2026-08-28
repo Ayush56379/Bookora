@@ -1,11 +1,7 @@
-/* Bookora direct Drive upload progress.
- * Shows exact uploaded MB while the browser uploads a PDF/cover directly to Drive.
- * It does not read or copy file contents.
- */
+/* Bookora direct Drive upload progress. */
 (() => {
   if (window.__BOOKORA_DIRECT_UPLOAD_PROGRESS__) return;
   window.__BOOKORA_DIRECT_UPLOAD_PROGRESS__ = true;
-
   const originalFetch = window.fetch.bind(window);
   const MB = 1024 * 1024;
   let box = null;
@@ -15,8 +11,7 @@
       box = document.createElement('div');
       box.id = 'bookora-direct-upload-progress';
       box.style.cssText = 'margin-top:14px;padding:14px 16px;border:1px solid #dbe4f0;border-radius:12px;background:#f8fafc;font-family:Inter,system-ui,sans-serif;';
-      const host = document.querySelector('#app') || document.body;
-      host.appendChild(box);
+      (document.querySelector('#app') || document.body).appendChild(box);
     }
     box.innerHTML = '<div style="font-weight:800;color:#0f172a;margin-bottom:7px">Uploading directly to Google Drive</div>'
       + '<div data-bookora-upload-text style="font-size:14px;color:#475569;margin-bottom:8px">0.00 MB / ' + (total / MB).toFixed(2) + ' MB · 0%</div>'
@@ -30,8 +25,7 @@
     const pct = Math.max(0, Math.min(100, loaded / total * 100));
     const text = box.querySelector('[data-bookora-upload-text]');
     const bar = box.querySelector('[data-bookora-upload-bar]');
-    if (text) text.textContent = loaded / MB .toFixed ? '' : '';
-    if (text) text.textContent = loaded / MB .toFixed(2) + ' MB / ' + (total / MB).toFixed(2) + ' MB · ' + pct.toFixed(1) + '%';
+    if (text) text.textContent = (loaded / MB).toFixed(2) + ' MB / ' + (total / MB).toFixed(2) + ' MB · ' + pct.toFixed(1) + '%';
     if (bar) bar.style.width = pct.toFixed(2) + '%';
   }
 
@@ -40,9 +34,7 @@
       const xhr = new XMLHttpRequest();
       xhr.open(String(init.method || 'PUT'), url, true);
       const headers = new Headers(init.headers || {});
-      headers.forEach((value, key) => {
-        if (key.toLowerCase() !== 'content-type') xhr.setRequestHeader(key, value);
-      });
+      headers.forEach((value, key) => xhr.setRequestHeader(key, value));
       const body = init.body;
       const total = body?.size || Number(headers.get('Content-Length')) || 0;
       ensureBox(total);
@@ -50,7 +42,7 @@
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           if (total) setProgress(total, total);
-          resolve(new Response(xhr.responseText || '', { status: xhr.status, statusText: xhr.statusText, headers: xhr.getAllResponseHeaders() }));
+          resolve(new Response(xhr.responseText || '', { status: xhr.status, statusText: xhr.statusText }));
         } else reject(new Error('Google Drive upload failed (' + xhr.status + ').'));
       };
       xhr.onerror = () => reject(new Error('Google Drive upload network error.'));
