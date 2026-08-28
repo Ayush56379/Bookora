@@ -1,4 +1,10 @@
 // Bookora permanent seller onboarding route override.
+// The legacy progress/profile overlays are intentionally not loaded here:
+// they duplicated the upload/save listeners and caused CORS errors.
+import('./seller-profile-drive-firebase-hotfix.js?v=20260828-1').catch(error => {
+  console.warn('[Bookora seller Drive/Firebase hotfix] unavailable:', error);
+});
+
 (() => {
   if (window.__BOOKORA_FINAL_SELLER_ROUTE_V3__) return;
   window.__BOOKORA_FINAL_SELLER_ROUTE_V3__ = true;
@@ -8,7 +14,7 @@
     const original = app.loadPage.bind(app);
     app.loadPage = async (path, params) => {
       if (path === '/seller/apply') {
-        const m = await import('./pages/SellerApplyQuickPage.js?v=20260827-five7-progress');
+        const m = await import('./pages/SellerApplyQuickPage.js?v=20260828-drive-firebase');
         return { html: m.renderSellerApplyPage(), init: m.initSellerApplyEvents };
       }
       return original(path, params);
@@ -20,9 +26,3 @@
   if (install()) return;
   [100, 500, 1500].forEach(delay => setTimeout(install, delay));
 })();
-import('./seller-firestore-progress-stable.js?v=20260828-1').catch(error => {
-  console.warn('[Bookora seller Firebase] persistence layer unavailable:', error);
-});
-import('./seller-onboarding-profile-fix.js?v=20260828-3').catch(error => {
-  console.warn('[Bookora seller profile fix] unavailable:', error);
-});
