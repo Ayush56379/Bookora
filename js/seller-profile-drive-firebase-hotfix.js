@@ -1,8 +1,6 @@
-// Bookora seller profile image / Firebase hotfix.
-// The profile image is uploaded through the existing authenticated Drive upload
-// session. After Drive returns the file URL/ID, seller application progress is
-// persisted directly to the seller Firestore document so a Render CORS failure
-// cannot break the image-selection flow.
+// Bookora seller profile image / Firebase save fallback.
+// IMPORTANT: image bytes must go directly to the existing authenticated Drive
+// upload flow. This fallback only persists returned Drive metadata in Firebase.
 (() => {
   if (window.__BOOKORA_SELLER_PROFILE_DRIVE_FIREBASE_HOTFIX__) return;
   window.__BOOKORA_SELLER_PROFILE_DRIVE_FIREBASE_HOTFIX__ = true;
@@ -30,8 +28,6 @@
 
   const safeProgress = payload => {
     const out = { ...(payload || {}) };
-    // Never mirror raw payout credentials into Firestore from this client-side
-    // fallback. The protected backend remains authoritative for those fields.
     SENSITIVE.forEach(key => delete out[key]);
     return out;
   };
@@ -68,6 +64,9 @@
     return snap.exists ? { id: snap.id, ...snap.data() } : {};
   }
 
+  // Only application-progress is intercepted. Drive/file requests are left
+  // completely untouched so the selected, already-compressed image travels
+  // directly from the browser to Drive without Firebase/Render as a middleman.
   window.fetch = async function(input, init = {}) {
     let url = '';
     try { url = typeof input === 'string' ? input : String(input?.url || ''); } catch (_) {}
@@ -97,5 +96,5 @@
     return originalFetch(input, init);
   };
 
-  console.log('[Bookora] Seller profile Drive → Firebase fallback enabled.');
+  console.log('[Bookora] Seller image: direct-to-Drive upload preserved; Firebase stores metadata only.');
 })();
