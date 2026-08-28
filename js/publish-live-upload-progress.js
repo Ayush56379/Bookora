@@ -13,6 +13,49 @@
     return r === '#/publish' || r === '#/publish/';
   };
 
+  const selectedFile = id => document.getElementById(id)?.files?.[0] || null;
+  const fileSize = id => Number(selectedFile(id)?.size || 0);
+  const fmtMB = bytes => `${(Math.max(0, Number(bytes) || 0) / MB).toFixed(2)} MB`;
+
+  // The direct uploader and this progress runtime both update Step 5. The direct
+  // runtime can briefly replace the PDF row with 0/0 while preparing the cover.
+  // Always recover the real selected file sizes from the browser File objects.
+  function preserveSelectedFileSizes() {
+    if (!isPublish()) return;
+    const pdfSize = fileSize('pub-pdf');
+    const coverSize = fileSize('pub-cover');
+    if (!pdfSize && !coverSize) return;
+
+    if (pdfSize) totals.pdf = pdfSize;
+    if (coverSize) totals.cover = coverSize;
+
+    const details = document.getElementById('upload-live-details');
+    if (details) {
+      const rows = details.querySelectorAll(':scope > div');
+      const pdfRow = rows[0];
+      const coverRow = rows[2];
+      const totalRow = rows[4];
+
+      const preserveLoaded = (strong, total) => {
+        if (!strong || !total) return;
+        const text = String(strong.textContent || '');
+        const match = text.match(/^([0-9.]+\s*MB)\s*\//i);
+        strong.textContent = `${match ? match[1] : '0.00 MB'} / ${fmtMB(total)}`;
+      };
+      preserveLoaded(pdfRow?.querySelector('strong'), pdfSize);
+      preserveLoaded(coverRow?.querySelector('strong'), coverSize);
+      preserveLoaded(totalRow?.querySelector('strong'), pdfSize + coverSize);
+    }
+
+    const button = document.getElementById('submit-pub-btn');
+    const label = document.getElementById('upload-progress-label');
+    const buttonText = button?.textContent || '';
+    if (pdfSize && /Preparing cover upload/i.test(buttonText) && !/Uploading/i.test(buttonText)) {
+      if (button) button.textContent = 'Preparing eBook upload…';
+      if (label) label.innerHTML = `<strong>Preparing eBook upload…</strong><span style="display:block;color:#64748b;font-size:.8rem;margin-top:4px;">PDF: ${fmtMB(pdfSize)} · Cover: ${coverSize ? fmtMB(coverSize) : '—'}</span>`;
+    }
+  }
+
   function ensureUI() {
     const step = document.getElementById('step-5');
     if (!step) return null;
@@ -37,11 +80,15 @@
     [back, submit].forEach(button => { if (!button) return; button.style.margin = '0'; button.style.boxSizing = 'border-box'; button.style.minHeight = '48px'; button.style.flexShrink = '0'; });
     if (submit) submit.style.marginLeft = 'auto';
     if (publishFinalized && submit) { submit.disabled = true; submit.textContent = 'Upload Successful ✓'; submit.style.opacity = '1'; submit.style.cursor = 'default'; }
+    preserveSelectedFileSizes();
     return box;
   }
 
   function setProgress(title, percent, uploaded, total) {
     const box = ensureUI(); if (!box) return;
+    preserveSelectedFileSizes();
+    const selectedTotal = fileSize('pub-pdf') + fileSize('pub-cover');
+    if (selectedTotal > 0) total = Math.max(Number(total) || 0, selectedTotal);
     const p = Math.max(0, Math.min(100, Math.round(percent)));
     box.style.display = 'block';
     const titleEl = document.getElementById('bookora-upload-progress-title');
@@ -99,8 +146,6 @@
     let path = url;
     try { path = new URL(url, location.href).pathname; } catch (_) {}
 
-    // The new direct uploader sends one PUT straight to Google's upload URL.
-    // Use XHR only for this PUT so the browser exposes upload progress events.
     if (isPublish() && String(init?.method || '').toUpperCase() === 'PUT' && /googleapis\.com|googleusercontent\.com/i.test(url) && body instanceof Blob && directCurrent) {
       const current = directCurrent;
       directCurrent = null;
@@ -121,8 +166,10 @@
       } else if (path.endsWith('/upload-direct-session/start') && payload?.kind && Number(payload.size) > 0) {
         const data = await result.clone().json().catch(() => ({}));
         if (result.ok && data?.upload_url) {
-          directCurrent = { kind: String(payload.kind).toLowerCase() === 'cover' ? 'cover' : 'pdf', size: Number(payload.size), uploadUrl: String(data.upload_url) };
-          setProgress('Preparing direct Drive upload...', 0, 0, Number(payload.size));
+          const kind = String(payload.kind).toLowerCase() === 'cover' ? 'cover' : 'pdf';
+          directCurrent = { kind, size: Number(payload.size), uploadUrl: String(data.upload_url) };
+          totals[kind] = Number(payload.size);
+          setProgress('Preparing direct upload...', 0, 0, totals.pdf + totals.cover || Number(payload.size));
         }
       } else if (path.endsWith('/start') && payload?.kind && Number(payload.size) > 0) {
         const data = await result.clone().json().catch(() => ({}));
@@ -150,22 +197,29 @@
   };
 
   function render() {
-    const total = totals.pdf + totals.cover; if (!total || publishFinalized) return;
-    const uploaded = Math.min(totals.pdf, completed.pdf) + Math.min(totals.cover, completed.cover);
+    preserveSelectedFileSizes();
+    const selectedTotal = fileSize('pub-pdf') + fileSize('pub-cover');
+    const total = Math.max(totals.pdf + totals.cover, selectedTotal);
+    if (!total || publishFinalized) return;
+    const pdfTotal = Math.max(totals.pdf, fileSize('pub-pdf'));
+    const coverTotal = Math.max(totals.cover, fileSize('pub-cover'));
+    const uploaded = Math.min(pdfTotal, completed.pdf) + Math.min(coverTotal, completed.cover);
     const percent = uploaded / total * 100;
-    const title = completed.pdf < totals.pdf ? 'Uploading PDF to Drive...' : completed.cover < totals.cover ? 'Uploading cover to Drive...' : 'Files uploaded ✓';
+    const title = completed.pdf < pdfTotal ? 'Preparing PDF upload...' : completed.cover < coverTotal ? 'Preparing cover upload...' : 'Files uploaded ✓';
     setProgress(title, percent, uploaded, total);
   }
 
   function watch() {
     ensureUI();
     const observer = new MutationObserver(() => {
-      ensureUI(); if (publishFinalized) return;
+      ensureUI(); preserveSelectedFileSizes();
+      if (publishFinalized) return;
       const button = document.getElementById('submit-pub-btn'); const text = button?.textContent || '';
       if (/Uploading PDF|Uploading cover/i.test(text) && totals.pdf + totals.cover > 0 && lastPercent < 0) setProgress(text, 0, 0, totals.pdf + totals.cover);
     });
     observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
     window.addEventListener('hashchange', () => setTimeout(ensureUI, 50));
+    setInterval(preserveSelectedFileSizes, 500);
   }
 
   document.addEventListener('submit', event => {
