@@ -18,6 +18,7 @@
     './profile-menu-stability.js?v=20260822-1'
   ];
   const routeModules = {
+    '/admin/review-submissions': ['./admin-review-route-fix.js?v=20260828-1'],
     '/explore': ['./smart-search-runtime.js?v=20260822-1','./explore-category-position-fix.js?v=20260827-1','./catalog-dedupe-runtime.js?v=20260827-1'],
     '/pricing': ['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/subscription': ['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
@@ -30,7 +31,6 @@
     '/seller/dashboard': ['./seller-wallet-route.js?v=20260826-1'],
     '/admin': ['./admin-settings-persistence-fix.js?v=20260824-1','./admin-settings-live-firestore.js?v=20260824-1','./admin-cashfree-subscription-mode.js?v=20260826-4'],
     '/admin/books': ['./admin-settings-persistence-fix.js?v=20260824-1'],
-    '/admin/review-submissions': ['./admin-review-route-fix.js?v=20260828-1'],
     '/admin/settings': ['./admin-settings-persistence-fix.js?v=20260824-1','./admin-settings-live-firestore.js?v=20260824-1'],
     '/book': ['./book-detail-loading-fix.js?v=20260819-1','./book-detail-media-hotfix.js?v=20260819-2','./book-detail-complete.js?v=20260823-1','./book-detail-permanent-fix.js?v=20260819-6','./book-detail-reviews-runtime.js?v=20260823-3','./book-reviews-runtime.js?v=20260823-5'],
     '/sample': ['./book-sample-secure-reader.js?v=20260820-5','./free-sample-permanent-fix.js?v=20260820-5'],
@@ -42,6 +42,8 @@
   const selected = () => {
     const r = route();
     if (r === '/') return homepage;
+    const exact = routeModules[r];
+    if (exact) return [...common, ...exact];
     const key = Object.keys(routeModules).find(k => isPrefix(r, k));
     return [...common, ...(key ? routeModules[key] : [])];
   };
