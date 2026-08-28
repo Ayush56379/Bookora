@@ -41,7 +41,7 @@ export function renderBookCard(book) {
   const gradient = book.cover_gradient || 'linear-gradient(145deg,#172554 0%,#2563EB 55%,#60A5FA 100%)';
   return `<article class="book-card book-card-premium" data-book-id="${esc(id)}" data-book-slug="${slug}" tabindex="0" role="link" aria-label="Open ${title}">
     <div class="book-cover-container book-cover-premium" style="background:${gradient}">
-      ${cover ? `<img class="book-cover-image" src="${esc(cover)}" alt="Cover of ${title}" loading="eager" fetchpriority="high" decoding="async" onerror="this.style.display='none';this.parentElement.classList.add('cover-image-failed')">` : ''}
+      ${cover ? `<img class="book-cover-image" src="${esc(cover)}" alt="Cover of ${title}" loading="lazy" fetchpriority="low" decoding="async" onerror="this.style.display='none';this.parentElement.classList.add('cover-image-failed')">` : ''}
       <div class="book-cover-fallback"><span>${category}</span><strong>${title}</strong>${subtitle ? `<small>${subtitle}</small>` : ''}<small>${author}</small></div>
       <div class="book-cover-shade"></div><div class="book-cover-spine"></div>
       <div class="book-cover-content"><div class="book-cover-topline">${category}</div><h4>${title}</h4>${subtitle ? `<p>${subtitle}</p>` : ''}<div class="book-cover-meta"><span>${author}</span><span class="book-format-pill">${format}</span></div></div>
@@ -57,8 +57,6 @@ export function renderBookCard(book) {
   </article>`;
 }
 
-// Global card navigation: every non-action area of every shared ebook card opens
-// that exact ebook's existing detail route. Buttons and links keep their own action.
 if (!window.__BOOKORA_BOOK_CARD_NAV_HANDLER__) {
   window.__BOOKORA_BOOK_CARD_NAV_HANDLER__ = true;
   const openCard = card => {
@@ -70,7 +68,6 @@ if (!window.__BOOKORA_BOOK_CARD_NAV_HANDLER__) {
   document.addEventListener('click', event => {
     const card = event.target.closest('.book-card[data-book-id]');
     if (!card) return;
-    // These elements have their own behavior and must never trigger card navigation.
     if (event.target.closest('button, a, input, select, textarea, [role="button"]')) return;
     openCard(card);
   }, false);
@@ -84,9 +81,6 @@ if (!window.__BOOKORA_BOOK_CARD_NAV_HANDLER__) {
   }, false);
 }
 
-// Wishlist is intentionally handled here because this is the shared ebook-card
-// component used throughout the storefront. The button saves the book first,
-// then opens the real Wishlist page. It never bubbles into card navigation.
 if (!window.__BOOKORA_WISHLIST_CARD_HANDLER__) {
   window.__BOOKORA_WISHLIST_CARD_HANDLER__ = true;
   document.addEventListener('click', async event => {
@@ -95,10 +89,8 @@ if (!window.__BOOKORA_WISHLIST_CARD_HANDLER__) {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-
     const bookId = String(button.dataset.id || '').trim();
     if (!bookId) return;
-
     button.disabled = true;
     try {
       const added = await state.toggleWishlist(bookId);
@@ -109,9 +101,7 @@ if (!window.__BOOKORA_WISHLIST_CARD_HANDLER__) {
     } catch (error) {
       console.warn('[Bookora Wishlist] action failed:', error?.message || error);
       if (/login|authenticated/i.test(String(error?.message || ''))) window.location.hash = '#/login';
-    } finally {
-      button.disabled = false;
-    }
+    } finally { button.disabled = false; }
   }, true);
 }
 
