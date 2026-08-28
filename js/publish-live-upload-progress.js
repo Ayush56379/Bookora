@@ -1,4 +1,4 @@
-// BOOKORA LIVE UPLOAD PROGRESS + STEP 5 SPACING + PUBLISH SUCCESS
+// BOOKORA LIVE UPLOAD PROGRESS + STEP 5 SPACING + PUBLISH SUCCESS + AI PRECHECK REMOVAL
 (() => {
   const MB = 1024 * 1024;
   const sessions = new Map();
@@ -113,9 +113,6 @@
     try {
       if (path.endsWith('/api/books/create')) {
         const data = await result.clone().json().catch(() => ({}));
-        // The backend reports success only after the book metadata is durably
-        // written. Therefore a successful create response is safe to show as
-        // the final publish state even if a later client-side UI step hangs.
         if (result.ok && data?.success === true) showPublishSuccess();
       } else if (path.endsWith('/start') && payload?.kind && Number(payload.size) > 0) {
         const data = await result.clone().json().catch(() => ({}));
@@ -177,6 +174,29 @@
     window.addEventListener('hashchange', () => setTimeout(ensureUI, 50));
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch, { once: true });
-  else watch();
+  // PERMANENTLY REMOVE THE INTERNAL PUBLISH AI PRECHECK.
+  // publish-enhancements.js installs a capture submit listener on the form and
+  // calls runAiDetection() before uploading. This document-level capture listener
+  // runs first, sets allowOriginalSubmit, and lets the original publish handler
+  // proceed without invoking any AI request. The separate AI Support feature is
+  // untouched.
+  document.addEventListener('submit', event => {
+    if (!isPublish()) return;
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || form.id !== 'publish-wizard-form') return;
+    form.dataset.allowOriginalSubmit = '1';
+  }, true);
+
+  const cleanStaleAiNotice = () => {
+    if (!isPublish()) return;
+    document.querySelectorAll('[role="alert"], [role="status"], .toast, .toast-container, [class*="toast"], [class*="notification"]').forEach(el => {
+      const text = String(el.textContent || '').toLowerCase();
+      if (text.includes('ai precheck') || text.includes('ai checking book')) el.remove();
+    });
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { watch(); cleanStaleAiNotice(); }, { once: true });
+  else { watch(); cleanStaleAiNotice(); }
+
+  new MutationObserver(cleanStaleAiNotice).observe(document.documentElement, { childList: true, subtree: true });
 })();
