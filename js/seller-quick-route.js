@@ -32,3 +32,9 @@
 import('./seller-firestore-progress-stable.js?v=20260828-1').catch(error => {
   console.warn('[Bookora seller Firebase] persistence layer unavailable:', error);
 });
+
+// Profile picker/preview reliability layer. It does not replace the secure
+// backend upload; it only guarantees the file picker and immediate preview.
+import('./seller-onboarding-profile-fix.js?v=20260828-2').catch(error => {
+  console.warn('[Bookora seller profile fix] unavailable:', error);
+});
