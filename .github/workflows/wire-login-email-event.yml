@@ -1,0 +1,31 @@
+name: Wire login email event
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mark Firebase auth event for transactional email
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('js/services/firebase.js')
+          s=p.read_text()
+          replacements={
+            "body: JSON.stringify({ role: roleChoice })": "body: JSON.stringify({ role: roleChoice, auth_event: 'login' })",
+            "body: JSON.stringify({ name, role: roleChoice })": "body: JSON.stringify({ name, role: roleChoice, auth_event: 'register' })",
+          }
+          for old,new in replacements.items():
+              s=s.replace(old,new)
+          p.write_text(s)
+          PY
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/services/firebase.js
+          git commit -m 'Mark Firebase login and registration email events'
+          git push
