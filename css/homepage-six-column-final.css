@@ -1,0 +1,56 @@
+/* Bookora Homepage — final desktop six-column catalog lock.
+   Loaded after all legacy responsive/catalog CSS so later rules cannot
+   expand homepage ebook cards back to 4/5/7/9/10 columns. */
+
+@media (min-width:1101px){
+  /* Both Trending and All eBooks: exactly six cards per row. */
+  #app .bookora-home-clean .kdp-book-grid,
+  #app .bookora-home-clean .bookora-catalog-grid,
+  #app .bookora-home-clean .books-grid,
+  #app .bookora-home-clean .book-grid,
+  #app .bookora-home-clean .products-grid,
+  #app .bookora-home-clean .catalog-grid,
+  #app .bookora-home-clean .related-books-grid,
+  #app #bookora-all-ebooks-section .bookora-all-ebooks-grid,
+  #app #bookora-all-ebooks-section .kdp-book-grid{
+    display:grid!important;
+    grid-template-columns:repeat(6,minmax(0,1fr))!important;
+    gap:18px!important;
+    width:100%!important;
+    max-width:none!important;
+  }
+
+  /* Compact card size so six cards fit cleanly on desktop. */
+  #app .bookora-home-clean .kdp-book-item,
+  #app #bookora-all-ebooks-section .kdp-book-item{
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+  }
+
+  #app .bookora-home-clean .book-card,
+  #app .bookora-home-clean .book-card-premium,
+  #app #bookora-all-ebooks-section .book-card,
+  #app #bookora-all-ebooks-section .book-card-premium{
+    width:100%!important;
+    max-width:240px!important;
+    min-width:0!important;
+    margin-inline:auto!important;
+  }
+
+  #app .bookora-home-clean .book-cover-container,
+  #app .bookora-home-clean .book-cover-premium,
+  #app #bookora-all-ebooks-section .book-cover-container,
+  #app #bookora-all-ebooks-section .book-cover-premium{
+    width:100%!important;
+    aspect-ratio:2/3!important;
+    height:auto!important;
+  }
+}
+
+/* Keep mobile/tablet behavior unchanged. */
+@media (min-width:701px) and (max-width:1100px){
+  #app #bookora-all-ebooks-section .bookora-all-ebooks-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  }
+}
