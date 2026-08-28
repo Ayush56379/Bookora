@@ -1,78 +1,117 @@
-// Bookora Admin Sellers — instant post-action UI sync.
-// The protected backend remains the source of truth. After a successful seller
-// action response, update the visible row immediately instead of waiting for
-// the Firestore listener round-trip. Firestore still persists the decision.
+// Bookora Admin Sellers — Firebase-first click handler.
+// Capture-phase interception prevents the old Render CORS request from running.
 (() => {
   if (window.__BOOKORA_ADMIN_SELLER_CLICK_SYNC__) return;
   window.__BOOKORA_ADMIN_SELLER_CLICK_SYNC__ = true;
+  const ADMIN_EMAIL = 'ayushprajpati6@gmail.com';
+  let busy = false;
 
-  const ACTION_PATH = '/api/admin/sellers/action';
-  const originalFetch = window.fetch.bind(window);
-
-  const applyStatusToRow = (sellerId, status) => {
-    const normalized = String(status || '').toLowerCase();
-    if (!sellerId || !normalized) return;
-    const list = document.getElementById('admin-sellers-list');
-    if (!list) return;
-
-    const button = Array.from(list.querySelectorAll('[data-seller-action]'))
-      .find(el => String(el.dataset.id || '') === String(sellerId));
-    const row = button?.closest('tr');
-    if (!row) return;
-
-    const statusBadge = row.querySelector('.seller-status');
-    const access = row.querySelector('[class*="seller-access-"]');
-    const actions = row.querySelector('.seller-actions');
-    if (!statusBadge || !access || !actions) return;
-
-    statusBadge.className = 'seller-status ' + (
-      normalized === 'approved' ? 'seller-status-approved' :
-      normalized === 'rejected' ? 'seller-status-rejected' :
-      normalized === 'suspended' ? 'seller-status-suspended' :
-      'seller-status-pending'
-    );
-    statusBadge.textContent = normalized.toUpperCase();
-
-    const active = normalized === 'approved';
-    access.className = active ? 'seller-access-active' : 'seller-access-inactive';
-    access.textContent = active ? 'ACTIVE' : 'INACTIVE';
-
-    const id = String(sellerId).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-    const view = `<button class="seller-action seller-view" data-seller-action="view" data-id="${id}">View</button>`;
-    if (normalized === 'approved') {
-      actions.innerHTML = view + `<button class="seller-action seller-suspend" data-seller-action="suspend" data-id="${id}">Suspend</button>`;
-    } else if (normalized === 'pending') {
-      actions.innerHTML = view + `<button class="seller-action seller-approve" data-seller-action="approve" data-id="${id}">Approve</button><button class="seller-action seller-reject" data-seller-action="reject" data-id="${id}">Reject</button>`;
-    } else {
-      actions.innerHTML = view + `<button class="seller-action seller-reactivate" data-seller-action="approve" data-id="${id}">Reactivate</button>`;
-    }
-
-    const count = selector => list.closest('.admin-sellers-page')?.querySelector(selector);
-    const rows = Array.from(list.querySelectorAll('tr'));
-    const statuses = rows.map(r => String(r.querySelector('.seller-status')?.textContent || '').toLowerCase());
-    count('#sellers-pending')?.replaceChildren(document.createTextNode(String(statuses.filter(x => x === 'pending').length)));
-    count('#sellers-approved')?.replaceChildren(document.createTextNode(String(statuses.filter(x => x === 'approved').length)));
-    count('#sellers-blocked')?.replaceChildren(document.createTextNode(String(statuses.filter(x => x === 'rejected' || x === 'suspended').length)));
+  const show = (message, type = 'success') => {
+    try { window.Toast?.show?.(message, type); } catch (_) {}
+    if (!window.Toast?.show) console.info('[Bookora seller]', message);
   };
 
-  window.fetch = async (input, init = {}) => {
-    const response = await originalFetch(input, init);
+  const moderate = async (sellerId, action, reason) => {
+    const auth = window.firebase?.auth?.();
+    const db = window.firebase?.firestore?.();
+    const user = auth?.currentUser;
+    if (!db || !user) throw new Error('Firebase authentication/database is not ready.');
+    if (String(user.email || '').trim().toLowerCase() !== ADMIN_EMAIL) throw new Error('Administrator authorization required.');
+
+    const ref = db.collection('sellers').doc(String(sellerId));
+    const snap = await ref.get();
+    if (!snap.exists) throw new Error('Seller application not found in Firebase.');
+    const seller = snap.data() || {};
+    const status = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : action === 'suspend' ? 'suspended' : null;
+    if (!status) throw new Error('Invalid seller action.');
+    if ((action === 'reject' || action === 'suspend') && String(reason || '').trim().length < 3) throw new Error('A reason is required.');
+
+    const stamp = window.firebase.firestore.FieldValue.serverTimestamp();
+    const patch = {
+      status,
+      seller_status: status,
+      sellerStatus: status === 'approved' ? 'active' : 'inactive',
+      access: status === 'approved' ? 'active' : 'inactive',
+      reviewedAt: stamp,
+      reviewedBy: user.email.toLowerCase(),
+      updatedAt: stamp
+    };
+    if (status === 'approved') { patch.approvedAt = stamp; patch.rejectionReason = null; patch.suspensionReason = null; }
+    if (status === 'rejected') { patch.rejectionReason = String(reason).trim(); patch.suspensionReason = null; }
+    if (status === 'suspended') patch.suspensionReason = String(reason).trim();
+
+    // Firebase is the authoritative operation. Render is never awaited.
+    await ref.set(patch, { merge: true });
+
+    // Sync the owner user record if it is available.
+    const ids = [...new Set([seller.uid, seller.user_id, seller.userId, seller.firebaseUid].filter(Boolean).map(String))];
+    await Promise.all(ids.map(id => db.collection('users').doc(id).set({
+      seller_status: status,
+      sellerStatus: status === 'approved' ? 'active' : 'inactive',
+      role: status === 'approved' ? 'creator' : (status === 'rejected' ? 'buyer' : 'creator'),
+      updatedAt: stamp
+    }, { merge: true }).catch(() => null)));
+    if (seller.email) {
+      await db.collection('users').where('email', '==', String(seller.email).trim().toLowerCase()).limit(1).get().then(result => Promise.all(result.docs.map(doc => doc.ref.set({
+        seller_status: status,
+        sellerStatus: status === 'approved' ? 'active' : 'inactive',
+        role: status === 'approved' ? 'creator' : (status === 'rejected' ? 'buyer' : 'creator'),
+        updatedAt: stamp
+      }, { merge: true })))).catch(() => null);
+    }
+
+    // Optional backend mirror. A CORS/network failure here cannot affect Firebase.
     try {
-      const raw = typeof input === 'string' ? input : (input?.url || '');
-      const url = new URL(raw, location.href);
-      if (url.pathname === ACTION_PATH && response.ok) {
-        const data = await response.clone().json();
-        if (data?.success && data?.status) {
-          let body = {};
-          try { body = typeof init.body === 'string' ? JSON.parse(init.body) : {}; } catch (_) {}
-          applyStatusToRow(body.sellerId || body.id, data.status);
-        }
+      const token = await user.getIdToken(false);
+      fetch(`${window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com'}/api/admin/sellers/action`, {
+        method: 'POST', keepalive: true,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ sellerId: String(sellerId), action, reason })
+      }).catch(() => null);
+    } catch (_) {}
+    return status;
+  };
+
+  document.addEventListener('click', async event => {
+    const button = event.target?.closest?.('[data-seller-action]');
+    if (!button || busy) return;
+    const action = String(button.dataset.sellerAction || '').toLowerCase();
+    if (!['approve', 'reject', 'suspend'].includes(action)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    const sellerId = String(button.dataset.id || '').trim();
+    if (!sellerId) { show('Seller ID is missing.', 'error'); return; }
+    let reason = '';
+    if (action === 'reject' || action === 'suspend') {
+      reason = window.prompt(`Enter the reason to ${action} this seller:`) || '';
+      if (reason.trim().length < 3) { show('A reason is required.', 'warning'); return; }
+    } else if (!window.confirm('Approve this seller and activate seller access?')) return;
+
+    busy = true;
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = action === 'approve' ? 'Approving…' : action === 'reject' ? 'Rejecting…' : 'Suspending…';
+    try {
+      const status = await moderate(sellerId, action, reason);
+      show(`Seller ${status}.`, 'success');
+      // The page's Firestore onSnapshot will redraw the complete row.
+      const row = button.closest('tr');
+      if (row) {
+        const badge = row.querySelector('.seller-status');
+        const access = row.querySelector('[class*="seller-access-"]');
+        if (badge) { badge.className = `seller-status seller-status-${status}`; badge.textContent = status.toUpperCase(); }
+        if (access) { access.className = status === 'approved' ? 'seller-access-active' : 'seller-access-inactive'; access.textContent = status === 'approved' ? 'ACTIVE' : 'INACTIVE'; }
       }
     } catch (error) {
-      console.debug('[Bookora seller click sync] skipped:', error?.message || error);
-    }
-    return response;
-  };
+      console.error('[Bookora Admin Sellers] Firebase action failed:', error);
+      show(error?.message || 'Firebase seller action failed.', 'error');
+      button.disabled = false;
+      button.textContent = oldText;
+    } finally { busy = false; }
+  }, true);
 
-  console.info('[Bookora] Admin seller action UI sync installed.');
+  console.info('[Bookora] Firebase-first seller click handler installed.');
 })();
