@@ -2,6 +2,7 @@
 // The Author field on the internal eBook upload wizard must always start empty.
 // Do not populate it from the signed-in user's profile or persisted form data.
 // Once the seller manually edits the field, never clear their input.
+// Keep a clear in-field placeholder so sellers know what to enter.
 (() => {
   let userEditingAuthor = false;
 
@@ -14,6 +15,7 @@
     input.setAttribute('autocomplete', 'off');
     input.setAttribute('autocapitalize', 'words');
     input.setAttribute('spellcheck', 'true');
+    input.setAttribute('placeholder', 'Enter author name');
 
     // Clear both the live value and the HTML default value so a browser/session
     // restore cannot repopulate the field from the old profile name.
