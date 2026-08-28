@@ -1,0 +1,2 @@
+// Bookora auth bridge hotfix: ensure /api/auth/firebase always reaches Render.
+// This marker file documents the production fix; the actual frontend module is updated below via Git tree.
