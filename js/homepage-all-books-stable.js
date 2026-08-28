@@ -1,10 +1,10 @@
 // Bookora homepage — performance-safe All eBooks section.
-// Never build thousands of book cards during the initial homepage paint.
+// Full catalog stays in Firebase/backend; homepage renders at most 60 cards.
 (() => {
-  if (window.__BOOKORA_ALL_EBOOKS_STABLE__) return;
-  window.__BOOKORA_ALL_EBOOKS_STABLE__ = true;
+  if (window.__BOOKORA_ALL_EBOOKS_STABLE_V2__) return;
+  window.__BOOKORA_ALL_EBOOKS_STABLE_V2__ = true;
 
-  const INITIAL_BOOK_LIMIT = 24;
+  const HOMEPAGE_BOOK_LIMIT = 60;
   let busy = false;
   let timer = null;
   let stableCatalogShown = false;
@@ -59,12 +59,12 @@
         return;
       }
 
-      // Bound the first paint. Rendering the complete Firestore catalog at once
-      // can monopolize the browser main thread and make clicks/navigation appear frozen.
-      const books = allBooks.slice(0, INITIAL_BOOK_LIMIT);
+      // Keep the full Firebase/backend catalog untouched, but render only 60
+      // cards on Home so the browser never has to build an unbounded DOM tree.
+      const books = allBooks.slice(0, HOMEPAGE_BOOK_LIMIT);
       const { renderBookCard } = await import('./components/BookCard.js');
       const cards = books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('');
-      section.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Showing the first ${books.length} approved eBooks for a fast homepage.</p></div><a href="#/explore" class="kdp-view-all">View all <span>→</span></a></div><div class="bookora-all-ebooks-grid">${cards}</div></div>`;
+      section.innerHTML = `<div class="kdp-catalog-container"><div class="kdp-section-head"><div><span class="kdp-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Showing ${books.length} approved eBooks on the homepage.</p></div><a href="#/explore" class="kdp-view-all">View all <span>→</span></a></div><div class="bookora-all-ebooks-grid">${cards}</div></div>`;
       stableCatalogShown = true;
     } finally { busy = false; }
   }
