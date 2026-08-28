@@ -74,10 +74,10 @@ export async function waitForAuthenticatedFirebaseUser() {
   return auth.currentUser || await waitForFirebaseAuthResolution(auth);
 }
 
-// Firebase is the authoritative login result.  The Render endpoint remains
+// Firebase is the authoritative login result. The Render endpoint remains
 // the server-side synchronization path, but a temporary Render/CORS/network
 // failure must never turn a successful Firebase login into a visible login
-// failure.  For this one bootstrap endpoint we return a local authenticated
+// failure. For this one bootstrap endpoint we return a local authenticated
 // response immediately and synchronize with Render in the background.
 function immediateFirebaseAuthResponse(headers, options) {
   const auth = getFirebaseAuth();
@@ -112,11 +112,7 @@ function immediateFirebaseAuthResponse(headers, options) {
     const backgroundHeaders = new Headers(options.headers || {});
     backgroundHeaders.set('Authorization', `Bearer ${firebaseToken}`);
     backgroundHeaders.set('Accept', 'application/json');
-    if (options.body instanceof FormData) {
-      void fetch(`${API_BASE_URL}/api/auth/firebase`, { ...options, headers: backgroundHeaders }).catch(() => {});
-    } else {
-      void fetch(`${API_BASE_URL}/api/auth/firebase`, { ...options, headers: backgroundHeaders }).catch(() => {});
-    }
+    void fetch(`${API_BASE_URL}/api/auth/firebase`, { ...options, headers: backgroundHeaders }).catch(() => {});
   } catch (_) {}
 
   return new Response(JSON.stringify({
@@ -138,10 +134,13 @@ export async function apiFetch(endpoint, options = {}) {
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
 
-  if (!headers.has('Authorization')) {
-    const firebaseToken = await getFreshFirebaseIdToken(false);
-    if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
-  }
+  // Always prefer the currently authenticated Firebase user's token. The old
+  // implementation trusted state.token when the caller supplied Authorization,
+  // which could be stale after a session refresh and made protected admin
+  // actions appear to do nothing. Keeping the token fresh fixes seller actions
+  // and all other Firebase-protected API calls without changing their callers.
+  const firebaseToken = await getFreshFirebaseIdToken(false);
+  if (firebaseToken) headers.set('Authorization', `Bearer ${firebaseToken}`);
 
   if (method !== 'GET' && method !== 'HEAD' && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
@@ -155,14 +154,11 @@ export async function apiFetch(endpoint, options = {}) {
 
   let response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers });
   if (response.status === 401) {
-    const explicitAuth = headers.has('Authorization') && !String(headers.get('Authorization') || '').toLowerCase().startsWith('bearer ey');
-    if (!explicitAuth) {
-      const refreshedToken = await getFreshFirebaseIdToken(true);
-      if (refreshedToken) {
-        const retryHeaders = new Headers(headers);
-        retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
-        response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers: retryHeaders });
-      }
+    const refreshedToken = await getFreshFirebaseIdToken(true);
+    if (refreshedToken) {
+      const retryHeaders = new Headers(headers);
+      retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
+      response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers: retryHeaders });
     }
   }
   return response;
