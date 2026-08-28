@@ -128,11 +128,17 @@
     style.id = 'bookora-all-ebooks-stable-styles';
     style.textContent = `
       #${ALL_ID}{width:100%!important;box-sizing:border-box!important;border-top:1px solid var(--border-subtle,#e2e8f0)!important}
-      #${ALL_ID} .kdp-catalog-container{width:min(1240px,calc(100% - 40px));margin-inline:auto;box-sizing:border-box}
-      #${ALL_ID} .bookora-all-ebooks-grid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:22px!important;width:100%!important;align-items:stretch!important}
+      #${ALL_ID} .kdp-catalog-container{width:min(1600px,calc(100% - 80px));margin-inline:auto;box-sizing:border-box}
+      #${ALL_ID} .bookora-all-ebooks-grid{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:18px!important;width:100%!important;align-items:stretch!important}
       #${ALL_ID} .kdp-book-item{display:block!important;width:100%!important;min-width:0!important;max-width:none!important}
-      #${ALL_ID} .book-card{width:100%!important;min-width:0!important;max-width:none!important}
-      @media(max-width:1100px){#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important}}
+      #${ALL_ID} .book-card{width:100%!important;min-width:0!important;max-width:240px!important;margin-inline:auto!important}
+      @media(min-width:1101px){
+        .bookora-home-clean .kdp-catalog-container{width:min(1600px,calc(100% - 80px))!important;max-width:1600px!important}
+        .bookora-home-clean .kdp-book-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:18px!important;width:100%!important}
+        .bookora-home-clean .kdp-book-item{width:100%!important;min-width:0!important;max-width:none!important}
+        .bookora-home-clean .book-card,.bookora-home-clean .book-card-premium{width:100%!important;max-width:240px!important;margin-inline:auto!important}
+      }
+      @media(max-width:1100px){#${ALL_ID} .kdp-catalog-container{width:min(100% - 40px,1240px)}#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important}}
       @media(max-width:800px){#${ALL_ID} .kdp-catalog-container{width:min(100% - 28px,1240px)}#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important}}
       @media(max-width:560px){#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}}
       @media(max-width:560px){
