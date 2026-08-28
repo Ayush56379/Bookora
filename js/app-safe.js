@@ -55,6 +55,12 @@ class SafeApp {
     if (path.startsWith('/sample/')) { const m=await safeImport('./pages/FreeSamplePage.js'); const slug=decodeURIComponent(path.replace('/sample/','')); const book=state.getBookBySlug(slug); if(!book)return{html:`<main class="container" style="padding:80px 20px;text-align:center"><h2>Sample is loading…</h2><p>Please return to the book and open the sample again.</p><a href="#/explore" class="btn btn-primary">Back to Explore</a></main>`}; return{html:m.renderFreeSamplePage(book),init:()=>m.initFreeSamplePage(book)}; }
     if (['/best-sellers','/new-releases','/trending'].includes(path)) { const m=await safeImport('./pages/PublicDiscoveryPages.js'); const type=path==='/best-sellers'?'bestsellers':path==='/new-releases'?'new':'trending'; return{html:m.renderCuratedCatalogPage(type)}; }
     if (path === '/review-support') { const m=await safeImport('./pages/ReviewSupportPage.js'); return{html:m.renderReviewSupportPage(),init:m.initReviewSupportEvents}; }
+    // REVIEW_SUPPORT_ROUTE_V1
+    if (path === '/review-support') {
+      const m = await safeImport('./pages/ReviewSupportPage.js');
+      return { html: m.renderReviewSupportPage(), init: m.initReviewSupportEvents };
+    }
+
     if (path === '/pricing' || path === '/subscription') { const m=await safeImport('./pages/PricingPage.js'); return{html:m.renderPricingPage(),init:m.initPricingEvents}; }
     if (path === '/subscription/manage') { const m=await safeImport('./pages/SubscriptionManagePage.js'); return{html:m.renderSubscriptionManagePage(),init:m.initSubscriptionManageEvents}; }
     const staticRoutes=['/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines'];
