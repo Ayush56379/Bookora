@@ -175,6 +175,7 @@
     const pdfState={loaded:0,total:input.pdf.size};
     const coverState={loaded:0,total:input.cover.size};
     const startedAt=Date.now();
+    const publishIdempotencyKey=`publish-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;
     const drawProgress=stage=>{
       const loaded=pdfState.loaded+coverState.loaded;
       const total=pdfState.total+coverState.total;
@@ -197,10 +198,10 @@
       drawProgress('Upload complete ✓');
       setProgress('Finishing submission…',95,`${mb(pdfState.loaded+coverState.loaded)} / ${mb(pdfState.total+coverState.total)} uploaded. Almost done.`,{pdf:pdfState,cover:coverState});
       const [pdfFile,coverFile]=await Promise.all([finalize(pdfRaw.id||pdfRaw.fileId||pdfRaw.file_id),finalize(coverRaw.id||coverRaw.fileId||coverRaw.file_id)]);
-      const payload={action:'createBook',title:input.title,subtitle:input.subtitle,author:input.author,category:input.category,description:input.description,tags:input.tags,pages:input.pages,format:'PDF',price:input.price,sale_price:input.salePrice,cover_url:coverFile.url||coverFile.webViewLink||coverFile.downloadUrl||'',pdf_url:pdfFile.url||pdfFile.webViewLink||pdfFile.downloadUrl||'',cover_file_id:coverFile.id,pdf_file_id:pdfFile.id,status:'pending'};
+      const payload={action:'createBook',title:input.title,subtitle:input.subtitle,author:input.author,category:input.category,description:input.description,tags:input.tags,pages:input.pages,format:'PDF',price:input.price,sale_price:input.salePrice,cover_url:coverFile.url||coverFile.webViewLink||coverFile.downloadUrl||'',pdf_url:pdfFile.url||pdfFile.webViewLink||pdfFile.downloadUrl||'',cover_file_id:coverFile.id,pdf_file_id:pdfFile.id,status:'pending',idempotency_key:publishIdempotencyKey,publish_idempotency_key:publishIdempotencyKey};
       const bookResponse=await api('/api/books/create',{method:'POST',body:JSON.stringify(payload)});
       if(!bookResponse.book) throw new Error('The book could not be created. Please retry.');
-      await saveFirestore(bookResponse.book,input,pdfFile,coverFile,user);
+      try{await saveFirestore(bookResponse.book,input,pdfFile,coverFile,user)}catch(syncError){console.warn('[Bookora publish] Firestore mirror skipped after backend success:',syncError); }
       setProgress('Submitted successfully ✓',100,`${mb(pdfState.loaded+coverState.loaded)} uploaded. Your eBook has been sent for review.`,{pdf:pdfState,cover:coverState});
       if(button)button.textContent='Submitted ✓';
       const toast=window.Toast?.show||window.BookoraToast?.show; if(toast)toast('eBook submitted successfully for review.','success');
