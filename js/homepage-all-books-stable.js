@@ -66,7 +66,7 @@
         const heading = originalSection.querySelector('.kdp-section-head h2');
         const description = originalSection.querySelector('.kdp-section-head p');
         const tab = originalSection.querySelector('.kdp-tab.active');
-        if (heading) heading.textContent = trending.length ? 'Trending eBooks' : 'Trending eBooks';
+        if (heading) heading.textContent = 'Trending eBooks';
         if (description) description.textContent = 'Popular eBooks selected from Bookora activity, ratings, reviews, and freshness.';
         if (tab) tab.textContent = 'Trending';
         if (homeCatalog) homeCatalog.innerHTML = trending.length
@@ -115,8 +115,9 @@
     const style = document.createElement('style');
     style.id = 'bookora-home-catalog-stable-styles';
     style.textContent = `
-      #${TRENDING_ID} .kdp-book-grid,#${ALL_ID} .bookora-all-ebooks-grid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:22px!important;width:100%!important}
+      #${TRENDING_ID} .kdp-book-grid,#${ALL_ID} .bookora-all-ebooks-grid{display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:18px!important;width:100%!important}
       #${TRENDING_ID} .kdp-book-item,#${ALL_ID} .kdp-book-item{display:block!important;width:100%!important;min-width:0!important;max-width:none!important}
+      #${TRENDING_ID} .book-card,#${ALL_ID} .book-card,#${TRENDING_ID} .book-card-premium,#${ALL_ID} .book-card-premium{width:100%!important;max-width:240px!important;margin-inline:auto!important}
       @media(max-width:1100px){#${TRENDING_ID} .kdp-book-grid,#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important}}
       @media(max-width:800px){#${TRENDING_ID} .kdp-book-grid,#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important}}
       @media(max-width:560px){#${TRENDING_ID} .kdp-book-grid,#${ALL_ID} .bookora-all-ebooks-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}}
