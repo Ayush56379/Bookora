@@ -24,7 +24,7 @@
     '/subscription/manage': ['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/library': ['./wishlist-permission-fix.js?v=20260826-2'],
     '/orders': ['./orders-page-permanent-fix.js?v=20260821-6','./orders-page-render-sync.js?v=20260821-2'],
-    '/publish': ['./publish-enhancements.js?v=20260826-1','./publish-success-finalizer.js?v=20260826-1'],
+    '/publish': ['./publish-enhancements.js?v=20260826-1','./publish-success-finalizer.js?v=20260826-1','./publish-concurrency-safety.js?v=20260828-1'],
     '/publish/external': ['./external-seller-auth-persistence-fix.js?v=20260823-5','./external-auth-submit-bridge.js?v=20260823-8','./external-publish-scan-permanent-fix.js?v=20260823-3'],
     '/seller/apply': ['./seller-apply-ui-v5.js?v=20260827-4','./seller-apply-profile-ui-v6.js?v=20260827-2'],
     '/seller/dashboard': ['./seller-wallet-route.js?v=20260826-1'],
@@ -56,7 +56,6 @@
     if (!window.__BOOKORA_CORE_BOOTED__) return;
     const items = selected();
     const run = async () => {
-      // One module at a time keeps the main thread responsive on mobile.
       for (const src of items) {
         if (myGeneration !== generation) return;
         await loadOne(src);
