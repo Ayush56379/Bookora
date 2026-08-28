@@ -1,12 +1,13 @@
 /* Bookora Google Drive resumable upload bridge.
  * Keeps the existing publish flow/API contract, but replaces the old single
  * 100MB JSON upload with 4MB resumable chunks handled by the backend.
+ * Also carries a per-publish idempotency key so a retry cannot create a second
+ * book record after a successful Drive upload.
  */
 (() => {
   const ORIGINAL_FETCH = window.fetch.bind(window);
   const API_ROOT = String(window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com').replace(/\/$/, '');
   const MAX_CHUNK = 4 * 1024 * 1024;
-  const encoder = new TextEncoder();
 
   const jsonHeaders = (headers) => {
     const out = {};
@@ -39,6 +40,11 @@
       binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + BLOCK, bytes.length)));
     }
     return btoa(binary);
+  }
+
+  function makeIdempotencyKey() {
+    try { if (crypto?.randomUUID) return crypto.randomUUID(); } catch (_) {}
+    return `bookora-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
   }
 
   function setProgress(percent, label) {
@@ -86,7 +92,6 @@
     const started = await readJson(startResponse);
     const token = started.upload_token;
     const chunkBytes = Math.max(256 * 1024, Math.min(Number(started.chunk_size) || MAX_CHUNK, MAX_CHUNK));
-    const charsPerChunk = Math.floor(chunkBytes / 3) * 4;
     let offset = Number(started.next_offset || 0);
 
     while (offset < size) {
@@ -122,7 +127,23 @@
 
   window.fetch = async function patchedBookoraFetch(input, init = {}) {
     const url = typeof input === 'string' ? input : input?.url || '';
-    if (!String(url).includes('/api/books/upload-files')) {
+    const urlText = String(url);
+
+    // Final book creation is made idempotent. This does not alter unrelated
+    // API calls and is only applied when the resumable upload created a key.
+    if (urlText.includes('/api/books/create')) {
+      let payload = {};
+      try { payload = typeof init.body === 'string' ? JSON.parse(init.body) : {}; } catch (_) { return ORIGINAL_FETCH(input, init); }
+      const key = String(window.__BOOKORA_LAST_PUBLISH_IDEMPOTENCY_KEY || sessionStorage.getItem('bookora_publish_idempotency_key') || '').trim();
+      if (key && payload && typeof payload === 'object' && !payload.idempotency_key && !payload.publish_idempotency_key) {
+        payload.idempotency_key = key;
+        const nextInit = { ...init, body: JSON.stringify(payload), headers: jsonHeaders(init.headers || {}) };
+        return ORIGINAL_FETCH(input, nextInit);
+      }
+      return ORIGINAL_FETCH(input, init);
+    }
+
+    if (!urlText.includes('/api/books/upload-files')) {
       return ORIGINAL_FETCH(input, init);
     }
 
@@ -136,6 +157,9 @@
     if (!payload?.pdf?.data) return ORIGINAL_FETCH(input, init);
 
     const authHeaders = init.headers || {};
+    const publishKey = makeIdempotencyKey();
+    window.__BOOKORA_LAST_PUBLISH_IDEMPOTENCY_KEY = publishKey;
+    try { sessionStorage.setItem('bookora_publish_idempotency_key', publishKey); } catch (_) {}
     setProgress(0, 'Starting resumable upload...');
 
     try {
@@ -151,7 +175,8 @@
         pdf_file_id: pdf.file_id || '',
         pdf_url: pdf.url || '',
         cover_file_id: cover?.file_id || '',
-        cover_url: cover?.url || ''
+        cover_url: cover?.url || '',
+        idempotency_key: publishKey
       };
       return new Response(JSON.stringify(result), {
         status: 201,
