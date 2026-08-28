@@ -25,3 +25,10 @@
   // app-safe is asynchronous; use bounded retries instead of a 100ms interval.
   [100, 500, 1500].forEach(delay => setTimeout(install, delay));
 })();
+
+// Stable Firebase checkpoint/restore layer. It is intentionally imported here
+// so the seller page gets the persistence layer without touching the global
+// application bootstrap or the existing authentication flow.
+import('./seller-firestore-progress-stable.js?v=20260828-1').catch(error => {
+  console.warn('[Bookora seller Firebase] persistence layer unavailable:', error);
+});
