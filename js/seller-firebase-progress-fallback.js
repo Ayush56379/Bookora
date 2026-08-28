@@ -1,8 +1,7 @@
-/* Bookora seller onboarding: Firebase-first progress fallback.
- * If the Render progress endpoint is temporarily unavailable or blocked by CORS,
- * keep Save & Continue working by checkpointing the non-sensitive onboarding data
- * directly in Firestore under sellers/{uid}. The normal backend path remains the
- * first choice, so this does not replace the server-side application flow.
+/* Bookora seller onboarding: Firebase-first progress persistence.
+ * Save & Continue must never wait on the Render backend. Firestore is the
+ * primary checkpoint store for onboarding; Render synchronization is best-effort
+ * in the background. This keeps the UI fast and removes CORS/network stalls.
  */
 (() => {
   if (window.__BOOKORA_SELLER_FIREBASE_PROGRESS_FALLBACK__) return;
@@ -26,7 +25,7 @@
           clearTimeout(timer);
           resolve(user || null);
         };
-        const timer = setTimeout(() => finish(auth.currentUser || null), 4000);
+        const timer = setTimeout(() => finish(auth.currentUser || null), 3000);
         try { unsubscribe = auth.onAuthStateChanged(finish); } catch (_) { finish(auth.currentUser || null); }
       });
     } catch (_) {
@@ -34,43 +33,76 @@
     }
   };
 
-  const fallback = async (input, init, method) => {
+  const withTimeout = (promise, ms) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase checkpoint timeout')), ms))
+  ]);
+
+  const parsePayload = init => {
+    try { return JSON.parse(String(init?.body || '{}')); } catch (_) { return {}; }
+  };
+
+  const sanitize = (payload, user) => {
+    const blocked = new Set([
+      'accountNumber', 'account_number', 'payout_account', 'bankAccount',
+      'pan', 'PAN', 'password', 'secret', 'accessToken', 'token'
+    ]);
+    const safe = {};
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (!blocked.has(key)) safe[key] = value;
+    });
+    const step = Number(payload?.step || safe.onboardingStep || 1);
+    delete safe.step;
+    safe.onboardingStep = Number.isFinite(step) && step > 0 ? step : 1;
+    safe.email = String(user?.email || safe.email || '').trim().toLowerCase();
+    safe.uid = String(user?.uid || '').trim();
+    safe.updatedAt = window.firebase.firestore.FieldValue.serverTimestamp();
+    safe.progressSource = 'firebase';
+    return safe;
+  };
+
+  const syncRenderInBackground = (input, init) => {
+    try {
+      const headers = new Headers(init?.headers || {});
+      headers.set('Accept', 'application/json');
+      void originalFetch(input, { ...init, headers }).catch(error => {
+        console.info('[Bookora seller] Background Render sync skipped:', error?.message || error);
+      });
+    } catch (_) {}
+  };
+
+  const firebaseFirst = async (input, init, method) => {
     const user = await getAuthUser();
     const uid = String(user?.uid || '').trim();
     const db = window.firebase?.firestore?.();
     if (!uid || !db) throw new Error('Firebase authentication/database is not ready.');
 
     const ref = db.collection('sellers').doc(uid);
+
     if (method === 'GET') {
-      const snap = await ref.get();
+      const snap = await withTimeout(ref.get(), 5000);
       return new Response(JSON.stringify({
         success: true,
         application: snap.exists ? { uid, ...snap.data() } : null,
-        source: 'firebase-fallback'
+        source: 'firebase'
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
-    let payload = {};
-    try { payload = JSON.parse(String(init?.body || '{}')); } catch (_) {}
+    const payload = parsePayload(init);
+    const safe = sanitize(payload, user);
 
-    // Progress checkpoints must never contain raw payout secrets.
-    const blocked = new Set(['accountNumber', 'account_number', 'payout_account', 'bankAccount', 'pan', 'PAN', 'password', 'secret', 'accessToken', 'token']);
-    const safe = {};
-    Object.entries(payload || {}).forEach(([key, value]) => {
-      if (!blocked.has(key)) safe[key] = value;
-    });
-    delete safe.step;
-    safe.onboardingStep = Number(payload?.step || safe.onboardingStep || 1);
-    safe.email = String(user.email || safe.email || '').trim().toLowerCase();
-    safe.updatedAt = window.firebase.firestore.FieldValue.serverTimestamp();
-    safe.progressSource = 'firebase-fallback';
-    safe.uid = uid;
+    // Firestore is the authoritative fast checkpoint. Wait for this write,
+    // then immediately release the UI. Do not await Render/CORS synchronization.
+    await withTimeout(ref.set(safe, { merge: true }), 5000);
 
-    await ref.set(safe, { merge: true });
+    // Keep the existing backend/database synchronized without making the seller
+    // wait for Render cold-starts, CORS, or network failures.
+    syncRenderInBackground(input, init);
+
     return new Response(JSON.stringify({
       success: true,
       application: { ...safe, uid },
-      source: 'firebase-fallback'
+      source: 'firebase'
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
 
@@ -83,10 +115,15 @@
 
     if (path === TARGET && (method === 'GET' || method === 'POST')) {
       try {
-        return await originalFetch(input, init);
+        // Firebase-first: Save & Continue is never blocked by Render.
+        return await firebaseFirst(input, init, method);
       } catch (error) {
-        console.warn('[Bookora seller] Render progress request failed; using Firebase checkpoint fallback.', error?.message || error);
-        return fallback(input, init, method);
+        console.warn('[Bookora seller] Firebase-first checkpoint failed; trying Render once.', error?.message || error);
+        try {
+          return await originalFetch(input, init);
+        } catch (renderError) {
+          throw new Error('Seller progress could not be saved. Please check Firebase login/network and retry.');
+        }
       }
     }
     return originalFetch(input, init);
