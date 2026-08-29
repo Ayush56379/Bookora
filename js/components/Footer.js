@@ -20,6 +20,7 @@ export function renderFooter() {
   const ios = safeUrl(FOOTER_APP_LINKS.ios);
   const appLinks = (android || ios) ? `<div class="bookora-footer__app-links" aria-label="Bookora app links">${android?`<a class="bookora-footer__app-badge" href="${android}" target="_blank" rel="noopener noreferrer"><span class="bookora-footer__app-icon">▶</span><span><small>GET IT ON</small><strong>Google Play</strong></span></a>`:''}${ios?`<a class="bookora-footer__app-badge" href="${ios}" target="_blank" rel="noopener noreferrer"><span class="bookora-footer__app-icon">●</span><span><small>Download on the</small><strong>App Store</strong></span></a>`:''}</div>` : `<div class="bookora-footer__app-links"><span class="bookora-footer__app-coming">App links will be added soon.</span></div>`;
 
+  setTimeout(()=>initFooterEvents(),0);
   return `
     <footer class="bookora-footer" aria-label="Bookora footer">
       <div class="bookora-footer__container">
