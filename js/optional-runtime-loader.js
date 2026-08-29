@@ -1,4 +1,6 @@
 // Bookora optional runtime loader.
+// Publish page is intentionally isolated: its page module owns the complete
+// upload lifecycle. Only lightweight navigation/file-selection helpers load here.
 (() => {
   const route = () => (window.location.hash || '#/').split('?')[0].replace(/^#/, '') || '/';
   const homepage = ['./homepage-featured-removal-permanent.js?v=20260827-2','./globalInteractions.js?v=20260827-2','./homepage-catalog-enhancement.js?v=20260820-1','./homepage-catalog-cleanup.js?v=20260823-2','./homepage-seller-section-fix.js?v=20260820-1','./active-mode-persistence.js?v=20260826-1','./ai-single-trigger-permanent-fix.js?v=20260827-2'];
@@ -11,7 +13,9 @@
     '/subscription/manage':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/library':['./wishlist-permission-fix.js?v=20260826-2'],
     '/orders':['./orders-page-permanent-fix.js?v=20260821-6','./orders-page-render-sync.js?v=20260821-2'],
-    '/publish':['./publish-side-illustrations.js?v=20260829-1','./publish-file-selection-fix.js?v=20260829-1','./publish-next-step-fix.js?v=20260829-3','./publish-direct-drive-runtime.js?v=20260829-3'],
+    // IMPORTANT: do not load any second upload/submit runtime or visual wrapper here.
+    // PublishInternalPage is the single source of truth for the publish wizard.
+    '/publish':['./publish-file-selection-fix.js?v=20260829-1','./publish-next-step-fix.js?v=20260829-3'],
     '/publish/external':['./external-seller-auth-persistence-fix.js?v=20260823-5','./external-auth-submit-bridge.js?v=20260823-8','./external-publish-scan-permanent-fix.js?v=20260823-3'],
     '/seller/apply':['./seller-apply-ui-v5.js?v=20260827-4','./seller-apply-profile-ui-v6.js?v=20260827-2','./seller-application-submitted-ui-v1.js?v=20260828-1'],
     '/seller/dashboard':['./seller-wallet-route.js?v=20260826-1'],
