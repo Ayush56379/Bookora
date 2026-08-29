@@ -39,7 +39,7 @@ class SafeApp {
       header = `<div id="header-container">${typeof h.renderHeader === 'function' ? h.renderHeader() : ''}</div>`;
     } catch (_) { header = fallbackShell(); }
     try {
-      const f = await safeImport('./components/Footer.js?v=20260829-newsletter-live-1');
+      const f = await safeImport('./components/Footer.js?v=20260829-newsletter-live-2');
       footer = `<div id="footer-container">${typeof f.renderFooter === 'function' ? f.renderFooter() : ''}</div>`;
     } catch (_) {}
     return { header, footer };
@@ -70,7 +70,7 @@ class SafeApp {
     if(['/settings','/settings/account','/settings/notifications','/settings/privacy'].includes(path)){const m=await safeImport('./pages/UserSettingsPage.js');return{html:m.renderUserSettingsPage(),init:m.initUserSettingsEvents};}
     if(path==='/settings/security'){const m=await safeImport('./pages/AccountSecurityPage.js');return{html:m.renderAccountSecurityPage(),init:m.initAccountSecurityEvents};}
     if(path==='/dashboard'){const m=await safeImport('./pages/DashboardPage.js');return{html:m.renderDashboardPage(),init:m.initDashboardEvents};}
-    if(path==='/library'){const m=await safeImport('./pages/LibraryPage.js');return{html:m.renderLibraryPage()};}
+    if(path==='/library'){const m=await safeImport('./pages/LibraryPage.js');return{html:m.renderLibraryPage(),init:m.initLibraryEvents};}
     if(path==='/orders'){const m=await safeImport('./pages/OrdersPage.js');return{html:m.renderOrdersPage()};}
     if(path==='/wishlist'){const m=await safeImport('./pages/WishlistPage.js');return{html:m.renderWishlistPage()};}
     if(path.startsWith('/checkout/')){const m=await safeImport('./pages/CheckoutPage.js');const slug=path.replace('/checkout/','');return{html:m.renderCheckoutPage(slug),init:()=>m.initCheckoutEvents(slug)};}
