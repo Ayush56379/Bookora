@@ -1,4 +1,4 @@
-name: Restore state module after auth fix
+name: Apply newsletter CORS fix
 
 on:
   push:
@@ -8,18 +8,36 @@ permissions:
   contents: write
 
 jobs:
-  restore:
-    if: github.event.head_commit.message == 'fix: keep Firebase token in memory when auth state is set'
+  fix-newsletter-cors:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Restore state.js from known-good auth commit
+      - name: Remove newsletter JSON preflight header
         run: |
-          git checkout 41fc4e1a105fb3022d106136a3bdeb2ec9cbeee1 -- js/state.js
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('js/components/Footer.js')
+          s = p.read_text(encoding='utf-8')
+          old = "headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({email})"
+          new = "headers:{Accept:'application/json'},body:JSON.stringify({email})"
+          if old in s:
+              p.write_text(s.replace(old, new, 1), encoding='utf-8')
+              print('Newsletter CORS preflight fix applied')
+          elif new in s:
+              print('Newsletter CORS preflight fix already present')
+          else:
+              raise SystemExit('Expected newsletter fetch signature not found')
+          PY
+      - name: Commit newsletter fix
+        run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add js/state.js
-          git commit -m 'chore: restore state module after auth fix'
-          git push origin main
+          git add js/components/Footer.js
+          if git diff --cached --quiet; then
+            echo 'No newsletter changes needed'
+          else
+            git commit -m 'fix: make newsletter subscription CORS-simple'
+            git push origin main
+          fi
