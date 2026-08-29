@@ -95,17 +95,79 @@
     document.addEventListener('click', event => {
       if (event.target?.closest?.('#main-header a.nav-link, #main-header .mobile-drawer-link')) schedule();
     }, true);
-    // Observe only DOM insertion/replacement. Attribute changes are deliberately
-    // excluded because this module changes classes/styles itself.
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
     apply();
     return true;
   };
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', install, { once: true });
-  } else {
-    install();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
+  else install();
+})();
+
+// Bookora Community Chat route bridge. Keeps the existing SPA architecture intact
+// while adding a dedicated Firebase-to-Firebase user chat page.
+(() => {
+  'use strict';
+  if (window.__BOOKORA_COMMUNITY_CHAT_BRIDGE__) return;
+  window.__BOOKORA_COMMUNITY_CHAT_BRIDGE__ = true;
+
+  const boot = () => {
+    const app = window.__BOOKORA_APP_INSTANCE__;
+    if (!app) return setTimeout(boot, 150);
+    if (app.__communityChatPatched) return;
+    app.__communityChatPatched = true;
+
+    const originalLoadPage = app.loadPage.bind(app);
+    app.loadPage = async (path, params) => {
+      if (path === '/community-chat') {
+        const m = await import('./pages/CommunityChatPage.js?v=20260829-1');
+        return { html: m.renderCommunityChatPage(), init: m.initCommunityChatEvents };
+      }
+      return originalLoadPage(path, params);
+    };
+
+    const originalRoute = app.route.bind(app);
+    app.route = async (force = false, navigation = false) => {
+      const path = (window.location.hash || '#/').split('?')[0].replace(/^#/, '') || '/';
+      if (path !== '/community-chat') return originalRoute(force, navigation);
+      const firebaseUser = window.firebase?.auth?.()?.currentUser;
+      if (!firebaseUser) return originalRoute(force, navigation);
+      const wasAuthenticated = app.root?.dataset?.communityAuth || null;
+      const oldAuth = window.__BOOKORA_STATE__?.isAuthenticated;
+      // The state singleton is the same object used by SafeApp; locate it through
+      // the loaded page module after Firebase auth has hydrated when possible.
+      let stateObj = null;
+      try { stateObj = (await import('./state.js')).state; } catch (_) {}
+      const prev = stateObj?.isAuthenticated;
+      if (stateObj) stateObj.isAuthenticated = true;
+      try { return await originalRoute(force, navigation); }
+      finally { if (stateObj && prev === false) stateObj.isAuthenticated = false; }
+    };
+
+    const injectNav = () => {
+      const header = document.getElementById('main-header');
+      if (!header) return;
+      const nav = header.querySelector('.desktop-nav');
+      if (!nav || nav.querySelector('[data-community-chat-link]')) return;
+      if (document.querySelector('#community-chat-nav-style')) return addNav(nav);
+      addNav(nav);
+    };
+    const addNav = nav => {
+      const link = document.createElement('a');
+      link.href = '#/community-chat';
+      link.className = 'nav-link';
+      link.dataset.communityChatLink = '1';
+      link.textContent = 'Community';
+      nav.appendChild(link);
+      const style = document.createElement('style');
+      style.id = 'community-chat-nav-style';
+      style.textContent = '.community-chat-page{isolation:isolate}.community-chat-page .btn{font-weight:700}.community-chat-page [hidden]{display:none!important}';
+      document.head.appendChild(style);
+      setTimeout(injectNav, 0);
+    };
+    injectNav();
+    new MutationObserver(injectNav).observe(document.body, { childList: true, subtree: true });
+  };
+  boot();
 })();
