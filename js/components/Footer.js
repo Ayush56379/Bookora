@@ -53,7 +53,7 @@ async function initNewsletterSubscription(){
     if(button){button.disabled=true;button.textContent='Subscribing…';}
     if(msg)msg.textContent='Saving your subscription…';
     try{
-      const r=await fetch(apiUrl('/api/newsletter/subscribe'),{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({email})});
+      const r=await fetch(apiUrl('/api/newsletter/subscribe'),{method:'POST',headers:{Accept:'application/json'},body:JSON.stringify({email})});
       const d=await r.json().catch(()=>({}));
       if(!r.ok)throw new Error(d.error||'Unable to subscribe right now.');
       if(input)input.value='';
