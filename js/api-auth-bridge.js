@@ -18,6 +18,11 @@
   let backendSessionPromise = null;
 
   const PUBLIC_GET_PATHS = new Set(['/api/books','/api/fx/rates','/api/trending','/api/bestsellers','/api/new-releases','/api/categories']);
+  // Newsletter subscription is intentionally public. It must never trigger a
+  // Firebase -> backend session exchange, because a visitor can subscribe before
+  // creating/logging into a Bookora account. This also prevents auth-session CORS
+  // failures from masking the actual newsletter endpoint.
+  const PUBLIC_NO_AUTH_PATHS = new Set(['/api/newsletter/subscribe']);
   const SESSION_EXCHANGE_PATH = '/api/auth/firebase';
   const DIRECT_FIREBASE_SECURITY_PATH = '/api/auth/security-event';
 
@@ -146,6 +151,10 @@
     // These endpoints must receive the Firebase ID token unchanged. They are
     // security-sensitive identity events, not ordinary backend-session calls.
     if (path === SESSION_EXCHANGE_PATH || path === DIRECT_FIREBASE_SECURITY_PATH) return originalFetch(normalizedInput, init);
+
+    // Public newsletter endpoint: pass through unchanged for both POST and
+    // OPTIONS-related browser handling. Never wait for Firebase/session auth.
+    if (PUBLIC_NO_AUTH_PATHS.has(path)) return originalFetch(normalizedInput, { ...init, headers });
 
     const isPublicGet = method === 'GET' && PUBLIC_GET_PATHS.has(path);
     if (isPublicGet) return originalFetch(normalizedInput, { ...init, headers });
