@@ -1,3 +1,5 @@
+import { apiUrl } from '../config.js';
+
 // Bookora Footer — premium marketplace footer matching the approved visual reference.
 // Replace the empty external URLs below when the real Bookora social/app pages are ready.
 const FOOTER_SOCIAL_LINKS = { facebook: '', x: '', instagram: '', linkedin: '', youtube: '' };
@@ -30,13 +32,39 @@ export function renderFooter() {
         <nav class="bookora-footer__column" aria-label="Support"><h2>Support</h2><a href="#/help">Help Center</a><a href="#/faq">FAQ</a><a href="#/how-it-works">How Bookora Works</a><a href="#/contact">Contact Support</a><a href="#/review-support">Review &amp; Support</a><a href="#/refund-policy">Refund Policy</a><a href="#/terms">Terms of Service</a><a href="#/privacy">Privacy Policy</a></nav>
         <nav class="bookora-footer__column" aria-label="Company"><h2>Company</h2><a href="#/about">About Bookora</a><a href="#/about">Our Mission</a><a href="#/contact">Careers <span class="bookora-footer__hiring">Hiring</span></a><a href="#/contact">Press &amp; Media</a><a href="#/contact">Partnerships</a><a href="#/explore">Blog</a><a href="#/about">Announcements</a></nav>
       </div>
-      <section class="bookora-footer__updates" aria-label="Bookora updates"><div><span class="bookora-footer__updates-icon">✉</span><div><h2>Stay updated with Bookora</h2><p>Get new release alerts, offers, and platform updates in your inbox.</p></div></div><form class="bookora-footer__subscribe" onsubmit="return false"><input type="email" aria-label="Email address" placeholder="Enter your email address"><button type="button">Subscribe</button><small>No spam. Unsubscribe anytime.</small></form></section>
+      <section class="bookora-footer__updates" aria-label="Bookora updates"><div><span class="bookora-footer__updates-icon">✉</span><div><h2>Stay updated with Bookora</h2><p>Get new release alerts, offers, and platform updates in your inbox.</p></div></div><form id="bookora-newsletter-form" class="bookora-footer__subscribe"><input id="bookora-newsletter-email" name="email" type="email" autocomplete="email" required aria-label="Email address" placeholder="Enter your email address"><button id="bookora-newsletter-submit" type="submit">Subscribe</button><small id="bookora-newsletter-msg">No spam. Unsubscribe anytime.</small></form></section>
       <section class="bookora-footer__community" aria-label="Bookora community and apps"><div class="bookora-footer__community-block"><strong>Trusted by readers &amp; creators worldwide</strong><div id="bookora-footer-avatars" class="bookora-footer__avatars"><span>BR</span><span>AR</span><span>RS</span><span>AK</span><span>MK</span><span>SP</span></div><p id="bookora-footer-users">Join Bookora readers &amp; creators</p></div><div class="bookora-footer__community-block bookora-footer__rating-block"><strong>Our users love Bookora</strong><div id="bookora-footer-rating" class="bookora-footer__rating-stars" aria-label="Bookora rating">☆☆☆☆☆</div><p><b id="bookora-footer-rating-value">No rating yet</b> <span id="bookora-footer-rating-count"></span></p></div><div class="bookora-footer__community-block bookora-footer__apps-block"><strong>Get the Bookora App</strong>${appLinks}</div></section>
       <div class="bookora-footer__bottom"><p>© ${year} Bookora. All rights reserved.</p><div class="bookora-footer__bottom-links"><a href="#/review-support">Review &amp; Support</a><a href="#/terms">Terms</a><a href="#/privacy">Privacy</a><a href="#/refund-policy">Refunds</a><a href="#/contact">Contact</a></div><div class="bookora-footer__language">◉ English <span>⌄</span></div></div><div class="bookora-footer__legal-note"><span>♢ DMCA Protected</span><b>•</b><a href="#/contact">Copyright Infringement Policy</a></div>
     </div></footer>`;
 }
 
+// BOOKORA_NEWSLETTER_FOOTER_V1
+async function initNewsletterSubscription(){
+  const form=document.getElementById('bookora-newsletter-form');
+  if(!form || form.dataset.bound)return;
+  form.dataset.bound='1';
+  form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const input=document.getElementById('bookora-newsletter-email');
+    const button=document.getElementById('bookora-newsletter-submit');
+    const msg=document.getElementById('bookora-newsletter-msg');
+    const email=String(input?.value||'').trim().toLowerCase();
+    if(!email || !input?.checkValidity()){if(msg)msg.textContent='Please enter a valid email address.';return;}
+    if(button){button.disabled=true;button.textContent='Subscribing…';}
+    if(msg)msg.textContent='Saving your subscription…';
+    try{
+      const r=await fetch(apiUrl('/api/newsletter/subscribe'),{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({email})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||'Unable to subscribe right now.');
+      if(input)input.value='';
+      if(msg)msg.textContent=d.alreadySubscribed?'You are already subscribed to Bookora updates.':'✓ You are subscribed to Bookora updates.';
+    }catch(err){if(msg)msg.textContent=err.message||'Unable to subscribe right now. Please try again.';}
+    finally{if(button){button.disabled=false;button.textContent='Subscribe';}}
+  });
+}
+
 export async function initFooterEvents(){
+  initNewsletterSubscription();
   try{
     const base = typeof window !== 'undefined' ? (window.BOOKORA_API_URL || '') : '';
     if(!base) return;
