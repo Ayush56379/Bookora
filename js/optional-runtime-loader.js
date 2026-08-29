@@ -25,10 +25,9 @@
     '/subscription/manage': ['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/library': ['./wishlist-permission-fix.js?v=20260826-2'],
     '/orders': ['./orders-page-permanent-fix.js?v=20260821-6','./orders-page-render-sync.js?v=20260821-2'],
-    // IMPORTANT: the backend's legacy /api/books/upload-session/* transport is disabled.
-    // Publish must use the direct-to-Google-Drive upload runtime so the large PDF never
-    // travels through Render. PDF and cover uploads are started in parallel.
-    '/publish': ['./publish-direct-drive-runtime.js?v=20260829-1'],
+    // Publish wizard navigation is loaded first so Next/Back controls cannot be blocked.
+    // The direct uploader is loaded after it and handles only the final publish submit.
+    '/publish': ['./publish-next-step-fix.js?v=20260829-1','./publish-direct-drive-runtime.js?v=20260829-1'],
     '/publish/external': ['./external-seller-auth-persistence-fix.js?v=20260823-5','./external-auth-submit-bridge.js?v=20260823-8','./external-publish-scan-permanent-fix.js?v=20260823-3'],
     '/seller/apply': ['./seller-apply-ui-v5.js?v=20260827-4','./seller-apply-profile-ui-v6.js?v=20260827-2','./seller-application-submitted-ui-v1.js?v=20260828-1'],
     '/seller/dashboard': ['./seller-wallet-route.js?v=20260826-1'],
