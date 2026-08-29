@@ -25,9 +25,8 @@
     '/subscription/manage': ['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/library': ['./wishlist-permission-fix.js?v=20260826-2'],
     '/orders': ['./orders-page-permanent-fix.js?v=20260821-6','./orders-page-render-sync.js?v=20260821-2'],
-    // Publish wizard navigation is loaded first so Next/Back controls cannot be blocked.
-    // The direct uploader is loaded after it and handles only the final publish submit.
-    '/publish': ['./publish-next-step-fix.js?v=20260829-1','./publish-direct-drive-runtime.js?v=20260829-1'],
+    // Publish navigation is a critical UI path. Load its handler first and immediately.
+    '/publish': ['./publish-next-step-fix.js?v=20260829-2','./publish-direct-drive-runtime.js?v=20260829-2'],
     '/publish/external': ['./external-seller-auth-persistence-fix.js?v=20260823-5','./external-auth-submit-bridge.js?v=20260823-8','./external-publish-scan-permanent-fix.js?v=20260823-3'],
     '/seller/apply': ['./seller-apply-ui-v5.js?v=20260827-4','./seller-apply-profile-ui-v6.js?v=20260827-2','./seller-application-submitted-ui-v1.js?v=20260828-1'],
     '/seller/dashboard': ['./seller-wallet-route.js?v=20260826-1'],
@@ -44,8 +43,9 @@
   const selected = () => {
     const r = route();
     if (r === '/') return homepage;
-    const exact = routeModules[r];
-    if (exact) return [...common, ...exact];
+    const exact = routeModules[r] || [];
+    // On publish, navigation must run before common/slow runtimes.
+    if (r === '/publish') return [...exact, ...common];
     const key = Object.keys(routeModules).find(k => isPrefix(r, k));
     return [...common, ...(key ? routeModules[key] : [])];
   };
@@ -59,18 +59,18 @@
   const loadForRoute = () => {
     const myGeneration = ++generation;
     if (!window.__BOOKORA_CORE_BOOTED__) return;
+    const r = route();
     const items = selected();
     const run = async () => {
       for (const src of items) {
         if (myGeneration !== generation) return;
         await loadOne(src);
-        await new Promise(resolve => setTimeout(resolve, 60));
+        if (r !== '/publish') await new Promise(resolve => setTimeout(resolve, 60));
       }
     };
     const start = () => run().catch(error => console.warn('[Bookora optional queue]', error));
-    // Publish navigation must be available immediately; delaying it to idle time
-    // made the visible Next button race the optional runtime loader.
-    if (route() === '/publish') start();
+    // Never put publish navigation behind requestIdleCallback or a 900ms fallback.
+    if (r === '/publish') start();
     else if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 1800 });
     else setTimeout(start, 900);
   };
