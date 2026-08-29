@@ -68,7 +68,10 @@
       }
     };
     const start = () => run().catch(error => console.warn('[Bookora optional queue]', error));
-    if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 1800 });
+    // Publish navigation must be available immediately; delaying it to idle time
+    // made the visible Next button race the optional runtime loader.
+    if (route() === '/publish') start();
+    else if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 1800 });
     else setTimeout(start, 900);
   };
   const bootWait = () => {
