@@ -31,7 +31,39 @@
   const selected=()=>{const r=route();if(r==='/')return [...homepage,'./wishlist-permission-fix.js?v=20260830-wishlist-1'];const exact=routeModules[r]||[];if(r==='/publish')return [...exact,...common];const key=Object.keys(routeModules).find(k=>isPrefix(r,k));return [...common,...(key?routeModules[key]:[])];};
   const loaded=new Set();
   const loadOne=src=>{if(loaded.has(src))return Promise.resolve();loaded.add(src);return import(src).catch(error=>console.warn('[Bookora optional runtime skipped]',src,error));};
+
+  // Admin has a global header navigation already. The dashboard also rendered a
+  // second strip containing the same Overview/Books/Moderation/Users/Orders
+  // links. Remove only those duplicates and keep unique admin destinations such
+  // as Categories and Review Submissions.
+  const cleanupAdminDuplicateNav = () => {
+    if (!route().startsWith('/admin')) return;
+    const root = document.querySelector('.admin-dashboard');
+    if (!root) return;
+    const containers = [...root.querySelectorAll('.container > div')];
+    const strip = containers.find(el => {
+      const links = [...el.querySelectorAll('a[href]')];
+      return links.length && links.some(a => /#\/admin\/(overview|moderation|books|users|orders)(?:[?#]|$)/i.test(a.getAttribute('href') || ''));
+    });
+    if (!strip) return;
+    const duplicatePaths = new Set(['/admin','/admin/overview','/admin/moderation','/admin/books','/admin/users','/admin/orders']);
+    strip.querySelectorAll('a[href]').forEach(link => {
+      const raw = String(link.getAttribute('href') || '').split('?')[0].split('#')[1] || '';
+      const path = raw.startsWith('/') ? raw : `/${raw}`;
+      if (duplicatePaths.has(path)) link.remove();
+    });
+    if (!strip.querySelector('a[href]')) strip.remove();
+  };
+
+  let adminNavTimer = null;
+  const startAdminNavCleanup = () => {
+    cleanupAdminDuplicateNav();
+    if (adminNavTimer) return;
+    adminNavTimer = setInterval(cleanupAdminDuplicateNav, 500);
+    setTimeout(() => { if (adminNavTimer) { clearInterval(adminNavTimer); adminNavTimer = null; } }, 10000);
+  };
+
   let generation=0;
-  const loadForRoute=()=>{const myGeneration=++generation;if(!window.__BOOKORA_CORE_BOOTED__)return;const r=route();const items=selected();const startAI=()=>loadOne('./ai-single-trigger-global-cleanup.js?v=20260830-single-ai-v3');const run=async()=>{for(const src of items){if(myGeneration!==generation)return;await loadOne(src);if(r!=='/publish')await new Promise(resolve=>setTimeout(resolve,60));}};const start=async()=>{await startAI();await run();};if(r==='/publish')start();else if('requestIdleCallback'in window)requestIdleCallback(start,{timeout:1200});else setTimeout(start,300);};
+  const loadForRoute=()=>{const myGeneration=++generation;if(!window.__BOOKORA_CORE_BOOTED__)return;const r=route();const items=selected();const startAI=()=>loadOne('./ai-single-trigger-global-cleanup.js?v=20260830-single-ai-v3');const run=async()=>{for(const src of items){if(myGeneration!==generation)return;await loadOne(src);if(r!=='/publish')await new Promise(resolve=>setTimeout(resolve,60));}};const start=async()=>{await startAI();await run();if(r.startsWith('/admin'))startAdminNavCleanup();};if(r==='/publish')start();else if('requestIdleCallback'in window)requestIdleCallback(start,{timeout:1200});else setTimeout(start,300);};
   const bootWait=()=>{if(window.__BOOKORA_CORE_BOOTED__)loadForRoute();else setTimeout(bootWait,250)};bootWait();window.addEventListener('hashchange',()=>setTimeout(loadForRoute,120),{passive:true});
 })();
