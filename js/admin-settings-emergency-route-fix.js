@@ -11,7 +11,6 @@
   let moderationTimer = 0;
   let settingsRunning = false;
   let moderationRunning = false;
-  let patchedApp = false;
   let moderationInitialized = false;
 
   const route = () => (window.location.hash || '#/').split('?')[0];
@@ -38,9 +37,7 @@
   }
 
   async function renderModerationDirectly() {
-    if (!isModeration() || moderationRunning) return;
-    const existing = document.querySelector('.admin-moderation-page');
-    if (existing) return;
+    if (!isModeration() || moderationRunning || document.querySelector('.admin-moderation-page')) return;
     moderationRunning = true;
     try {
       const pageModule = await import('./pages/AdminModerationPage.js?v=20260830-moderation-1');
@@ -50,8 +47,7 @@
       if (!main) { main = document.createElement('main'); main.id = 'main-content'; main.style.cssText = 'flex:1;min-height:60vh'; app.appendChild(main); }
       main.innerHTML = pageModule.renderAdminModerationPage();
       window.__BOOKORA_ADMIN_MODERATION_RECOVERED__ = true;
-      // Never block route completion on Firebase. The page is already usable;
-      // data hydration starts independently and has its own retry/error UI.
+      // Never block route completion on Firebase. Data hydration starts independently.
       setTimeout(() => {
         if (!isModeration() || moderationInitialized) return;
         moderationInitialized = true;
@@ -76,12 +72,10 @@
       return originalLoadPage(path, params);
     };
     app.__BOOKORA_MODERATION_ROUTER_PATCHED__ = true;
-    patchedApp = true;
     return true;
   }
 
   function ensureModerationNav() {
-    if (!document.querySelector('.desktop-nav')) return;
     document.querySelectorAll('a[href="#/admin/books"]').forEach(bookLink => {
       const parent = bookLink.parentElement;
       if (!parent || parent.querySelector('a[data-bookora-moderation-link]')) return;
@@ -103,8 +97,6 @@
     clearTimeout(moderationTimer);
     moderationInitialized = false;
     if (!isModeration()) return;
-    // Give the core router first chance after the route change; direct recovery
-    // is a safety net and will replace a 404/loading shell if necessary.
     moderationTimer = setTimeout(() => {
       if (isModeration() && !document.querySelector('.admin-moderation-page')) renderModerationDirectly();
     }, 700);
@@ -122,12 +114,7 @@
   };
   bootWatch();
 
-  // Small bounded observer: only watches the header for the missing admin link.
-  // It disconnects once the link exists to avoid background work.
-  const observer = new MutationObserver(() => {
-    ensureModerationNav();
-    if (document.querySelector('a[data-bookora-moderation-link]')) observer.disconnect();
-  });
+  // Keep the lightweight observer alive because Header.js is recreated on SPA route changes.
+  const observer = new MutationObserver(() => ensureModerationNav());
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  setTimeout(() => observer.disconnect(), 10000);
 })();
