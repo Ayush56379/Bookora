@@ -1,10 +1,11 @@
 // Bookora AI single-trigger cleanup.
 // Keep the canonical "Ask Bookora AI" assistant and permanently remove
 // the legacy "AI Bookora Support" floating control on every route.
+// IMPORTANT: this cleanup must NEVER initialize/recreate another AI trigger.
 (() => {
   'use strict';
-  if (window.__BOOKORA_AI_GLOBAL_CLEANUP_V1__) return;
-  window.__BOOKORA_AI_GLOBAL_CLEANUP_V1__ = true;
+  if (window.__BOOKORA_AI_GLOBAL_CLEANUP_V2__) return;
+  window.__BOOKORA_AI_GLOBAL_CLEANUP_V2__ = true;
 
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const isLegacy = el => {
@@ -32,18 +33,8 @@
     });
   };
 
-  const ensureCanonicalAI = async () => {
-    try {
-      const { BookoraAI } = await import('./components/BookoraAIEnhanced.js?v=20260830-single-ai');
-      BookoraAI.init();
-    } catch (error) {
-      console.warn('[Bookora AI] canonical assistant skipped:', error);
-    }
-  };
-
   const start = () => {
     removeLegacyFrom(document.body);
-    ensureCanonicalAI();
     const observer = new MutationObserver(records => {
       for (const record of records) {
         for (const node of record.addedNodes || []) removeLegacyFrom(node);
