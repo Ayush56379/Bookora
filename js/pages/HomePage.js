@@ -1,41 +1,64 @@
-// Bookora HomePage — buyer-first marketplace with fast Firebase catalog updates
+// Bookora HomePage — buyer-first marketplace with live Firebase catalog
 import { state } from '../state.js';
 import { renderBookCard } from '../components/BookCard.js';
 import { updateSEO } from '../utils/seo.js';
 
-function newest(books) {
-  return [...books].sort((a,b) => (new Date(b?.createdAt || b?.created_at || b?.publishedAt || 0).getTime() || 0) - (new Date(a?.createdAt || a?.created_at || a?.publishedAt || 0).getTime() || 0));
+function approvedBooks() {
+  return (state.getApprovedBooks?.() || [])
+    .map(book => state.normalizeBook(book))
+    .filter(Boolean)
+    .filter(book => String(book.status || '').toLowerCase() === 'approved');
 }
 
-function fastBooks() {
-  const list = Array.isArray(window.__BOOKORA_FAST_BOOKS__) ? window.__BOOKORA_FAST_BOOKS__ : [];
-  return list.map(book => state.normalizeBook(book)).filter(Boolean).filter(book => book.status === 'approved');
+function createdTime(book) {
+  return Date.parse(book?.createdAt || book?.created_at || book?.publishedAt || book?.published_at || '') || 0;
 }
 
-function catalogBooks() {
-  const live = state.getApprovedBooks();
-  return live.length ? live : fastBooks();
+function purchaseCount(book) {
+  const fields = ['purchaseCount','purchase_count','purchases','salesCount','sales_count','soldCount','sold_count','totalSales','total_sales','ordersCount','orders_count','orderCount','order_count','buyCount','buy_count','unitsSold','units_sold'];
+  return Math.max(0, ...fields.map(field => Number(book?.[field] ?? 0)).filter(Number.isFinite));
 }
 
-function featuredBooks() {
-  const books = catalogBooks();
-  const trending = books.filter(book => book.is_trending);
-  const best = books.filter(book => book.is_bestseller);
-  return (trending.length ? trending : best.length ? best : newest(books)).slice(0, 10);
+function rating(book) {
+  return Math.max(0, Math.min(5, Number(book?.rating ?? book?.averageRating ?? book?.average_rating ?? 0) || 0));
+}
+
+function trendingBooks(books) {
+  const flagged = books.filter(book => book.is_trending === true || book.is_trending === 'true' || book.isTrending === true);
+  const source = flagged.length >= 6 ? flagged : books;
+  return [...source].sort((a, b) => {
+    const score = book => purchaseCount(book) * 20 + rating(book) * 8 + (book.is_bestseller ? 10 : 0) + (book.is_trending ? 25 : 0);
+    return score(b) - score(a) || createdTime(b) - createdTime(a);
+  }).slice(0, 6);
+}
+
+function latestBooks(books) {
+  return [...books].sort((a, b) => createdTime(b) - createdTime(a)).slice(0, 6);
+}
+
+function cardGrid(books) {
+  return books.length
+    ? `<div class="home-catalog-grid">${books.map(book => `<div class="home-catalog-item">${renderBookCard(book)}</div>`).join('')}</div>`
+    : `<div class="home-catalog-loading"><div class="home-catalog-spinner"></div><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div>`;
 }
 
 function renderCatalogContent() {
   const target = document.getElementById('home-live-catalog');
   if (!target) return;
-  const books = featuredBooks();
-  target.innerHTML = books.length
-    ? `<div class="kdp-book-grid">${books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('')}</div>`
-    : `<div class="kdp-loading-state"><div class="kdp-loading-spinner"></div><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div>`;
+  const books = approvedBooks();
+  target.innerHTML = `
+    <section class="home-catalog-block">
+      <div class="home-catalog-head"><div><span class="home-catalog-kicker">BOOKORA STORE</span><h2>Trending eBooks</h2><p>Popular books selected from the live Bookora catalog.</p></div><a href="#/explore" class="home-catalog-view-all">View all <span>→</span></a></div>
+      ${cardGrid(trendingBooks(books))}
+    </section>
+    <section class="home-catalog-block home-all-books-block">
+      <div class="home-catalog-head"><div><span class="home-catalog-kicker">BOOKORA STORE</span><h2>All eBooks</h2><p>Latest approved eBooks from Bookora creators.</p></div><a href="#/explore" class="home-catalog-view-all">View all <span>→</span></a></div>
+      ${cardGrid(latestBooks(books))}
+    </section>`;
 }
 
 export function renderHomePage() {
   updateSEO({ title:'Bookora — Discover. Read. Publish.', description:'Discover, preview and buy verified eBooks on Bookora.' });
-  const books = featuredBooks();
 
   return `<main class="bookora-home-clean">
     <section class="home-hero-video">
@@ -52,14 +75,9 @@ export function renderHomePage() {
       </div>
     </section>
 
-    <section class="kdp-catalog-section">
-      <div class="kdp-catalog-container">
-        <div class="kdp-section-head">
-          <div><span class="kdp-kicker">BOOKORA STORE</span><h2>${books.length ? 'Featured eBooks' : 'Discover eBooks'}</h2><p>Browse books from verified Bookora creators.</p></div>
-          <a href="#/explore" class="kdp-view-all">View all <span>→</span></a>
-        </div>
-        <div class="kdp-tabs"><button class="kdp-tab active" type="button">Featured</button><a class="kdp-tab" href="#/best-sellers">Best Sellers</a><a class="kdp-tab" href="#/new-releases">New Releases</a></div>
-        <div id="home-live-catalog">${books.length ? `<div class="kdp-book-grid">${books.map(book => `<div class="kdp-book-item">${renderBookCard(book)}</div>`).join('')}</div>` : `<div class="kdp-loading-state"><div class="kdp-loading-spinner"></div><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div>`}</div>
+    <section class="home-catalog-shell">
+      <div id="home-live-catalog">
+        <div class="home-catalog-loading"><div class="home-catalog-spinner"></div><strong>Loading eBooks…</strong><span>Connecting to the Bookora catalog</span></div>
       </div>
     </section>
 
@@ -77,15 +95,18 @@ export function initHomePageEvents() {
   window.addEventListener('bookora:catalog-updated', refresh);
   const cleanup = () => { window.removeEventListener('bookora:fast-catalog', refresh); window.removeEventListener('bookora:catalog-updated', refresh); };
   window.addEventListener('hashchange', cleanup, { once:true });
+  requestAnimationFrame(refresh);
 }
 
-if (!document.getElementById('bookora-kdp-home-styles')) {
-  const style=document.createElement('style'); style.id='bookora-kdp-home-styles'; style.textContent=`
+if (!document.getElementById('bookora-home-styles')) {
+  const style=document.createElement('style'); style.id='bookora-home-styles'; style.textContent=`
     .bookora-home-clean{background:var(--bg-page,#fff);color:var(--text-primary,#0f172a);overflow:hidden}
     .home-hero-video{position:relative;min-height:560px;display:flex;align-items:center;overflow:hidden;background:linear-gradient(120deg,#071a43 0%,#12356f 53%,#2458c9 100%);border-radius:0 0 28px 28px;color:#fff}.home-hero-inner{position:relative;z-index:3;width:min(1240px,calc(100% - 40px));margin:auto;display:grid;grid-template-columns:minmax(0,1.12fr) minmax(350px,.88fr);align-items:center;gap:2rem;padding:4.2rem 0}.home-hero-copy{max-width:720px}.home-eyebrow{display:inline-flex;padding:.48rem .8rem;border:1px solid rgba(147,197,253,.45);border-radius:999px;background:rgba(37,99,235,.18);font-size:.72rem;font-weight:850;color:#dbeafe;margin-bottom:1rem}.home-hero-copy h1{font-family:var(--font-display);font-size:clamp(3rem,6vw,5.2rem);line-height:.98;letter-spacing:-.06em;margin:0 0 1.25rem;color:#fff}.home-hero-copy h1 span{color:#60a5fa}.home-hero-copy>p{max-width:680px;font-size:1.05rem;line-height:1.7;color:#e0edff;margin:0 0 1.5rem}.home-hero-actions{display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1.2rem}.home-primary-action,.home-secondary-action{display:inline-flex;align-items:center;justify-content:center;gap:.6rem;padding:.88rem 1.2rem;border-radius:12px;text-decoration:none;font-weight:800}.home-primary-action{background:#2563eb;color:#fff}.home-secondary-action{border:1px solid rgba(191,219,254,.5);background:rgba(255,255,255,.06);color:#fff}.home-search-clean{height:56px;max-width:650px;display:flex;align-items:center;gap:.65rem;padding:.35rem .4rem .35rem 1rem;background:#fff;border-radius:13px;box-shadow:0 14px 40px rgba(2,6,23,.22)}.home-search-clean svg{color:#64748b}.home-search-clean input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#0f172a;font-size:.92rem}.home-search-clean button{border:0;background:#2563eb;color:#fff;border-radius:10px;padding:.7rem 1.1rem;font-weight:800;cursor:pointer}.home-hero-art{height:400px;position:relative;display:flex;justify-content:center;align-items:center}.home-art-card{position:absolute;width:210px;height:295px;border-radius:14px;box-shadow:0 30px 70px rgba(2,6,23,.28)}.home-art-back{transform:translate(70px,-18px) rotate(8deg);background:linear-gradient(150deg,#93c5fd,#dbeafe)}.home-art-mid{transform:translate(-52px,20px) rotate(-8deg);background:linear-gradient(150deg,#60a5fa,#bfdbfe)}.home-art-front{position:absolute;z-index:5;width:210px;height:295px;transform:rotate(1deg);background:linear-gradient(145deg,#172554,#2563eb 70%,#60a5fa);color:#fff;padding:1.7rem;display:flex;flex-direction:column;justify-content:space-between;border-radius:14px;box-shadow:0 35px 75px rgba(2,6,23,.32)}.home-art-label{font-size:.65rem;font-weight:800;letter-spacing:.16em;opacity:.8}.home-art-title{font-family:var(--font-display);font-size:2.3rem;line-height:1.02;font-weight:850}.home-art-line{width:45px;height:3px;background:#93c5fd}.home-art-small{font-size:.68rem;opacity:.78}.home-art-device{position:absolute;z-index:7;width:150px;height:225px;right:20px;top:65px;background:#0b1220;border:8px solid #0b1220;border-radius:26px;box-shadow:0 24px 55px rgba(2,6,23,.38);transform:rotate(7deg)}.home-device-screen{height:100%;border-radius:18px;background:#f8fafc;padding:25px 13px}.home-device-bar{height:9px;width:54px;background:#cbd5e1;border-radius:99px;margin:0 auto 20px}.home-device-line{height:11px;border-radius:8px;background:#dbeafe;margin:13px 0}.home-device-line.w1{width:90%}.home-device-line.w2{width:72%}.home-device-line.w3{width:84%}.home-device-line.w4{width:57%}.home-art-orbit{position:absolute;border:1px solid rgba(191,219,254,.25);border-radius:50%}.home-orbit-one{width:350px;height:350px}.home-orbit-two{width:420px;height:420px}
-    .kdp-catalog-section{background:var(--bg-page,#fff);padding:58px 0 64px}.kdp-catalog-container{width:min(1240px,calc(100% - 40px));margin:auto}.kdp-section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1.5rem;margin-bottom:20px}.kdp-kicker{display:inline-block;color:#2563eb;font-size:.7rem;font-weight:850;letter-spacing:.14em;margin-bottom:.45rem}.kdp-section-head h2{font-family:var(--font-display);font-size:clamp(2rem,3vw,2.65rem);line-height:1.08;letter-spacing:-.04em;margin:0 0 .4rem}.kdp-section-head p{margin:0;color:var(--text-secondary,#64748b);font-size:.92rem}.kdp-view-all{font-size:.86rem;font-weight:800;color:var(--text-primary,#0f172a);text-decoration:none;white-space:nowrap}.kdp-view-all span{color:#2563eb}.kdp-tabs{display:flex;gap:.4rem;align-items:center;border-bottom:1px solid var(--border-subtle,#e2e8f0);margin-bottom:28px}.kdp-tab{border:0;background:transparent;color:var(--text-secondary,#64748b);text-decoration:none;font-size:.84rem;font-weight:800;padding:.72rem .9rem;cursor:pointer;border-bottom:2px solid transparent}.kdp-tab.active{color:#2563eb;border-bottom-color:#2563eb}.kdp-book-grid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:22px!important;width:100%!important;align-items:stretch!important}.kdp-book-item{display:block!important;width:100%!important;min-width:0!important;max-width:none!important}.kdp-book-item>.book-card{width:100%!important;max-width:none!important;min-width:0!important}.kdp-loading-state{min-height:330px;border:1px solid var(--border-subtle,#e2e8f0);border-radius:16px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:.45rem;background:var(--bg-card,#fff);color:var(--text-secondary,#64748b)}.kdp-loading-state strong{color:var(--text-primary,#0f172a);font-size:.95rem}.kdp-loading-state span{font-size:.76rem}.kdp-loading-spinner{width:30px;height:30px;border:3px solid #dbeafe;border-top-color:#2563eb;border-radius:50%;animation:kdpSpin .8s linear infinite;margin-bottom:.35rem}@keyframes kdpSpin{to{transform:rotate(360deg)}}.home-trust-clean{padding:36px 0;border-top:1px solid var(--border-subtle,#e2e8f0);background:var(--bg-muted,#f8fafc)}.home-trust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}.home-trust-item{display:flex;gap:1rem;align-items:flex-start;padding:1rem}.home-trust-item>span{font-family:var(--font-display);font-size:.75rem;font-weight:850;color:#2563eb}.home-trust-item strong{font-size:.9rem}.home-trust-item p{font-size:.76rem;color:var(--text-secondary,#64748b);line-height:1.5;margin:.3rem 0 0}
-    @media(max-width:1100px){.kdp-book-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}.home-hero-inner{grid-template-columns:1fr 360px}.home-hero-copy h1{font-size:clamp(2.8rem,5.5vw,4.4rem)}}
-    @media(max-width:800px){.home-hero-video{min-height:auto}.home-hero-inner{grid-template-columns:1fr;text-align:center;padding:3.5rem 0}.home-hero-copy{margin:auto}.home-hero-copy>p{margin-left:auto;margin-right:auto}.home-hero-actions{justify-content:center}.home-search-clean{margin:auto}.home-hero-art{height:300px;transform:scale(.86)}.kdp-catalog-container{width:min(100% - 28px,1240px)}.kdp-catalog-section{padding:42px 0 48px}.kdp-section-head{align-items:flex-start}.kdp-book-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important}.home-trust-grid{grid-template-columns:1fr}} 
-    @media(max-width:560px){.home-hero-inner{padding:3rem .85rem}.home-hero-copy h1{font-size:clamp(2.5rem,12vw,3.5rem)}.home-hero-copy>p{font-size:.9rem}.home-primary-action,.home-secondary-action{padding:.76rem .85rem;font-size:.76rem}.home-search-clean{height:52px}.home-search-clean button{padding:.62rem .78rem}.home-search-clean input{font-size:.78rem}.home-hero-art{height:245px;transform:scale(.72)}.kdp-section-head{flex-direction:column;gap:.8rem}.kdp-view-all{align-self:flex-start}.kdp-tabs{overflow:auto;white-space:nowrap;margin-bottom:20px}.kdp-tab{padding:.62rem .7rem;font-size:.76rem}.kdp-book-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}.home-trust-clean{padding:24px 0}}
+    .home-catalog-shell{background:var(--bg-page,#fff);padding:58px 0 64px}.home-catalog-block{width:min(1240px,calc(100% - 40px));margin:0 auto 58px}.home-catalog-block:last-child{margin-bottom:0}.home-catalog-head{display:flex;justify-content:space-between;align-items:flex-end;gap:1.5rem;margin-bottom:22px}.home-catalog-kicker{display:inline-block;color:#2563eb;font-size:.7rem;font-weight:850;letter-spacing:.14em;margin-bottom:.45rem}.home-catalog-head h2{font-family:var(--font-display);font-size:clamp(2rem,3vw,2.65rem);line-height:1.08;letter-spacing:-.04em;margin:0 0 .4rem;color:var(--text-primary,#0f172a)}.home-catalog-head p{margin:0;color:var(--text-secondary,#64748b);font-size:.92rem}.home-catalog-view-all{font-size:.86rem;font-weight:800;color:var(--text-primary,#0f172a);text-decoration:none;white-space:nowrap}.home-catalog-view-all span{color:#2563eb}.home-catalog-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;width:100%;align-items:stretch}.home-catalog-item{min-width:0;width:100%}.home-catalog-item>.book-card{width:100%!important;max-width:none!important;min-width:0!important}.home-catalog-loading{min-height:280px;border:1px solid var(--border-subtle,#e2e8f0);border-radius:16px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:.45rem;color:var(--text-secondary,#64748b)}.home-catalog-loading strong{color:var(--text-primary,#0f172a);font-size:.95rem}.home-catalog-loading span{font-size:.76rem}.home-catalog-spinner{width:30px;height:30px;border:3px solid #dbeafe;border-top-color:#2563eb;border-radius:50%;animation:bookoraHomeSpin .8s linear infinite;margin-bottom:.35rem}@keyframes bookoraHomeSpin{to{transform:rotate(360deg)}}
+    .home-trust-clean{padding:36px 0;border-top:1px solid var(--border-subtle,#e2e8f0);background:var(--bg-muted,#f8fafc)}.home-trust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}.home-trust-item{display:flex;gap:1rem;align-items:flex-start;padding:1rem}.home-trust-item>span{font-family:var(--font-display);font-size:.75rem;font-weight:850;color:#2563eb}.home-trust-item strong{font-size:.9rem}.home-trust-item p{font-size:.76rem;color:var(--text-secondary,#64748b);line-height:1.5;margin:.3rem 0 0}
+    @media(max-width:1200px){.home-catalog-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.home-hero-inner{grid-template-columns:1fr 360px}.home-hero-copy h1{font-size:clamp(2.8rem,5.5vw,4.4rem)}}
+    @media(max-width:980px){.home-catalog-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}}
+    @media(max-width:800px){.home-hero-video{min-height:auto}.home-hero-inner{grid-template-columns:1fr;text-align:center;padding:3.5rem 0}.home-hero-copy{margin:auto}.home-hero-copy>p{margin-left:auto;margin-right:auto}.home-hero-actions{justify-content:center}.home-search-clean{margin:auto}.home-hero-art{height:300px;transform:scale(.86)}.home-catalog-shell{padding:42px 0 48px}.home-catalog-block{width:min(100% - 28px,1240px)}.home-catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.home-trust-grid{grid-template-columns:1fr}}
+    @media(max-width:560px){.home-hero-inner{padding:3rem .85rem}.home-hero-copy h1{font-size:clamp(2.5rem,12vw,3.5rem)}.home-hero-copy>p{font-size:.9rem}.home-primary-action,.home-secondary-action{padding:.76rem .85rem;font-size:.76rem}.home-search-clean{height:52px}.home-search-clean button{padding:.62rem .78rem}.home-search-clean input{font-size:.78rem}.home-hero-art{height:245px;transform:scale(.72)}.home-catalog-head{flex-direction:column;align-items:flex-start;gap:.8rem}.home-catalog-view-all{align-self:flex-start}.home-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.home-catalog-head h2{font-size:1.75rem}.home-catalog-head p{font-size:.82rem}.home-trust-clean{padding:24px 0}}
   `; document.head.appendChild(style);
 }
