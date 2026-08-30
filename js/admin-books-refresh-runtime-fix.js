@@ -9,13 +9,15 @@
 
   // Presentation-only enhancement: Firebase cover thumbnails for the existing
   // Admin Books rows. It does not replace the existing books loader or actions.
-  import('./js/admin-books-cover-thumbnails.js?v=20260830-1').catch(error => {
+  import('./admin-books-cover-thumbnails.js?v=20260830-2').catch(error => {
     console.warn('[Bookora Admin Books covers]', error?.message || error);
   });
 
-  // Firebase-first Reject/Remove action handler. It runs before the legacy
-  // delegated handlers and persists the status directly to Firestore.
-  import('./js/admin-books-actions-firebase-first.js?v=20260830-1').catch(error => {
+  // Firebase-first Reject/Remove action handler. This MUST load from /js/...
+  // because this file itself already lives inside /js/. The previous './js/...'
+  // path resolved to /js/js/... and silently failed, leaving the legacy handler
+  // active (which is what caused auth/network-request-failed on click).
+  import('./admin-books-actions-firebase-first.js?v=20260830-2').catch(error => {
     console.warn('[Bookora Admin Books actions]', error?.message || error);
   });
 
@@ -47,8 +49,6 @@
     Promise.resolve(run(true, false)).catch(error => {
       console.error('[Bookora Admin Books refresh]', error);
     }).finally(() => {
-      // route() replaces the button, so only touch the old node when it is
-      // still connected. Never access Event.currentTarget after await.
       if (button.isConnected) {
         button.disabled = false;
         delete button.dataset.bookoraRefreshRunning;
