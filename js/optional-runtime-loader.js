@@ -7,7 +7,7 @@
   const common = ['./auth-logout-ui-permanent-fix.js?v=20260826-1','./backend-token-restore.js?v=20260823-3','./firebase-auth-token-bridge.js?v=20260821-9','./profile-menu-stability.js?v=20260822-1'];
   const routeModules = {
     '/admin/review-submissions':['./admin-review-route-fix.js?v=20260828-1'],
-    '/explore':['./smart-search-runtime.js?v=20260822-1','./explore-category-position-fix.js?v=20260827-1','./catalog-dedupe-runtime.js?v=20260827-1'],
+    '/explore':['./smart-search-runtime.js?v=20260822-1','./catalog-dedupe-runtime.js?v=20260827-1'],
     '/pricing':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/subscription':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/subscription/manage':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
