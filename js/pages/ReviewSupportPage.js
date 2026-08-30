@@ -1,7 +1,7 @@
 import { state } from '../state.js';
 import { apiFetch } from '../config.js';
 
-const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const esc = v => String(v ?? '').replace(/[&<>'\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));
 const api = async (path, options = {}) => {
   const r = await apiFetch(path, options);
   const d = await r.json().catch(() => ({}));
@@ -9,11 +9,32 @@ const api = async (path, options = {}) => {
   return d;
 };
 
-export function renderReviewSupportPage(){return `<section class="rs-page"><div class="rs-hero"><div><span class="rs-kicker">BOOKORA COMMUNITY</span><h1>Review Bookora &amp; Support Us</h1><p>Your feedback helps us improve. If Bookora is useful to you, you can also voluntarily support its continued development.</p></div><div class="rs-hero-icon">♡</div></div><div class="rs-grid"><article class="rs-card"><div class="rs-card-head"><div><span class="rs-mini">YOUR VOICE</span><h2>Share your review</h2></div><span class="rs-star">★</span></div><form id="rs-review-form"><div class="rs-rating">${[1,2,3,4,5].map(n=>`<button type="button" class="rs-star-btn" data-rating="${n}">★</button>`).join('')}</div><input type="hidden" id="rs-rating" value="5"><select id="rs-category"><option value="overall">Overall Experience</option><option value="design">Website Design</option><option value="books">Books</option><option value="buying">Buying Experience</option><option value="performance">Performance</option><option value="suggestion">Suggestion</option><option value="bug">Bug Report</option></select><textarea id="rs-comment" minlength="10" maxlength="1000" required placeholder="Tell us what you liked or what we can improve..."></textarea><label class="rs-check"><input id="rs-public" type="checkbox" checked> Show my name with this review</label><button class="rs-primary" type="submit">Submit Review</button><div id="rs-review-msg" class="rs-msg"></div></form></article><article class="rs-card"><div class="rs-card-head"><div><span class="rs-mini">OPTIONAL SUPPORT</span><h2>Support Bookora</h2></div><span class="rs-heart">♥</span></div><p class="rs-muted">Choose an amount you are comfortable with. This is completely optional and does not affect your account or access.</p><div class="rs-amounts">${[10,25,50,100].map(v=>`<button type="button" data-amount="${v}">₹${v}</button>`).join('')}</div><div class="rs-custom"><span>₹</span><input id="rs-amount" inputmode="decimal" type="number" min="1" max="100000" step="1" placeholder="Custom amount"></div><input id="rs-phone" inputmode="numeric" maxlength="10" autocomplete="tel" placeholder="10-digit phone number for payment"><button class="rs-primary" id="rs-donate-btn" type="button">Continue to Support</button><div id="rs-donate-msg" class="rs-msg"></div><small class="rs-note">Payments are processed securely through Cashfree. Bookora does not collect card or UPI credentials.</small></article></div><section class="rs-reviews-section"><div class="rs-section-title"><div><span class="rs-mini">COMMUNITY FEEDBACK</span><h2>What readers say</h2></div><div id="rs-summary" class="rs-summary">Loading reviews…</div></div><div id="rs-reviews" class="rs-reviews-list"><div class="rs-empty">Loading reviews…</div></div></section></section>`;}
+export function renderReviewSupportPage(){return `<section class="rs-page"><div class="rs-hero"><div><span class="rs-kicker">BOOKORA COMMUNITY</span><h1>Review Bookora &amp; Support Us</h1><p>Your feedback helps us improve. If Bookora is useful to you, you can also voluntarily support its continued development.</p></div><div class="rs-hero-icon">♡</div></div><div class="rs-grid"><article class="rs-card"><div class="rs-card-head"><div><span class="rs-mini">YOUR VOICE</span><h2>Share your review</h2></div><span class="rs-star">★</span></div><form id="rs-review-form"><div class="rs-rating">${[1,2,3,4,5].map(n=>`<button type="button" class="rs-star-btn" data-rating="${n}">★</button>`).join('')}</div><input type="hidden" id="rs-rating" value="5"><select id="rs-category"><option value="overall">Overall Experience</option><option value="design">Website Design</option><option value="books">Books</option><option value="buying">Buying Experience</option><option value="performance">Performance</option><option value="suggestion">Suggestion</option><option value="bug">Bug Report</option></select><textarea id="rs-comment" minlength="10" maxlength="1000" required placeholder="Tell us what you liked or what we can improve..."></textarea><label class="rs-check"><input id="rs-public" type="checkbox" checked> Show my name with this review</label><button class="rs-primary" type="submit">Submit Review</button><div id="rs-review-msg" class="rs-msg"></div></form></article><article class="rs-card"><div class="rs-card-head"><div><span class="rs-mini">OPTIONAL SUPPORT</span><h2>Support Bookora</h2></div><span class="rs-heart">♥</span></div><p class="rs-muted">Choose an amount you are comfortable with. This is completely optional and does not affect your account or access.</p><div class="rs-amounts">${[10,25,50,100].map(v=>`<button type="button" data-amount="${v}">₹${v}</button>`).join('')}</div><div class="rs-custom"><span>₹</span><input id="rs-amount" inputmode="decimal" type="number" min="1" max="100000" step="1" placeholder="Custom amount"></div><input id="rs-phone" inputmode="numeric" maxlength="10" autocomplete="tel" placeholder="10-digit phone number for payment"><button class="rs-primary" id="rs-donate-btn" type="button">Continue to Support</button><div id="rs-donate-msg" class="rs-msg"></div><small class="rs-note">Payments are processed securely through Cashfree. Bookora does not collect card or UPI credentials.</small></article></div><section class="rs-reviews-section" id="rs-reviews-section" style="display:none"><div class="rs-section-title"><div><span class="rs-mini">COMMUNITY FEEDBACK</span><h2>What readers say</h2></div><div id="rs-summary" class="rs-summary"></div></div><div id="rs-reviews" class="rs-reviews-list"></div></section></section>`;}
 
 function setRating(v){const n=Math.max(1,Math.min(5,Number(v)||5));const input=document.getElementById('rs-rating');if(input)input.value=n;document.querySelectorAll('.rs-star-btn').forEach(b=>b.classList.toggle('active',Number(b.dataset.rating)<=n));}
 
-async function loadReviews(){const d=await api('/api/reviews');const list=document.getElementById('rs-reviews');const s=document.getElementById('rs-summary');if(!list||!s)return;const a=Array.isArray(d.reviews)?d.reviews:[];s.textContent=a.length?`★ ${Number(d.averageRating||0).toFixed(1)} · ${a.length} review${a.length===1?'':'s'}`:'No reviews yet';list.innerHTML=a.length?a.map(r=>`<article class="rs-review"><div class="rs-review-top"><strong>${esc(r.displayName||'Bookora Reader')}</strong><span>${'★'.repeat(Math.max(0,Math.min(5,Number(r.rating)||0)))}${'☆'.repeat(Math.max(0,5-Math.min(5,Number(r.rating)||0)))}</span></div><p>${esc(r.comment)}</p><small>${esc(r.category||'overall')} · ${esc(new Date(r.createdAt||Date.now()).toLocaleDateString('en-IN'))}</small></article>`).join(''):'<div class="rs-empty">Be the first to share your experience.</div>';}
+async function loadReviews(){
+  const section=document.getElementById('rs-reviews-section');
+  const list=document.getElementById('rs-reviews');
+  const s=document.getElementById('rs-summary');
+  if(!section||!list||!s)return;
+  try{
+    const d=await api('/api/reviews');
+    const a=Array.isArray(d.reviews)?d.reviews.filter(r=>r && Number(r.rating)>=1 && Number(r.rating)<=5):[];
+    // Do not show a loading/empty review area. The whole community section is
+    // hidden until Firebase-backed API data actually contains at least one review.
+    if(!a.length){section.style.display='none';list.innerHTML='';s.textContent='';return;}
+    s.textContent=`★ ${Number(d.averageRating||0).toFixed(1)} · ${a.length} review${a.length===1?'':'s'}`;
+    list.innerHTML=a.map(r=>`<article class="rs-review"><div class="rs-review-top"><strong>${esc(r.displayName||'Bookora Reader')}</strong><span>${'★'.repeat(Math.max(0,Math.min(5,Number(r.rating)||0)))}${'☆'.repeat(Math.max(0,5-Math.min(5,Number(r.rating)||0)))}</span></div><p>${esc(r.comment)}</p><small>${esc(r.category||'overall')} · ${esc(new Date(r.createdAt||Date.now()).toLocaleDateString('en-IN'))}</small></article>`).join('');
+    section.style.display='block';
+  }catch(error){
+    // Network/API failure must not leave a permanent "Loading reviews…" block.
+    console.warn('[Bookora reviews] Unable to load public reviews:',error);
+    section.style.display='none';
+    list.innerHTML='';
+    s.textContent='';
+  }
+}
 
 async function waitForSupportPayment(orderId){let last={paid:false,status:'PENDING',order_id:orderId};for(let i=0;i<5;i++){last=await api(`/api/support/verify?order_id=${encodeURIComponent(orderId)}`);if(last.paid)return last;if(i<4)await new Promise(r=>setTimeout(r,1500));}return last;}
 
@@ -55,5 +76,5 @@ export async function initReviewSupportEvents(){
     }catch(e){m.textContent=e.message||'Could not submit review.';}
   });
   document.getElementById('rs-donate-btn')?.addEventListener('click',donate);
-  try{await loadReviews();}catch(e){const list=document.getElementById('rs-reviews');if(list)list.innerHTML='<div class="rs-empty">Reviews are temporarily unavailable. Please try again shortly.</div>';}
+  await loadReviews();
 }
