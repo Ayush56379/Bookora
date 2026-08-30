@@ -1,15 +1,15 @@
 // Bookora Explore — optimized production filter bridge.
 // IMPORTANT: no global MutationObserver. Explore must stay lightweight.
-import { state } from './state.js';
 (() => {
   'use strict';
   if (window.__BOOKORA_EXPLORE_PRODUCTION_FILTER_V8__) return;
   window.__BOOKORA_EXPLORE_PRODUCTION_FILTER_V8__ = true;
 
   const page = () => document.querySelector('.explore-page');
+  const getState = () => window.BookoraState || window.state || null;
   const getBooks = () => {
     try {
-      const s = state || window.BookoraState || window.state;
+      const s = getState();
       return typeof s?.getApprovedBooks === 'function' ? s.getApprovedBooks() : [];
     } catch (_) { return []; }
   };
@@ -106,11 +106,9 @@ import { state } from './state.js';
     }, { passive:true }));
   };
 
-  // The Explore page owns the actual filtering/rendering function. The problem
-  // was that Firebase could finish loading after that function's initial call.
+  // Firebase can finish loading after Explore's initial filterAndRender call.
   // Re-fire only the existing lightweight controls so the canonical page renders
-  // the complete catalog immediately after DATA_SYNCED, without adding another
-  // renderer or MutationObserver (which can cause duplicate/laggy rendering).
+  // the complete catalog without adding a second renderer or MutationObserver.
   let renderQueued = false;
   const triggerCanonicalRender = () => {
     const p = page();
@@ -148,15 +146,14 @@ import { state } from './state.js';
   window.addEventListener('bookora:catalog-updated', scheduleRefresh, { passive:true });
   window.addEventListener('bookora:catalog-integrity-fixed', scheduleRefresh, { passive:true });
   window.addEventListener('hashchange', scheduleRefresh, { passive:true });
-  if (typeof state.subscribe === 'function') {
-    state.subscribe(event => {
+  const stateRef = getState();
+  if (typeof stateRef?.subscribe === 'function') {
+    stateRef.subscribe(event => {
       if (event === 'DATA_SYNCED') scheduleRefresh();
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleRefresh, { once:true });
   else scheduleRefresh();
-  // Covers the small startup race where the Explore page initializes before the
-  // optional Firebase/catalog runtimes finish attaching their listeners.
   setTimeout(scheduleRefresh, 0);
   setTimeout(scheduleRefresh, 350);
 })();
