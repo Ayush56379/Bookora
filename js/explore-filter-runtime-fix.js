@@ -5,8 +5,15 @@
   if (window.__BOOKORA_EXPLORE_PRODUCTION_FILTER_V8__) return;
   window.__BOOKORA_EXPLORE_PRODUCTION_FILTER_V8__ = true;
 
+  let moduleState = null;
+  import('./state.js').then(({ state }) => {
+    moduleState = state;
+    window.BookoraState = state;
+    if (document.querySelector('.explore-page')) scheduleRefresh();
+  }).catch(error => console.warn('[Bookora Explore] state bridge skipped:', error));
+
   const page = () => document.querySelector('.explore-page');
-  const getState = () => window.BookoraState || window.state || null;
+  const getState = () => moduleState || window.BookoraState || window.state || null;
   const getBooks = () => {
     try {
       const s = getState();
@@ -106,9 +113,6 @@
     }, { passive:true }));
   };
 
-  // Firebase can finish loading after Explore's initial filterAndRender call.
-  // Re-fire only the existing lightweight controls so the canonical page renders
-  // the complete catalog without adding a second renderer or MutationObserver.
   let renderQueued = false;
   const triggerCanonicalRender = () => {
     const p = page();
@@ -146,12 +150,10 @@
   window.addEventListener('bookora:catalog-updated', scheduleRefresh, { passive:true });
   window.addEventListener('bookora:catalog-integrity-fixed', scheduleRefresh, { passive:true });
   window.addEventListener('hashchange', scheduleRefresh, { passive:true });
-  const stateRef = getState();
-  if (typeof stateRef?.subscribe === 'function') {
-    stateRef.subscribe(event => {
-      if (event === 'DATA_SYNCED') scheduleRefresh();
-    });
-  }
+  const subscribeState = (s) => {
+    if (typeof s?.subscribe === 'function') s.subscribe(event => { if (event === 'DATA_SYNCED') scheduleRefresh(); });
+  };
+  subscribeState(moduleState);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleRefresh, { once:true });
   else scheduleRefresh();
   setTimeout(scheduleRefresh, 0);
