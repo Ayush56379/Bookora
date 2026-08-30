@@ -13,64 +13,60 @@
 .publish-wizard-progress-item.is-active .pwi-number{background:#4f46e5;color:#fff}
 .publish-wizard-progress-item.is-complete{border-color:#c7d2fe;color:#3730a3}
 .publish-wizard-progress-item.is-complete .pwi-number{background:#e0e7ff;color:#4338ca}
-.publish-wizard-progress-item.is-locked{cursor:default}
-.publish-wizard-status{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;font-size:13px;color:#64748b}
-.publish-wizard-status strong{color:#0f172a}
 #publish-wizard-form{padding:clamp(20px,4vw,40px)}
 #publish-wizard-form .wizard-section{animation:publishWizardIn .22s ease both}
 #publish-wizard-form .wizard-section>h3{margin:0 0 22px;color:#0f172a;font-size:clamp(20px,3vw,26px);font-weight:800;letter-spacing:-.02em}
 #publish-wizard-form label{display:block;margin:0 0 7px;color:#334155;font-size:13px;font-weight:700}
 #publish-wizard-form input:not([type=file]),#publish-wizard-form select,#publish-wizard-form textarea{box-sizing:border-box;width:100%;min-height:48px;border:1px solid #d8dee9!important;border-radius:12px!important;background:#fff!important;color:#0f172a!important;padding:12px 14px!important;font:500 14px Inter,system-ui,sans-serif!important;outline:none;box-shadow:0 1px 2px rgba(15,23,42,.02);transition:border-color .18s,box-shadow .18s,background .18s}
 #publish-wizard-form textarea{min-height:132px;resize:vertical;line-height:1.55}
-#publish-wizard-form input:not([type=file]):focus,#publish-wizard-form select:focus,#publish-wizard-form textarea:focus{border-color:#818cf8!important;box-shadow:0 0 0 4px rgba(99,102,241,.10)!important}
 #publish-wizard-form input::placeholder,#publish-wizard-form textarea::placeholder{color:#a1aab8}
 #publish-wizard-form .btn{min-height:44px;border-radius:11px!important;font-weight:750;padding:10px 16px!important;transition:transform .15s,box-shadow .15s,opacity .15s}
-#publish-wizard-form .btn-primary{background:#4f46e5!important;border-color:#4f46e5!important;box-shadow:0 8px 18px rgba(79,70,229,.18)}
-#publish-wizard-form .btn-primary:hover{transform:translateY(-1px);box-shadow:0 11px 22px rgba(79,70,229,.22)}
+#publish-wizard-form .btn-primary{background:#4f46e5!important;border-color:#4f46e5!important;color:#fff!important;box-shadow:0 8px 18px rgba(79,70,229,.18)}
 #publish-wizard-form .btn-secondary{background:#fff!important;color:#334155!important;border:1px solid #d8dee9!important}
-#publish-wizard-form .btn-secondary:hover{background:#f8fafc!important}
 #publish-wizard-form .next-step-btn,#publish-wizard-form #submit-pub-btn{min-width:150px}
 #publish-wizard-form .prev-step-btn{min-width:105px}
-#publish-wizard-form .publish-upload-card{border:1.5px dashed #cbd5e1!important;background:#fafbff!important;border-radius:18px!important;padding:clamp(22px,4vw,32px)!important;transition:.2s}
-#publish-wizard-form .publish-upload-card:hover{border-color:#818cf8!important;background:#f8faff!important}
-#publish-wizard-form .publish-upload-icon{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;margin:0 auto 12px;background:#eef2ff;font-size:25px}
+
+/* Step 2 upload layout: spacious, readable, and never lets button text disappear */
+#publish-wizard-form .publish-upload-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px!important;align-items:stretch!important}
+#publish-wizard-form .publish-upload-panel{min-width:0;border:1px solid #e5e7eb!important;border-radius:18px!important;background:#fff!important;padding:18px!important;box-shadow:0 5px 18px rgba(15,23,42,.04)!important}
+#publish-wizard-form .publish-upload-card{border:2px dashed #cbd5e1!important;background:#fafbff!important;border-radius:16px!important;padding:28px 20px!important;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;transition:border-color .2s,background .2s}
+#publish-wizard-form .publish-upload-card:hover{border-color:#94a3b8!important;background:#f8fafc!important}
+#publish-wizard-form .publish-upload-icon{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;margin:0 auto 12px;background:#f1f5f9;font-size:25px}
+#publish-wizard-form .publish-upload-card .btn{display:inline-flex!important;align-items:center;justify-content:center;white-space:nowrap;min-width:130px;margin:12px 0!important;background:#f1f5f9!important;border:1px solid #cbd5e1!important;color:#1e293b!important;box-shadow:none!important}
+#publish-wizard-form .publish-upload-card .btn:hover{background:#e2e8f0!important;transform:none}
+#publish-wizard-form .publish-upload-file{margin-top:14px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc;width:100%;box-sizing:border-box}
+#publish-wizard-form .publish-upload-file-name{overflow-wrap:anywhere;word-break:break-word;font-weight:700;color:#1e293b}
+#publish-wizard-form .publish-upload-note{margin-top:12px;color:#64748b;font-size:12px;line-height:1.5;text-align:center}
 #publish-wizard-form .publish-action-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px}
 #publish-wizard-form .publish-action-row>div{display:flex;gap:10px;align-items:center}
 #publish-wizard-form .publish-preview{background:linear-gradient(145deg,#f8fafc,#f5f3ff)!important;border:1px solid #e5e7eb;border-radius:18px!important;padding:24px!important}
 #publish-wizard-form .publish-preview-cover{width:90px;height:120px;border-radius:10px;background:#e2e8f0;display:grid;place-items:center;color:#94a3b8;font-size:28px}
 @keyframes publishWizardIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 
-/* Lightweight top step summary for the current publish form. Visual CSS only. */
+/* Current step summary */
 #publish-wizard-form::before{content:"Step 1 of 5  •  Book Information";display:block;margin:-4px 0 18px;padding:13px 16px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;color:#3730a3;font-size:14px;font-weight:800;line-height:1.4}
 #publish-wizard-form::after{content:"① Book Information   →   ② Cover & Files   →   ③ Pricing   →   ④ Preview   →   ⑤ Submit";display:block;position:relative;margin:-2px 0 28px;padding:13px 14px;border-bottom:1px solid #edf0f6;color:#64748b;font-size:12px;font-weight:700;line-height:1.6;text-align:center;overflow-wrap:anywhere}
-#publish-wizard-form:has(#step-2[style*="display: block"])::before{content:"Step 2 of 5  •  Cover & Files";color:#3730a3}
-#publish-wizard-form:has(#step-3[style*="display: block"])::before{content:"Step 3 of 5  •  Pricing";color:#3730a3}
-#publish-wizard-form:has(#step-4[style*="display: block"])::before{content:"Step 4 of 5  •  Preview";color:#3730a3}
-#publish-wizard-form:has(#step-5[style*="display: block"])::before{content:"Step 5 of 5  •  Submit for Admin Review";color:#3730a3}
+#publish-wizard-form:has(#step-2[style*="display: block"])::before{content:"Step 2 of 5  •  Cover & Files"}
+#publish-wizard-form:has(#step-3[style*="display: block"])::before{content:"Step 3 of 5  •  Pricing"}
+#publish-wizard-form:has(#step-4[style*="display: block"])::before{content:"Step 4 of 5  •  Preview"}
+#publish-wizard-form:has(#step-5[style*="display: block"])::before{content:"Step 5 of 5  •  Submit for Admin Review"}
 
 @media (max-width:760px){
-  #publish-wizard-shell{padding:12px 10px 40px}
-  #publish-wizard-card{border-radius:18px}
-  #publish-wizard-header{padding:20px 16px 18px}
-  #publish-wizard-form{padding:20px 16px 24px}
-  .publish-wizard-progress{display:flex;overflow-x:auto;gap:7px;padding-bottom:3px;scrollbar-width:none}
-  .publish-wizard-progress::-webkit-scrollbar{display:none}
-  .publish-wizard-progress-item{flex:0 0 88px;padding:9px 6px}
-  .publish-wizard-status{font-size:12px}
-  #publish-wizard-form .publish-action-row{flex-direction:column-reverse;align-items:stretch}
-  #publish-wizard-form .publish-action-row>div{width:100%;display:grid;grid-template-columns:1fr 1.35fr}
-  #publish-wizard-form .publish-action-row .btn{width:100%;min-width:0}
-  #publish-wizard-form .prev-step-btn{min-width:0}
-  #publish-wizard-form .next-step-btn,#publish-wizard-form #submit-pub-btn{min-width:0}
-  #publish-wizard-form::after{text-align:left;font-size:11px;padding:12px 10px;margin-bottom:22px}
+ #publish-wizard-shell{padding:12px 10px 40px}#publish-wizard-card{border-radius:18px}#publish-wizard-header{padding:20px 16px 18px}#publish-wizard-form{padding:20px 16px 24px}
+ .publish-wizard-progress{display:flex;overflow-x:auto;gap:7px;padding-bottom:3px;scrollbar-width:none}.publish-wizard-progress::-webkit-scrollbar{display:none}.publish-wizard-progress-item{flex:0 0 88px;padding:9px 6px}
+ .publish-wizard-status{font-size:12px}
+ #publish-wizard-form .publish-upload-grid{grid-template-columns:1fr!important;gap:16px!important}
+ #publish-wizard-form .publish-upload-panel{padding:14px!important}
+ #publish-wizard-form .publish-upload-card{min-height:205px;padding:24px 14px!important}
+ #publish-wizard-form .publish-action-row{flex-direction:column-reverse;align-items:stretch}
+ #publish-wizard-form .publish-action-row>div{width:100%;display:grid;grid-template-columns:1fr 1.35fr}
+ #publish-wizard-form .publish-action-row .btn{width:100%;min-width:0}
+ #publish-wizard-form .prev-step-btn,#publish-wizard-form .next-step-btn,#publish-wizard-form #submit-pub-btn{min-width:0}
+ #publish-wizard-form::after{text-align:left;font-size:11px;padding:12px 10px;margin-bottom:22px}
 }
 @media (max-width:420px){
-  .publish-wizard-title{font-size:24px}
-  .publish-wizard-progress-item{flex-basis:78px}
-  .publish-wizard-progress-item .pwi-label{font-size:10px}
-  #publish-wizard-form{padding:18px 13px 22px}
-  #publish-wizard-form .wizard-section>h3{font-size:20px;margin-bottom:18px}
-  #publish-wizard-form::before{font-size:12px;padding:11px 12px}
-  #publish-wizard-form::after{font-size:10px;line-height:1.8}
-  #publish-wizard-form .publish-action-row>div{grid-template-columns:1fr}
+ .publish-wizard-title{font-size:24px}.publish-wizard-progress-item{flex-basis:78px}.publish-wizard-progress-item .pwi-label{font-size:10px}
+ #publish-wizard-form{padding:18px 13px 22px}#publish-wizard-form .wizard-section>h3{font-size:20px;margin-bottom:18px}
+ #publish-wizard-form::before{font-size:12px;padding:11px 12px}#publish-wizard-form::after{font-size:10px;line-height:1.8}
+ #publish-wizard-form .publish-action-row>div{grid-template-columns:1fr}
 }
