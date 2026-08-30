@@ -1,8 +1,24 @@
-/* Bookora Publish Wizard — visual-only step indicator. No runtime/network work. */
-.publish-wizard-steps{display:block;position:relative;margin:0 0 30px;padding:0 0 6px}
-#publish-wizard-form::before{content:"Publish eBook  •  5 Steps";display:block;margin:0 0 18px;padding:0 0 14px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:800;letter-spacing:.01em}
-#publish-wizard-form::after{content:"① Book Information     ─────     ② Cover & Files     ─────     ③ Pricing     ─────     ④ Preview     ─────     ⑤ Submit";display:block;box-sizing:border-box;width:100%;padding:15px 18px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;color:#64748b;font-size:13px;font-weight:700;line-height:1.45;text-align:center;white-space:normal;word-spacing:1px}
+/* Bookora Publish Wizard — unified step UI, visual only */
 #publish-wizard-form{position:relative}
-@media (max-width:900px){#publish-wizard-form::after{font-size:12px;padding:13px 12px;line-height:1.8}}
-@media (max-width:600px){#publish-wizard-form::before{font-size:13px;margin-bottom:12px;padding-bottom:12px}#publish-wizard-form::after{content:"① Information   •   ② Files   •   ③ Pricing   •   ④ Preview   •   ⑤ Submit";overflow-wrap:anywhere;text-align:left;font-size:11px;padding:12px 13px;line-height:1.9}}
-@media (max-width:380px){#publish-wizard-form::after{font-size:10px}}
+#publish-wizard-form::before{content:"Step 1 of 5  •  Book Information";display:block;margin:-4px 0 14px;padding:12px 16px;border:1px solid #dfe4ee;border-radius:14px;background:#f8faff;color:#3730a3;font-size:14px;font-weight:800;line-height:1.4}
+#publish-wizard-form::after{content:"① Book Information   →   ② Cover & Files   →   ③ Pricing & Details   →   ④ Preview   →   ⑤ Submit";display:block;margin:0 0 28px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:15px;background:#fff;color:#64748b;font-size:12px;font-weight:750;line-height:1.5;text-align:center;box-shadow:0 3px 12px rgba(15,23,42,.035)}
+#publish-wizard-form:has(#step-2[style*="display: block"])::before{content:"Step 2 of 5  •  Cover & Files"}
+#publish-wizard-form:has(#step-3[style*="display: block"])::before{content:"Step 3 of 5  •  Pricing & Details"}
+#publish-wizard-form:has(#step-4[style*="display: block"])::before{content:"Step 4 of 5  •  Preview"}
+#publish-wizard-form:has(#step-5[style*="display: block"])::before{content:"Step 5 of 5  •  Submit"}
+#publish-wizard-form .wizard-section>h3{font-size:25px;font-weight:800;letter-spacing:-.02em;color:#0f172a;margin:0 0 22px}
+#publish-wizard-form .wizard-section{animation:bookoraStepIn .16s ease both}
+#publish-wizard-form input:not([type=file]),#publish-wizard-form select,#publish-wizard-form textarea{border:1px solid #d8dee9!important;border-radius:12px!important;background:#fff!important;box-sizing:border-box;min-height:48px;transition:border-color .15s,box-shadow .15s}
+#publish-wizard-form input:not([type=file]):focus,#publish-wizard-form select:focus,#publish-wizard-form textarea:focus{border-color:#818cf8!important;box-shadow:0 0 0 4px rgba(99,102,241,.09)!important;outline:none}
+#publish-wizard-form .btn{border-radius:11px!important;min-height:44px;font-weight:750}
+#publish-wizard-form .btn-primary{background:#4f46e5!important;border-color:#4f46e5!important}
+#publish-wizard-form .publish-upload-card{border:1.5px dashed #c7d2fe!important;border-radius:18px!important;background:linear-gradient(180deg,#fcfcff,#fff)!important;min-height:245px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;box-sizing:border-box}
+#publish-wizard-form .publish-upload-card:hover{border-color:#818cf8!important;background:#f8faff!important}
+#publish-wizard-form .publish-upload-icon{width:54px;height:54px;border-radius:16px;background:#eef2ff;display:grid;place-items:center;margin:0 auto 12px}
+#publish-wizard-form .publish-action-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:26px;padding-top:20px;border-top:1px solid #edf0f5}
+#publish-wizard-form .publish-action-row>div{display:flex;gap:10px;align-items:center}
+@keyframes bookoraStepIn{from{opacity:.65;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media(max-width:900px){#publish-wizard-form::after{font-size:11px;line-height:1.8}}
+@media(max-width:760px){#publish-wizard-form::before{font-size:13px}#publish-wizard-form::after{overflow-x:auto;white-space:normal;text-align:left;padding:12px 13px}#publish-wizard-form .publish-upload-card{min-height:220px;padding:22px!important}#publish-wizard-form .publish-action-row{flex-direction:column-reverse;align-items:stretch}#publish-wizard-form .publish-action-row>div{width:100%;display:grid;grid-template-columns:1fr 1.35fr}#publish-wizard-form .publish-action-row .btn{width:100%;min-width:0}}
+@media(max-width:560px){#publish-wizard-form #step-2>div[style*="display:grid"]{grid-template-columns:1fr!important}}
+@media(max-width:420px){#publish-wizard-form::before{font-size:12px;padding:11px 12px}#publish-wizard-form::after{font-size:10px;line-height:1.85}#publish-wizard-form .publish-action-row>div{grid-template-columns:1fr}}
