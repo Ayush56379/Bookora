@@ -16,6 +16,8 @@
       .book-card[data-book-id]:hover{transform:translateY(-5px)}
       .book-card .book-wishlist-btn{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       .book-card .book-wishlist-btn:disabled{pointer-events:none}
+      .book-card .book-wishlist-btn.active{background:#E11D48!important;border-color:#E11D48!important;color:#fff!important;box-shadow:0 5px 14px rgba(225,29,72,.28)!important}
+      .book-card .book-wishlist-btn.active:hover{background:#BE123C!important;border-color:#BE123C!important;color:#fff!important}
     `;
     document.head.appendChild(style);
   };
@@ -45,8 +47,6 @@
 
   const getTarget = event => event.target instanceof Element ? event.target : event.target?.parentElement || null;
 
-  // Capture phase is intentional: this runs before legacy document-level click
-  // handlers and before the old BookCard bridge can consume the event.
   document.addEventListener('click', async event => {
     const target = getTarget(event);
     const card = target?.closest('.book-card[data-book-id]');
@@ -62,6 +62,9 @@
       if (!bookId || wishlistButton.disabled) return;
 
       try {
+        // Always load the persistence bridge first. This prevents a fast click
+        // immediately after page load from reaching the older state implementation.
+        await import('./wishlist-permission-fix.js?v=20260830-wishlist-1');
         const { state } = await import('./state.js');
         if (!state.isAuthenticated) {
           const returnTo = window.location.hash || '#/';
