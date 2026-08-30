@@ -1,5 +1,9 @@
 // Bookora Safe SPA Boot Router
 import { state } from './state.js';
+// Install the backend-backed wishlist bridge before any page/card can handle a
+// heart click. The bridge keeps wishlist persistence on the authenticated
+// backend/Firestore path instead of browser-side Firestore writes.
+import './wishlist-permission-fix.js?v=20260830-firestore-1';
 
 const safeImport = async (path) => {
   try { return await import(path); }
