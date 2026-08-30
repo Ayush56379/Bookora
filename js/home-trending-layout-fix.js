@@ -1,5 +1,6 @@
-// Bookora homepage: Firebase-backed Trending + All + Continue eBooks sections.
-// This module only touches the public homepage catalog and leaves the rest of the app unchanged.
+// Bookora homepage: permanently replace the old Featured catalog with
+// Firebase-backed Trending + All eBooks sections. This module only touches
+// the public homepage catalog and leaves the rest of the app unchanged.
 import { state } from './state.js';
 import { renderBookCard } from './components/BookCard.js';
 
@@ -27,8 +28,8 @@ function purchaseCount(book) {
 function reviewRating(book) {
   const direct = Number(book?.rating ?? book?.averageRating ?? book?.average_rating ?? 0);
   if (direct > 0) return direct;
-  const ids = new Set([String(book?.id || ''), String(book?.bookId || ''), String(book?.book_id || '')].filter(Boolean));
-  const reviews = Array.isArray(state.reviews) ? state.reviews.filter(r => ids.has(String(r?.bookId || r?.book_id || r?.bookoraBookId || r?.bookora_book_id || ''))) : [];
+  const id = String(book?.id || book?.bookId || book?.book_id || '');
+  const reviews = Array.isArray(state.reviews) ? state.reviews.filter(r => String(r?.bookId || r?.book_id || '') === id) : [];
   const ratings = reviews.map(r => Number(r?.rating ?? r?.stars ?? 0)).filter(r => r >= 1 && r <= 5);
   return ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
 }
@@ -43,23 +44,20 @@ function trendingBooks(books) {
 }
 
 function allBooks(books) {
-  return [...books].sort((a, b) => timestamp(b) - timestamp(a)).slice(0, 6);
+  return [...books].sort((a, b) => timestamp(b) - timestamp(a)).slice(0, 60);
 }
 
 function continueBooks(books) {
-  const libraryIds = state.library instanceof Set ? [...state.library].map(String) : Array.isArray(state.library) ? state.library.map(String) : [];
-  if (!libraryIds.length) return [];
-  const idSet = new Set(libraryIds);
-  return books.filter(book => idSet.has(String(book?.id || book?.bookId || book?.book_id || ''))).slice(0, 6);
+  const library = state.library instanceof Set ? state.library : new Set();
+  return books.filter(book => library.has(String(book.id || book.bookId || book.book_id || ''))).slice(0, 6);
 }
 
 function cards(books) {
   return books.map(book => `<div class="bookora-home-catalog-item">${renderBookCard(book)}</div>`).join('');
 }
 
-function sectionMarkup(title, description, books, options = {}) {
-  const emptyMessage = options.emptyMessage || 'No eBooks available yet.';
-  return `<section class="bookora-home-catalog-block"><div class="bookora-home-catalog-head"><div><span class="bookora-home-kicker">BOOKORA STORE</span><h2>${title}</h2><p>${description}</p></div></div><div class="bookora-home-grid">${books.length ? cards(books) : `<div class="bookora-home-empty"><strong>${emptyMessage}</strong></div>`}</div></section>`;
+function sectionMarkup(title, description, books, emptyText = 'No eBooks available yet.') {
+  return `<section class="bookora-home-catalog-block"><div class="bookora-home-catalog-head"><div><span class="bookora-home-kicker">BOOKORA STORE</span><h2>${title}</h2><p>${description}</p></div></div><div class="bookora-home-grid">${books.length ? cards(books) : `<div class="bookora-home-empty"><strong>${emptyText}</strong><span>Bookora catalog updates automatically.</span></div>`}</div></section>`;
 }
 
 function addStyles() {
@@ -77,8 +75,9 @@ function addStyles() {
     .bookora-home-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:18px;width:100%;align-items:stretch}
     .bookora-home-catalog-item{min-width:0;width:100%}
     .bookora-home-catalog-item>.book-card{width:100%!important;max-width:none!important;min-width:0!important}
-    .bookora-home-empty{grid-column:1/-1;min-height:120px;border:1px solid var(--border-subtle,#e2e8f0);border-radius:16px;display:flex;align-items:center;justify-content:center;padding:24px;color:var(--text-secondary,#64748b);text-align:center}
-    .bookora-home-empty strong{color:var(--text-secondary,#64748b);font-size:.9rem}
+    .bookora-home-empty{grid-column:1/-1;min-height:180px;border:1px solid var(--border-subtle,#e2e8f0);border-radius:16px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:.45rem;color:var(--text-secondary,#64748b)}
+    .bookora-home-empty strong{color:var(--text-primary,#0f172a);font-size:.95rem}
+    .bookora-home-empty span{font-size:.76rem}
     @media(max-width:1200px){.bookora-home-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
     @media(max-width:980px){.bookora-home-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}}
     @media(max-width:700px){#${SECTION_ID}{padding:42px 0 52px}.bookora-home-catalog-block{width:min(100% - 28px,1240px);margin-bottom:44px}.bookora-home-catalog-head{align-items:flex-start}.bookora-home-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}}
@@ -99,13 +98,13 @@ function render() {
   const trending = trendingBooks(books);
   const all = allBooks(books);
   const continued = continueBooks(books);
-  const key = `${books.length}:${trending.map(b => b.id).join(',')}:${all.map(b => b.id).join(',')}:${continued.map(b => b.id).join(',')}:${state.isAuthenticated ? 'auth' : 'guest'}`;
+  const key = `${books.length}:${trending.map(b => b.id).join(',')}:${all.map(b => b.id).join(',')}:${continued.map(b => b.id).join(',')}`;
   if (document.getElementById(SECTION_ID) && key === lastRenderKey) return;
   lastRenderKey = key;
   addStyles();
   const replacement = document.createElement('div');
   replacement.id = SECTION_ID;
-  replacement.innerHTML = `${sectionMarkup('Trending eBooks','Popular books selected from the live Bookora catalog.',trending)}${sectionMarkup('All eBooks','Browse the latest approved eBooks from Bookora creators.',all)}${sectionMarkup('Continue eBooks','Pick up where you left off from your library.',continued,{emptyMessage: state.isAuthenticated ? 'Your purchased eBooks will appear here.' : 'Sign in to continue your eBooks.'})}`;
+  replacement.innerHTML = `${sectionMarkup('Trending eBooks','Popular books selected from the live Bookora catalog.',trending)}${sectionMarkup('All eBooks','Browse the latest approved eBooks from Bookora creators.',all)}${sectionMarkup('Continue eBooks','Pick up your purchased eBooks from where you left off.',continued,'Your purchased eBooks will appear here.')}`;
   old.replaceWith(replacement);
 }
 
@@ -119,8 +118,7 @@ function init() {
   window.addEventListener('hashchange', () => { lastRenderKey = ''; scheduleRender(); });
   window.addEventListener('bookora:catalog-updated', () => { lastRenderKey = ''; scheduleRender(); });
   window.addEventListener('bookora:fast-catalog', () => { lastRenderKey = ''; scheduleRender(); });
-  window.addEventListener('bookora:auth-state-changed', () => { lastRenderKey = ''; scheduleRender(); });
-  window.addEventListener('bookora:data-synced', () => { lastRenderKey = ''; scheduleRender(); });
+  window.addEventListener('bookora:wishlist-updated', () => { lastRenderKey = ''; scheduleRender(); });
   observer = new MutationObserver(() => scheduleRender());
   observer.observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
   scheduleRender();
