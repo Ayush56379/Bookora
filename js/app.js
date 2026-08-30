@@ -66,19 +66,12 @@ class App {
         if (event === 'DATA_SYNCED') window.dispatchEvent(new CustomEvent('bookora:catalog-updated'));
         return;
       }
-
-      // DATA_SYNCED is never a UI/navigation event. Do not even rebuild the
-      // header: replacing it can destroy a menu/input handler mid-interaction.
       if (event === 'DATA_SYNCED') {
         window.dispatchEvent(new CustomEvent('bookora:catalog-updated'));
         return;
       }
-
       this.updateHeader();
-
-      if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) {
-        this.route(true, false);
-      }
+      if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) this.route(true, false);
     });
 
     document.addEventListener('click', (e) => {
@@ -247,7 +240,9 @@ class App {
       else if (path === '/publish/external') { pageHtml = renderPublishExternalPage(); initCallback = () => initPublishExternalEvents(); }
       else if (path === '/seller/apply') { pageHtml = renderSellerApplyPage(); initCallback = () => initSellerApplyEvents(); }
       else if (path === '/seller/settings') { pageHtml = renderSellerSettingsPage(); initCallback = () => initSellerSettingsEvents(); }
-      else if (path === '/admin' || path === '/admin/overview') { pageHtml = renderAdminDashboardPage(); initCallback = () => initAdminDashboardEvents(); }
+      else if (path === '/admin' || path === '/admin/overview') { pageHtml = renderAdminDashboardPage('overview'); initCallback = () => initAdminDashboardEvents(); }
+      else if (path === '/admin/moderation') { pageHtml = renderAdminDashboardPage('moderation'); initCallback = () => initAdminDashboardEvents(); }
+      else if (path === '/admin/categories') { pageHtml = renderAdminDashboardPage('categories'); initCallback = () => initAdminDashboardEvents(); }
       else if (path === '/admin/users') { pageHtml = renderAdminUsersPage(); initCallback = () => initAdminUsersEvents(); }
       else if (path === '/admin/sellers') { pageHtml = renderAdminSellersPage(); initCallback = () => initAdminSellersEvents(); }
       else if (path === '/admin/books') { pageHtml = renderAdminBooksPage(); initCallback = () => initAdminBooksEvents(); }
@@ -265,8 +260,6 @@ class App {
       this.lastRenderedPath = path;
     } catch (error) {
       console.error('[Bookora] Route render failed:', error);
-      // Never leave the router locked after a render exception. Keep a usable
-      // recovery surface instead of a blank/frozen application.
       try {
         this.root = document.getElementById('app') || document.body;
         this.root.innerHTML = `<main style="min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,sans-serif"><div><h2>Bookora is recovering…</h2><p style="color:#64748B">The page could not be rendered. Please try the action again.</p><button id="bookora-route-retry" type="button" style="padding:10px 18px;border:0;border-radius:10px;cursor:pointer;background:#2563EB;color:#fff;font-weight:700">Retry</button></div></main>`;
