@@ -27,6 +27,11 @@ html,body{max-width:100%;overflow-x:hidden}
 #app #bookora-home-all-books .kdp-catalog-container{width:100%!important;max-width:none!important;box-sizing:border-box!important;margin-inline:auto!important}
 #app #bookora-home-all-books .kdp-section-head{width:100%!important;min-width:0!important;box-sizing:border-box!important}
 
+/* LEGACY AI CONTROL: hide/remove the old "AI Bookora Support" widget everywhere.
+   These selectors are deliberately scoped to the known legacy wrappers so the
+   canonical #bookora-ai-root / Ask Bookora AI control is never affected. */
+[data-bookora-ai-support],.bookora-ai-support,.ai-support-button,.ai-support,.bookora-support-button{display:none!important;visibility:hidden!important;pointer-events:none!important}
+
 @media (max-width:1200px){#app .kdp-book-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:18px!important}}
 @media (max-width:900px){#app .kdp-book-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:14px!important}}
 @media (max-width:600px){#app .kdp-book-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}#app .book-card-info{padding:.68rem .7rem!important}}
