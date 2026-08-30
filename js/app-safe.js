@@ -17,54 +17,22 @@ const fallbackShell = () => `
   </header>`;
 
 class SafeApp {
-  constructor() {
-    this.root = document.getElementById('app') || document.body;
-    this.routeRunning = false;
-    this.pendingRoute = null;
-    this.lastHash = '';
-    this.booted = false;
-    window.__BOOKORA_APP_INSTANCE__ = this;
-    this.init();
-  }
-
-  currentPath() {
-    const hash = window.location.hash || '#/';
-    return hash.split('?')[0].replace(/^#/, '') || '/';
-  }
-
-  async shell() {
-    let header = '', footer = '';
-    try {
-      const h = await safeImport('./components/Header.js');
-      header = `<div id="header-container">${typeof h.renderHeader === 'function' ? h.renderHeader() : ''}</div>`;
-    } catch (_) { header = fallbackShell(); }
-    try {
-      const f = await safeImport('./components/Footer.js?v=20260829-newsletter-live-2');
-      footer = `<div id="footer-container">${typeof f.renderFooter === 'function' ? f.renderFooter() : ''}</div>`;
-    } catch (_) {}
-    return { header, footer };
-  }
-
-  async loadPage(path, params) {
-    if (path === '/' || path === '') { const m = await safeImport('./pages/HomePage.js'); return { html:m.renderHomePage(), init:m.initHomePageEvents }; }
-    if (path === '/explore') { const m = await safeImport('./pages/ExplorePage.js?v=20260827-v2'); return { html:m.renderExplorePage(), init:m.initExploreEvents }; }
-    if (path === '/search') { const m = await safeImport('./pages/SearchPage.js'); return { html:m.renderSearchPage(params.get('q') || '') }; }
-    if (path === '/categories') { const m = await safeImport('./pages/PublicDiscoveryPages.js'); return { html:m.renderCategoriesDirectoryPage() }; }
-    if (path.startsWith('/category/')) { const m = await safeImport('./pages/CategoryPage.js'); return { html:m.renderCategoryPage(path.replace('/category/','')) }; }
-    if (path.startsWith('/book/')) { const m = await safeImport('./pages/BookDetailPage.js'); const slug=path.replace('/book/',''); return { html:m.renderBookDetailPage(slug), init:()=>m.initBookDetailEvents(slug) }; }
-    if (path.startsWith('/sample/')) { const m=await safeImport('./pages/FreeSamplePage.js'); const slug=decodeURIComponent(path.replace('/sample/','')); const book=state.getBookBySlug(slug); if(!book)return{html:`<main class="container" style="padding:80px 20px;text-align:center"><h2>Sample is loading…</h2><p>Please return to the book and open the sample again.</p><a href="#/explore" class="btn btn-primary">Back to Explore</a></main>`}; return{html:m.renderFreeSamplePage(book),init:()=>m.initFreeSamplePage(book)}; }
-    if (['/best-sellers','/new-releases','/trending'].includes(path)) { const m=await safeImport('./pages/PublicDiscoveryPages.js'); const type=path==='/best-sellers'?'bestsellers':path==='/new-releases'?'new':'trending'; return{html:m.renderCuratedCatalogPage(type)}; }
-    if (path === '/review-support') { const m=await safeImport('./pages/ReviewSupportPage.js'); return{html:m.renderReviewSupportPage(),init:m.initReviewSupportEvents}; }
-    // REVIEW_SUPPORT_ROUTE_V1
-    if (path === '/review-support') {
-      const m = await safeImport('./pages/ReviewSupportPage.js');
-      return { html: m.renderReviewSupportPage(), init: m.initReviewSupportEvents };
-    }
-
-    if (path === '/pricing' || path === '/subscription') { const m=await safeImport('./pages/PricingPage.js'); return{html:m.renderPricingPage(),init:m.initPricingEvents}; }
-    if (path === '/subscription/manage') { const m=await safeImport('./pages/SubscriptionManagePage.js'); return{html:m.renderSubscriptionManagePage(),init:m.initSubscriptionManageEvents}; }
-    const staticRoutes=['/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines'];
-    if(staticRoutes.includes(path)){const m=await safeImport('./pages/StaticPages.js');return{html:m.renderStaticPage(path.slice(1))};}
+  constructor() { this.root=document.getElementById('app')||document.body;this.routeRunning=false;this.pendingRoute=null;this.lastHash='';this.booted=false;window.__BOOKORA_APP_INSTANCE__=this;this.init(); }
+  currentPath(){const hash=window.location.hash||'#/';return hash.split('?')[0].replace(/^#/,'')||'/';}
+  async shell(){let header='',footer='';try{const h=await safeImport('./components/Header.js');header=`<div id="header-container">${typeof h.renderHeader==='function'?h.renderHeader():''}</div>`}catch(_){header=fallbackShell()}try{const f=await safeImport('./components/Footer.js?v=20260829-newsletter-live-2');footer=`<div id="footer-container">${typeof f.renderFooter==='function'?f.renderFooter():''}</div>`}catch(_){}return{header,footer};}
+  async loadPage(path,params){
+    if(path==='/'||path===''){const m=await safeImport('./pages/HomePage.js');return{html:m.renderHomePage(),init:m.initHomePageEvents};}
+    if(path==='/explore'){const m=await safeImport('./pages/ExplorePage.js?v=20260827-v2');return{html:m.renderExplorePage(),init:m.initExploreEvents};}
+    if(path==='/search'){const m=await safeImport('./pages/SearchPage.js');return{html:m.renderSearchPage(params.get('q')||'')};}
+    if(path==='/categories'){const m=await safeImport('./pages/PublicDiscoveryPages.js');return{html:m.renderCategoriesDirectoryPage()};}
+    if(path.startsWith('/category/')){const m=await safeImport('./pages/CategoryPage.js');return{html:m.renderCategoryPage(path.replace('/category/',''))};}
+    if(path.startsWith('/book/')){const m=await safeImport('./pages/BookDetailPage.js');const slug=path.replace('/book/','');return{html:m.renderBookDetailPage(slug),init:()=>m.initBookDetailEvents(slug)};}
+    if(path.startsWith('/sample/')){const m=await safeImport('./pages/FreeSamplePage.js');const slug=decodeURIComponent(path.replace('/sample/',''));const book=state.getBookBySlug(slug);if(!book)return{html:`<main class="container" style="padding:80px 20px;text-align:center"><h2>Sample is loading…</h2><p>Please return to the book and open the sample again.</p><a href="#/explore" class="btn btn-primary">Back to Explore</a></main>`};return{html:m.renderFreeSamplePage(book),init:()=>m.initFreeSamplePage(book)};}
+    if(['/best-sellers','/new-releases','/trending'].includes(path)){const m=await safeImport('./pages/PublicDiscoveryPages.js');const type=path==='/best-sellers'?'bestsellers':path==='/new-releases'?'new':'trending';return{html:m.renderCuratedCatalogPage(type)};}
+    if(path==='/review-support'){const m=await safeImport('./pages/ReviewSupportPage.js');return{html:m.renderReviewSupportPage(),init:m.initReviewSupportEvents};}
+    if(path==='/pricing'||path==='/subscription'){const m=await safeImport('./pages/PricingPage.js');return{html:m.renderPricingPage(),init:m.initPricingEvents};}
+    if(path==='/subscription/manage'){const m=await safeImport('./pages/SubscriptionManagePage.js');return{html:m.renderSubscriptionManagePage(),init:m.initSubscriptionManageEvents};}
+    const staticRoutes=['/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines'];if(staticRoutes.includes(path)){const m=await safeImport('./pages/StaticPages.js');return{html:m.renderStaticPage(path.slice(1))};}
     if(['/login','/signup','/register','/forgot-password','/reset-password'].includes(path)){const m=await safeImport('./pages/AuthPages.js');const mode=path==='/login'?'login':['/signup','/register'].includes(path)?'signup':path==='/forgot-password'?'forgot':'reset';return{html:m.renderAuthPage(mode),init:()=>m.initAuthEvents(mode)};}
     if(path==='/profile'){const m=await safeImport('./pages/ProfilePage.js');return{html:m.renderProfilePage()};}
     if(['/settings','/settings/account','/settings/notifications','/settings/privacy'].includes(path)){const m=await safeImport('./pages/UserSettingsPage.js');return{html:m.renderUserSettingsPage(),init:m.initUserSettingsEvents};}
@@ -77,7 +45,7 @@ class SafeApp {
     if(path==='/payment/success'){const m=await safeImport('./pages/PaymentSuccessPage.js');return{html:m.renderPaymentSuccessPage()};}
     if(path==='/payment/failed'){const m=await safeImport('./pages/PaymentFailedPage.js');return{html:m.renderPaymentFailedPage()};}
     if(['/seller','/seller/dashboard','/creator','/creator/dashboard'].includes(path)){const m=await safeImport('./pages/CreatorDashboardPage.js');return{html:m.renderCreatorDashboardPage(),init:m.initCreatorDashboardEvents};}
-    if(path==='/publish'){const m=await safeImport('./pages/PublishInternalPage.js');return{html:m.renderPublishInternalPage(),init:m.initPublishInternalEvents};}
+    if(path==='/publish'){const m=await safeImport('./pages/PublishInternalPageV2.js?v=20260830-publish-v2');return{html:m.renderPublishInternalPage(),init:m.initPublishInternalEvents};}
     if(path.startsWith('/publish/external/integration/')){const m=await safeImport('./pages/ExternalIntegrationPage.js');const bookId=decodeURIComponent(path.replace('/publish/external/integration/','').split('/')[0]);return{html:m.renderExternalIntegrationPage(),init:()=>m.initExternalIntegrationPage(bookId)};}
     if(path==='/publish/external'){const m=await safeImport('./pages/PublishExternalPage.js');return{html:m.renderPublishExternalPage(),init:m.initPublishExternalEvents};}
     if(path==='/seller/apply'){const m=await safeImport('./pages/SellerApplyPage.js?v=20260827-3');return{html:m.renderSellerApplyPage(),init:m.initSellerApplyEvents};}
@@ -93,54 +61,15 @@ class SafeApp {
     if(path==='/admin/ai-diagnostics'){const m=await safeImport('./pages/AdminAIDiagnosticsPage.js');return{html:m.renderAdminAIDiagnosticsPage(),init:m.initAdminAIDiagnosticsEvents};}
     const m=await safeImport('./pages/NotFoundPage.js');return{html:m.renderNotFoundPage()};
   }
-
   async route(force=false,navigation=false){
-    if(this.routeRunning){this.pendingRoute={force,navigation};return;}
-    const hash=window.location.hash||'#/';
-    if(!force&&this.lastHash===hash&&document.querySelector('#main-content'))return;
-    this.routeRunning=true;
-    try{
-      const path=this.currentPath();
-      const [,queryString]=hash.split('?');
-      const params=new URLSearchParams(queryString||'');
-      if(navigation)window.scrollTo({top:0,left:0,behavior:'instant'});
-      const PUBLIC=['/','/explore','/categories','/best-sellers','/new-releases','/trending','/authors','/pricing','/subscription','/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines','/login','/signup','/register','/forgot-password','/reset-password','/payment/success','/payment/failed','/review-support'];
-      const PUBLIC_PREFIX=['/category/','/book/','/author/','/search','/sample/'];
-      const isPublic=PUBLIC.includes(path)||PUBLIC_PREFIX.some(p=>path.startsWith(p));
-      if(!isPublic&&!state.isAuthenticated){window.location.hash=`#/login?returnTo=${encodeURIComponent(path+(queryString?`?${queryString}`:''))}`;return;}
-      if(path.startsWith('/admin')&&!state.isAdmin){window.location.hash='#/login';return;}
-      if((path.startsWith('/seller')||path.startsWith('/creator')||path==='/publish'||path.startsWith('/publish/external'))&&path!=='/seller/apply'&&!state.isSeller&&!state.isAdmin){window.location.hash='#/seller/apply';return;}
-      const {header,footer}=await this.shell();
-      this.root.innerHTML=`${header}<main id="main-content" style="flex:1;min-height:60vh"><div style="padding:60px 20px;text-align:center;color:#64748b">Loading Bookora…</div></main>${footer}`;
-      try{
-        const page=await this.loadPage(path,params); const main=document.getElementById('main-content'); if(!main)throw new Error('main-content was not created');
-        main.innerHTML=page.html||'';
-        if(typeof page.init==='function'){try{await page.init();}catch(error){console.warn('[Bookora page events skipped]',error);}}
-        try{const h=await safeImport('./components/Header.js');if(typeof h.initHeaderEvents==='function')h.initHeaderEvents();}catch(error){console.warn('[Bookora header events skipped]',error);}
-      }catch(error){
-        console.error('[Bookora] route failed:',error);
-        const main=document.getElementById('main-content');
-        if(main)main.innerHTML=`<div style="min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,system-ui,sans-serif"><div><h2 style="color:#0f172a;margin-bottom:8px">This page could not be loaded</h2><p style="color:#64748b;margin-bottom:18px">Bookora is still running. Please try again.</p><button id="bookora-route-retry" type="button" style="padding:10px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Retry</button></div></div>`;
-        document.getElementById('bookora-route-retry')?.addEventListener('click',()=>this.route(true,false),{once:true});
-      }
+    if(this.routeRunning){this.pendingRoute={force,navigation};return;}const hash=window.location.hash||'#/';if(!force&&this.lastHash===hash&&document.querySelector('#main-content'))return;this.routeRunning=true;
+    try{const path=this.currentPath();const [,queryString]=hash.split('?');const params=new URLSearchParams(queryString||'');if(navigation)window.scrollTo({top:0,left:0,behavior:'instant'});const PUBLIC=['/','/explore','/categories','/best-sellers','/new-releases','/trending','/authors','/pricing','/subscription','/about','/how-it-works','/faq','/contact','/help','/terms','/privacy','/refund-policy','/seller-guidelines','/login','/signup','/register','/forgot-password','/reset-password','/payment/success','/payment/failed','/review-support'];const PUBLIC_PREFIX=['/category/','/book/','/author/','/search','/sample/'];const isPublic=PUBLIC.includes(path)||PUBLIC_PREFIX.some(p=>path.startsWith(p));if(!isPublic&&!state.isAuthenticated){window.location.hash=`#/login?returnTo=${encodeURIComponent(path+(queryString?`?${queryString}`:''))}`;return;}if(path.startsWith('/admin')&&!state.isAdmin){window.location.hash='#/login';return;}if((path.startsWith('/seller')||path.startsWith('/creator')||path==='/publish'||path.startsWith('/publish/external'))&&path!=='/seller/apply'&&!state.isSeller&&!state.isAdmin){window.location.hash='#/seller/apply';return;}
+      const {header,footer}=await this.shell();this.root.innerHTML=`${header}<main id="main-content" style="flex:1;min-height:60vh"><div style="padding:60px 20px;text-align:center;color:#64748b">Loading Bookora…</div></main>${footer}`;
+      try{const page=await this.loadPage(path,params);const main=document.getElementById('main-content');if(!main)throw new Error('main-content was not created');main.innerHTML=page.html||'';if(typeof page.init==='function'){try{await page.init();}catch(error){console.warn('[Bookora page events skipped]',error);}}try{const h=await safeImport('./components/Header.js');if(typeof h.initHeaderEvents==='function')h.initHeaderEvents();}catch(error){console.warn('[Bookora header events skipped]',error);}}catch(error){console.error('[Bookora] route failed:',error);const main=document.getElementById('main-content');if(main)main.innerHTML=`<div style="min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,system-ui,sans-serif"><div><h2 style="color:#0f172a;margin-bottom:8px">This page could not be loaded</h2><p style="color:#64748b;margin-bottom:18px">Bookora is still running. Please try again.</p><button id="bookora-route-retry" type="button" style="padding:10px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Retry</button></div></div>`;document.getElementById('bookora-route-retry')?.addEventListener('click',()=>this.route(true,false),{once:true});}
       this.lastHash=hash;
-    }catch(error){
-      console.error('[Bookora] core route failed:',error);
-      this.root.innerHTML=`${fallbackShell()}<main id="main-content" style="min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,system-ui,sans-serif"><div><h2>Bookora is recovering…</h2><p style="color:#64748b">The page could not be rendered.</p><button id="bookora-core-retry" type="button" style="padding:10px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Retry</button></div></main>`;
-      document.getElementById('bookora-core-retry')?.addEventListener('click',()=>this.route(true,false),{once:true});
-    }finally{
-      this.routeRunning=false;
-      const pending=this.pendingRoute;this.pendingRoute=null;
-      if(pending)queueMicrotask(()=>this.route(pending.force,pending.navigation));
-    }
+    }catch(error){console.error('[Bookora] core route failed:',error);this.root.innerHTML=`${fallbackShell()}<main id="main-content" style="min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,system-ui,sans-serif"><div><h2>Bookora is recovering…</h2><p style="color:#64748b">The page could not be rendered.</p><button id="bookora-core-retry" type="button" style="padding:10px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Retry</button></div></main>`;document.getElementById('bookora-core-retry')?.addEventListener('click',()=>this.route(true,false),{once:true});}
+    finally{this.routeRunning=false;const pending=this.pendingRoute;this.pendingRoute=null;if(pending)queueMicrotask(()=>this.route(pending.force,pending.navigation));}
   }
-
-  init(){
-    window.addEventListener('hashchange',()=>this.route(true,true));
-    // Do not route again on window.load. The initial route is started once here;
-    // routing again on load was causing a visible blink/re-render on detail pages.
-    this.route(true,false);
-  }
+  init(){window.addEventListener('hashchange',()=>this.route(true,true));this.route(true,false);}
 }
-
 new SafeApp();
