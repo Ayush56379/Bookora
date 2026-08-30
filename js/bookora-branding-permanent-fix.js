@@ -1,5 +1,6 @@
-/* Bookora branding + clean Brevo-style loader.
-   Loading must show only the centered Bookora wordmark. */
+/* Bookora branding + clean startup loader.
+   Startup must show only the centered Bookora wordmark.
+   Any orphan spinner/box injected by another bootstrap script is removed. */
 (() => {
   const fixText = node => {
     if (!node || node.nodeType !== Node.TEXT_NODE) return;
@@ -15,6 +16,34 @@
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) fixText(node);
+  };
+
+  const isStartupOrphanBox = el => {
+    if (!(el instanceof HTMLElement)) return false;
+    if (el.id === 'bookora-brevo-loader' || el.closest('#bookora-brevo-loader')) return false;
+    if (document.querySelector('#main-content')) return false;
+
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height || rect.width > 110 || rect.height > 110) return false;
+
+    const cs = getComputedStyle(el);
+    const bg = cs.backgroundColor || '';
+    const pos = cs.position || '';
+    const z = Number.parseInt(cs.zIndex, 10);
+    const blue = /rgb\(\s*37\s*,\s*99\s*,\s*235\s*\)|rgb\(\s*59\s*,\s*130\s*,\s*246\s*\)/.test(bg);
+    const centered = Math.abs((rect.left + rect.width / 2) - innerWidth / 2) < 140 && Math.abs((rect.top + rect.height / 2) - innerHeight / 2) < 140;
+    const empty = !(el.textContent || '').trim() && !el.querySelector('img,svg,canvas,input,button,a');
+    return blue && centered && empty && (pos === 'fixed' || pos === 'absolute' || Number.isFinite(z));
+  };
+
+  const removeStartupOrphanBoxes = root => {
+    if (!root) return;
+    const candidates = [];
+    if (root instanceof HTMLElement) candidates.push(root);
+    if (root.querySelectorAll) candidates.push(...root.querySelectorAll('*'));
+    candidates.slice(0, 250).forEach(el => {
+      try { if (isStartupOrphanBox(el)) el.remove(); } catch (_) {}
+    });
   };
 
   const installLoader = () => {
@@ -74,7 +103,10 @@
     loader.appendChild(word);
     document.body.appendChild(loader);
 
+    let hidden = false;
     const hide = () => {
+      if (hidden) return;
+      hidden = true;
       const el = document.getElementById('bookora-brevo-loader');
       if (!el) return;
       el.classList.add('is-hidden');
@@ -82,10 +114,19 @@
     };
     window.__BOOKORA_HIDE_LOADER__ = hide;
 
-    if (document.readyState === 'complete') setTimeout(hide, 80);
-    else window.addEventListener('load', () => setTimeout(hide, 80), { once: true });
-    // Never leave the overlay permanently stuck if another script delays load.
-    setTimeout(hide, 8000);
+    // Do not tie startup UX to window.load: module/Firebase requests can delay
+    // that event indefinitely. Hide as soon as the app shell exists, with a
+    // short hard safety deadline so the overlay can never become permanent.
+    const appReadyObserver = new MutationObserver(() => {
+      if (document.querySelector('#main-content')) {
+        hide();
+        appReadyObserver.disconnect();
+      }
+    });
+    appReadyObserver.observe(document.body, { childList: true, subtree: true });
+    if (document.querySelector('#main-content')) hide();
+    setTimeout(hide, 3500);
+    window.addEventListener('load', () => setTimeout(hide, 40), { once: true });
   };
 
   const redirectAuthenticatedAuthRoute = () => {
@@ -112,6 +153,7 @@
 
   const start = () => {
     installLoader();
+    removeStartupOrphanBoxes(document.body);
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) fixText(node);
@@ -121,7 +163,10 @@
     const flush = () => {
       scheduled = false;
       const items = Array.from(pending); pending.clear();
-      items.slice(0, 80).forEach(normalizeAdded);
+      items.slice(0, 80).forEach(item => {
+        normalizeAdded(item);
+        removeStartupOrphanBoxes(item);
+      });
     };
     const observer = new MutationObserver(mutations => {
       for (const mutation of mutations) mutation.addedNodes?.forEach(node => pending.add(node));
@@ -132,6 +177,15 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
     window.__BOOKORA_BRANDING_GUARD__ = observer;
+
+    // Stop the startup-only orphan cleanup once the application has rendered.
+    const stopWhenReady = setInterval(() => {
+      if (document.querySelector('#main-content')) {
+        clearInterval(stopWhenReady);
+        removeStartupOrphanBoxes(document.body);
+      }
+    }, 250);
+    setTimeout(() => clearInterval(stopWhenReady), 5000);
   };
 
   if (document.body) start();
