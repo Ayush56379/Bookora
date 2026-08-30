@@ -13,6 +13,7 @@ const icon = {
   youtube: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8.2a2.8 2.8 0 0 0-2-2C17.2 5.7 12 5.7 12 5.7s-5.2 0-7 .5a2.8 2.8 0 0 0-2 2C2.5 10 2.5 12 2.5 12s0 2 .5 3.8a2.8 2.8 0 0 0 2 2c1.8.5 7 .5 7 .5s5.2 0 7-.5a2.8 2.8 0 0 0 2-2c.5-1.8.5-3.8.5-3.8s0-2-.5-3.8ZM10 15.5v-7l6 3.5-6 3.5Z"/></svg>'
 };
 function safeUrl(value){return /^https?:\/\//i.test(String(value||'')) ? String(value) : '';}
+function reviewPhoto(review){return safeUrl(review?.photoURL||review?.photoUrl||review?.avatarUrl||review?.avatar||review?.profilePhoto||review?.profileImage||review?.userPhotoURL||review?.userPhoto||'');}
 
 export function renderFooter() {
   const year = new Date().getFullYear();
@@ -33,7 +34,7 @@ export function renderFooter() {
         <nav class="bookora-footer__column" aria-label="Company"><h2>Company</h2><a href="#/about">About Bookora</a><a href="#/about">Our Mission</a><a href="#/contact">Careers <span class="bookora-footer__hiring">Hiring</span></a><a href="#/contact">Press &amp; Media</a><a href="#/contact">Partnerships</a><a href="#/explore">Blog</a><a href="#/about">Announcements</a></nav>
       </div>
       <section class="bookora-footer__updates" aria-label="Bookora updates"><div><span class="bookora-footer__updates-icon">✉</span><div><h2>Stay updated with Bookora</h2><p>Get new release alerts, offers, and platform updates in your inbox.</p></div></div><form id="bookora-newsletter-form" class="bookora-footer__subscribe"><input id="bookora-newsletter-email" name="email" type="email" autocomplete="email" required aria-label="Email address" placeholder="Enter your email address"><button id="bookora-newsletter-submit" type="submit">Subscribe</button><small id="bookora-newsletter-msg">No spam. Unsubscribe anytime.</small></form></section>
-      <section class="bookora-footer__community" aria-label="Bookora community and apps"><div class="bookora-footer__community-block"><strong>Trusted by readers &amp; creators worldwide</strong><div id="bookora-footer-avatars" class="bookora-footer__avatars"><span>BR</span><span>AR</span><span>RS</span><span>AK</span><span>MK</span><span>SP</span></div><p id="bookora-footer-users">Join Bookora readers &amp; creators</p></div><div class="bookora-footer__community-block bookora-footer__rating-block"><strong>Our users love Bookora</strong><div id="bookora-footer-rating" class="bookora-footer__rating-stars" aria-label="Bookora rating">☆☆☆☆☆</div><p><b id="bookora-footer-rating-value">No rating yet</b> <span id="bookora-footer-rating-count"></span></p></div><div class="bookora-footer__community-block bookora-footer__apps-block"><strong>Get the Bookora App</strong>${appLinks}</div></section>
+      <section class="bookora-footer__community" aria-label="Bookora community and apps"><div class="bookora-footer__community-block"><strong>Trusted by readers &amp; creators worldwide</strong><div id="bookora-footer-avatars" class="bookora-footer__avatars" aria-label="Reviewer profile photos"></div></div><div class="bookora-footer__community-block bookora-footer__rating-block"><strong>Our users love Bookora</strong><div id="bookora-footer-rating" class="bookora-footer__rating-stars" aria-label="Bookora rating">☆☆☆☆☆</div></div><div class="bookora-footer__community-block bookora-footer__apps-block"><strong>Get the Bookora App</strong>${appLinks}</div></section>
       <div class="bookora-footer__bottom"><p>© ${year} Bookora. All rights reserved.</p><div class="bookora-footer__bottom-links"><a href="#/review-support">Review &amp; Support</a><a href="#/terms">Terms</a><a href="#/privacy">Privacy</a><a href="#/refund-policy">Refunds</a><a href="#/contact">Contact</a></div><div class="bookora-footer__language">◉ English <span>⌄</span></div></div><div class="bookora-footer__legal-note"><span>♢ DMCA Protected</span><b>•</b><a href="#/contact">Copyright Infringement Policy</a></div>
     </div></footer>`;
 }
@@ -70,12 +71,13 @@ export async function initFooterEvents(){
     if(!base) return;
     const r = await fetch(`${base}/api/reviews`, {headers:{Accept:'application/json'}}); if(!r.ok) return;
     const d = await r.json(); const reviews = Array.isArray(d.reviews) ? d.reviews : []; const rating = Number(d.averageRating || 0); const count = reviews.length;
-    const value=document.getElementById('bookora-footer-rating-value'), countEl=document.getElementById('bookora-footer-rating-count'), stars=document.getElementById('bookora-footer-rating');
-    if(value) value.textContent=count?`${rating.toFixed(1)}/5`:'No rating yet'; if(countEl) countEl.textContent=count?`based on ${count.toLocaleString('en-IN')} review${count===1?'':'s'}`:'';
-    if(stars && count){const rounded=Math.max(0,Math.min(5,Math.round(rating)));stars.textContent='★'.repeat(rounded)+'☆'.repeat(5-rounded);}
-    const rows=reviews.slice(0,6).map(r=>({name:String(r.displayName||'Bookora Reader').trim()||'Bookora Reader',photo:safeUrl(r.photoURL||r.photoUrl||r.avatarUrl||r.avatar||'')}));
+    const stars=document.getElementById('bookora-footer-rating');
+    if(stars){const rounded=count?Math.max(0,Math.min(5,Math.round(rating))):0;stars.textContent='★'.repeat(rounded)+'☆'.repeat(5-rounded);stars.setAttribute('aria-label',count?`Bookora rating ${rating.toFixed(1)} out of 5`:'Bookora rating not available');}
     const avatars=document.getElementById('bookora-footer-avatars');
-    if(avatars && rows.length){avatars.innerHTML=rows.map(({name,photo})=>{const parts=name.split(/\s+/).filter(Boolean);const initials=((parts[0]?.[0]||'B')+(parts.length>1?(parts[parts.length-1]?.[0]||''):'')).toUpperCase().slice(0,2);return photo?`<span class="bookora-footer__avatar-image" title="${name.replace(/"/g,'&quot;')}"><img src="${photo}" alt="${name.replace(/"/g,'&quot;')}" loading="lazy" referrerpolicy="no-referrer"></span>`:`<span title="${name.replace(/"/g,'&quot;')}">${initials}</span>`;}).join('');}
-    const users=document.getElementById('bookora-footer-users'); if(users && count) users.textContent=`Join ${count.toLocaleString('en-IN')} reader${count===1?'':'s'} who shared feedback`;
+    if(avatars){
+      const rows=reviews.slice(0,6).map(r=>({name:String(r.displayName||r.publicName||r.name||'Bookora Reader').trim()||'Bookora Reader',photo:reviewPhoto(r)})).filter(r=>r.photo);
+      avatars.innerHTML=rows.map(({name,photo})=>`<span class="bookora-footer__avatar-image" title="${name.replace(/"/g,'&quot;')}"><img src="${photo}" alt="${name.replace(/"/g,'&quot;')}" loading="lazy" referrerpolicy="no-referrer"></span>`).join('');
+      avatars.setAttribute('aria-label',`${rows.length} reviewer profile photos`);
+    }
   }catch(e){console.warn('[Bookora footer] community data unavailable:',e);}
 }
