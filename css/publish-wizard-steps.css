@@ -1,0 +1,8 @@
+/* Bookora Publish Wizard — visual-only step indicator. No runtime/network work. */
+.publish-wizard-steps{display:block;position:relative;margin:0 0 30px;padding:0 0 6px}
+#publish-wizard-form::before{content:"Publish eBook  •  5 Steps";display:block;margin:0 0 18px;padding:0 0 14px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:14px;font-weight:800;letter-spacing:.01em}
+#publish-wizard-form::after{content:"① Book Information     ─────     ② Cover & Files     ─────     ③ Pricing     ─────     ④ Preview     ─────     ⑤ Submit";display:block;box-sizing:border-box;width:100%;padding:15px 18px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;color:#64748b;font-size:13px;font-weight:700;line-height:1.45;text-align:center;white-space:normal;word-spacing:1px}
+#publish-wizard-form{position:relative}
+@media (max-width:900px){#publish-wizard-form::after{font-size:12px;padding:13px 12px;line-height:1.8}}
+@media (max-width:600px){#publish-wizard-form::before{font-size:13px;margin-bottom:12px;padding-bottom:12px}#publish-wizard-form::after{content:"① Information   •   ② Files   •   ③ Pricing   •   ④ Preview   •   ⑤ Submit";overflow-wrap:anywhere;text-align:left;font-size:11px;padding:12px 13px;line-height:1.9}}
+@media (max-width:380px){#publish-wizard-form::after{font-size:10px}}
