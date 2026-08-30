@@ -39,6 +39,15 @@
 #publish-wizard-form .publish-preview{background:linear-gradient(145deg,#f8fafc,#f5f3ff)!important;border:1px solid #e5e7eb;border-radius:18px!important;padding:24px!important}
 #publish-wizard-form .publish-preview-cover{width:90px;height:120px;border-radius:10px;background:#e2e8f0;display:grid;place-items:center;color:#94a3b8;font-size:28px}
 @keyframes publishWizardIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* Lightweight top step summary for the current publish form. Visual CSS only. */
+#publish-wizard-form::before{content:"Step 1 of 5  •  Book Information";display:block;margin:-4px 0 18px;padding:13px 16px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;color:#3730a3;font-size:14px;font-weight:800;line-height:1.4}
+#publish-wizard-form::after{content:"① Book Information   →   ② Cover & Files   →   ③ Pricing   →   ④ Preview   →   ⑤ Submit";display:block;position:relative;margin:-2px 0 28px;padding:13px 14px;border-bottom:1px solid #edf0f6;color:#64748b;font-size:12px;font-weight:700;line-height:1.6;text-align:center;overflow-wrap:anywhere}
+#publish-wizard-form:has(#step-2[style*="display: block"])::before{content:"Step 2 of 5  •  Cover & Files";color:#3730a3}
+#publish-wizard-form:has(#step-3[style*="display: block"])::before{content:"Step 3 of 5  •  Pricing";color:#3730a3}
+#publish-wizard-form:has(#step-4[style*="display: block"])::before{content:"Step 4 of 5  •  Preview";color:#3730a3}
+#publish-wizard-form:has(#step-5[style*="display: block"])::before{content:"Step 5 of 5  •  Submit for Admin Review";color:#3730a3}
+
 @media (max-width:760px){
   #publish-wizard-shell{padding:12px 10px 40px}
   #publish-wizard-card{border-radius:18px}
@@ -53,6 +62,7 @@
   #publish-wizard-form .publish-action-row .btn{width:100%;min-width:0}
   #publish-wizard-form .prev-step-btn{min-width:0}
   #publish-wizard-form .next-step-btn,#publish-wizard-form #submit-pub-btn{min-width:0}
+  #publish-wizard-form::after{text-align:left;font-size:11px;padding:12px 10px;margin-bottom:22px}
 }
 @media (max-width:420px){
   .publish-wizard-title{font-size:24px}
@@ -60,5 +70,7 @@
   .publish-wizard-progress-item .pwi-label{font-size:10px}
   #publish-wizard-form{padding:18px 13px 22px}
   #publish-wizard-form .wizard-section>h3{font-size:20px;margin-bottom:18px}
+  #publish-wizard-form::before{font-size:12px;padding:11px 12px}
+  #publish-wizard-form::after{font-size:10px;line-height:1.8}
   #publish-wizard-form .publish-action-row>div{grid-template-columns:1fr}
 }
