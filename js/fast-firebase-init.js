@@ -3,8 +3,8 @@
    homepage main thread or block clicks/navigation. */
 (() => {
   const CATALOG_CACHE_KEY = 'bookora_public_catalog_v2';
-  const FAST_CATALOG_LIMIT = 40;
   let modeSyncScheduled = false;
+  let catalogStateHydration = null;
 
   const syncMobileMenuMode = state => {
     const drawer = document.getElementById('mobile-nav-drawer');
@@ -39,6 +39,42 @@
     else setTimeout(run, 0);
   };
 
+  // Hydrate the canonical BookoraState from the realtime Firebase catalog.
+  // The previous fast listener only stored data on window.__BOOKORA_FAST_BOOKS__,
+  // leaving Explore's canonical state empty and causing "Showing 0 eBooks".
+  const hydrateCatalogState = books => {
+    const apply = ({ state }) => {
+      try {
+        const normalized = (Array.isArray(books) ? books : [])
+          .map(book => typeof state.normalizeBook === 'function' ? state.normalizeBook(book) : book)
+          .filter(Boolean)
+          .filter(book => String(book.status || '').toLowerCase() === 'approved');
+        state.books = normalized;
+        state.booksLoaded = true;
+        state.booksLoading = false;
+        if (typeof state.persistCatalogCache === 'function') state.persistCatalogCache(normalized);
+        if (typeof state.notify === 'function') state.notify('DATA_SYNCED');
+        window.__BOOKORA_FIREBASE_CATALOG_READY__ = true;
+        window.dispatchEvent(new CustomEvent('bookora:catalog-updated', { detail: { books: normalized, source: 'firebase-realtime' } }));
+      } catch (error) {
+        console.warn('[Bookora Firebase] catalog state hydration failed:', error?.message || error);
+      }
+    };
+    try {
+      if (window.__BOOKORA_STATE_MODULE__) {
+        apply(window.__BOOKORA_STATE_MODULE__);
+        return;
+      }
+      if (!catalogStateHydration) catalogStateHydration = import('./state.js').then(mod => {
+        window.__BOOKORA_STATE_MODULE__ = mod;
+        return mod;
+      });
+      catalogStateHydration.then(apply).catch(error => console.warn('[Bookora Firebase] state import failed:', error?.message || error));
+    } catch (error) {
+      console.warn('[Bookora Firebase] state hydration scheduling failed:', error?.message || error);
+    }
+  };
+
   const init = () => {
     try {
       if (!window.firebase?.initializeApp) return false;
@@ -61,19 +97,21 @@
 
       if (!window.__BOOKORA_APPROVED_BOOKS_LISTENER__) {
         window.__BOOKORA_APPROVED_BOOKS_LISTENER__ = true;
-        const query = db.collection('books').where('status', '==', 'approved').limit(FAST_CATALOG_LIMIT);
+        // No artificial limit: Explore must receive every approved eBook in Firebase.
+        const query = db.collection('books').where('status', '==', 'approved');
         query.onSnapshot(
           { includeMetadataChanges: false },
           snapshot => {
-            // Keep the fast homepage payload bounded. Full catalogs are loaded by
-            // their dedicated pages and must not be serialized during homepage boot.
             const books = snapshot.docs.map(doc => ({ id: String(doc.id), ...doc.data() }));
             window.__BOOKORA_FAST_BOOKS__ = books;
-            // Do not stringify the full Firestore snapshot on the main thread.
-            // A small bounded cache is enough for instant homepage paint.
+            hydrateCatalogState(books);
+            // Keep a complete approved catalog cache for fast reloads.
             try {
-              if (books.length) localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), books }));
-            } catch (_) {}
+              localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), books }));
+            } catch (error) {
+              // Quota errors must never break the page; Firebase remains source of truth.
+              console.info('[Bookora Firestore] catalog cache skipped:', error?.message || error);
+            }
             window.dispatchEvent(new CustomEvent('bookora:fast-catalog', {
               detail: { books, fromCache: Boolean(snapshot.metadata?.fromCache) }
             }));
@@ -81,6 +119,7 @@
           error => {
             console.warn('[Bookora Firestore] approved-books listener:', error?.message || error);
             window.__BOOKORA_APPROVED_BOOKS_LISTENER__ = false;
+            window.dispatchEvent(new CustomEvent('bookora:catalog-error', { detail: { error } }));
           }
         );
       }
@@ -88,6 +127,7 @@
       window.addEventListener('load', async () => {
         try {
           const { state } = await import('./state.js');
+          window.__BOOKORA_STATE_MODULE__ = { state };
           const savedMode = localStorage.getItem('bookora_active_mode');
           if (savedMode) {
             const allowed = savedMode === 'buyer' || (savedMode === 'seller' && state.isSeller) || (savedMode === 'admin' && state.isAdmin);
@@ -96,6 +136,9 @@
               window.__BOOKORA_APP_INSTANCE__?.route(true, false);
             }
           }
+          // If the realtime snapshot arrived before state.js finished loading,
+          // hydrate it now from the in-memory Firebase payload.
+          if (Array.isArray(window.__BOOKORA_FAST_BOOKS__)) hydrateCatalogState(window.__BOOKORA_FAST_BOOKS__);
           scheduleModeSync(state);
           state.subscribe(event => {
             if (event === 'MODE_CHANGED' || event === 'USER_LOGGED_IN' || event === 'USER_LOGGED_OUT') scheduleModeSync(state);
