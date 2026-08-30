@@ -13,6 +13,12 @@
     console.warn('[Bookora Admin Books covers]', error?.message || error);
   });
 
+  // Firebase-first Reject/Remove action handler. It runs before the legacy
+  // delegated handlers and persists the status directly to Firestore.
+  import('./js/admin-books-actions-firebase-first.js?v=20260830-1').catch(error => {
+    console.warn('[Bookora Admin Books actions]', error?.message || error);
+  });
+
   const isBooksRefresh = target => {
     try { return !!target?.closest?.('#admin-books-refresh'); } catch (_) { return false; }
   };
