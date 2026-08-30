@@ -7,16 +7,13 @@
   const common = ['./auth-logout-ui-permanent-fix.js?v=20260826-1','./backend-token-restore.js?v=20260823-3','./firebase-auth-token-bridge.js?v=20260821-9','./profile-menu-stability.js?v=20260822-1'];
   const routeModules = {
     '/admin/review-submissions':['./admin-review-route-fix.js?v=20260828-1'],
-    '/explore':['./smart-search-runtime.js?v=20260822-1','./catalog-dedupe-runtime.js?v=20260827-1','./explore-filter-runtime-fix.js?v=20260830-2'],
+    '/explore':['./smart-search-runtime.js?v=20260822-1','./catalog-dedupe-runtime.js?v=20260827-1','./explore-filter-runtime-fix.js?v=20260830-2','./public-category-data-runtime-fix.js?v=20260830-category-canonical-1'],
     '/pricing':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/subscription':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/subscription/manage':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/library':['./wishlist-permission-fix.js?v=20260826-2'],
     '/orders':['./orders-page-permanent-fix.js?v=20260821-6','./orders-page-render-sync.js?v=20260821-2'],
-    // IMPORTANT: do not load any second upload/submit runtime or visual wrapper here.
-    // PublishInternalPage is the single source of truth for the publish wizard.
     '/publish':['./publish-file-selection-fix.js?v=20260829-1'],
-    // External auth/integration runtimes are loaded once globally from index.html.
     '/publish/external':[],
     '/seller/apply':['./seller-apply-ui-v5.js?v=20260827-4','./seller-apply-profile-ui-v6.js?v=20260827-2','./seller-application-submitted-ui-v1.js?v=20260828-1'],
     '/seller/dashboard':['./seller-wallet-route.js?v=20260826-1'],
