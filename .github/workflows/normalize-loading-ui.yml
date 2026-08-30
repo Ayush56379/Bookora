@@ -1,0 +1,50 @@
+name: Normalize Bookora Loading UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/normalize-loading-ui.yml'
+      - 'index.html'
+      - 'js/app-safe.js'
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.event.head_commit.message != 'fix: remove duplicate Bookora loading box'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove boxed loading/recovery UI
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          old = "app.innerHTML='<main style=\"min-height:100vh;display:grid;place-items:center;padding:32px;text-align:center;font-family:Inter,system-ui,sans-serif\"><div class=\"bookora-recovery-screen\" style=\"max-width:620px\"><div class=\"bookora-recovery-brand\">Bookora</div><button id=\"bookora-start-retry\" type=\"button\" style=\"padding:11px 18px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer\">Try Again</button></div></main>';document.getElementById('bookora-start-retry')?.addEventListener('click',()=>location.reload(),{once:true})"
+          new = "app.innerHTML='<main style=\"min-height:100vh;display:grid;place-items:center;text-align:center;font-family:Inter,system-ui,sans-serif\"><div>Bookora</div></main>'"
+          if old not in s:
+            s = re.sub(r"app\.innerHTML='<main style=\\\"min-height:100vh;display:grid;place-items:center;padding:32px;text-align:center;font-family:Inter,system-ui,sans-serif\\\"><div class=\\\"bookora-recovery-screen\\\".*?document\.getElementById\('bookora-start-retry'\)\?\.addEventListener\('click',\(\)=>location\.reload\(\),\{once:true\}\)", new, s, flags=re.S)
+          else:
+            s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('js/app-safe.js')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('<div class="bookora-loading" aria-label="Loading Bookora"><span>B</span><span>o</span><span>o</span><span>k</span><span>o</span><span>r</span><span>a</span></div>', '<div class="bookora-loading" aria-label="Loading Bookora">Bookora</div>')
+          s = re.sub(r"main\.innerHTML=`<div style=\\\"min-height:60vh;display:grid;place-items:center;padding:40px;text-align:center;font-family:Inter,system-ui,sans-serif\\\"><div>.*?document\.getElementById\('bookora-route-retry'\)\?\.addEventListener\('click',\(\)=>this\.route\(true,false\),\{once:true\}\);`", "main.innerHTML=`<div class=\\\"bookora-loading\\\">Bookora</div>`;", s, flags=re.S)
+          s = re.sub(r"this\.root\.innerHTML=`\\$\{fallbackShell\(\)\}<main id=\\\"main-content\\\".*?document\.getElementById\('bookora-core-retry'\)\?\.addEventListener\('click',\(\)=>this\.route\(true,false\),\{once:true\}\);`", "this.root.innerHTML=`<main id=\\\"main-content\\\"><div class=\\\"bookora-loading\\\">Bookora</div></main>`;", s, flags=re.S)
+          p.write_text(s, encoding='utf-8')
+      - name: Commit permanent fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html js/app-safe.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix: remove duplicate Bookora loading box'
+          git push
