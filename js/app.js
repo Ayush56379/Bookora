@@ -28,6 +28,7 @@ import { renderExternalIntegrationPage, initExternalIntegrationPage } from './pa
 import { renderSellerApplyPage, initSellerApplyEvents } from './pages/SellerApplyPage.js';
 import { renderSellerSettingsPage, initSellerSettingsEvents } from './pages/SellerSettingsPage.js';
 import { renderAdminDashboardPage, initAdminDashboardEvents } from './pages/AdminDashboardPage.js';
+import { renderAdminModerationPage, initAdminModerationEvents } from './pages/AdminModerationPage.js';
 import { renderAdminUsersPage, initAdminUsersEvents } from './pages/AdminUsersPage.js';
 import { renderAdminSellersPage, initAdminSellersEvents } from './pages/AdminSellersPage.js';
 import { renderAdminBooksPage, initAdminBooksEvents } from './pages/AdminBooksBackendPage.js';
@@ -57,7 +58,7 @@ class App {
   }
 
   init() {
-    window.addEventListener('hashchange', () => this.route(true, true));
+    window.addEventListener('hashchange', () => queueMicrotask(() => this.route(true, true)));
     window.addEventListener('load', () => this.route(false, false));
 
     state.subscribe((event) => {
@@ -71,19 +72,22 @@ class App {
         return;
       }
       this.updateHeader();
-      if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) this.route(true, false);
+      if (['USER_LOGGED_IN', 'USER_LOGGED_OUT', 'MODE_CHANGED'].includes(event)) this.requestRoute(true, false);
     });
 
+    // SPA navigation must remain active even when another component calls
+    // preventDefault() on the same anchor. Hash links are owned by the router.
     document.addEventListener('click', (e) => {
       const target = e.target instanceof Element ? e.target : null;
       const link = target?.closest('a[href^="#/"]');
-      if (!link || e.defaultPrevented) return;
+      if (!link) return;
       const href = link.getAttribute('href');
       if (!href) return;
       e.preventDefault();
-      if (window.location.hash === href) window.dispatchEvent(new Event('hashchange'));
+      e.stopPropagation();
+      if (window.location.hash === href) this.route(true, true);
       else window.location.hash = href;
-    });
+    }, true);
 
     document.addEventListener('click', async (e) => {
       const target = e.target instanceof Element ? e.target : null;
@@ -126,7 +130,7 @@ class App {
         e.preventDefault();
         state.cart = (state.cart || []).filter(i => String(i.id) !== String(cartRemoveBtn.dataset.id));
         Toast.show('Item removed from cart.', 'info');
-        window.dispatchEvent(new Event('hashchange'));
+        this.route(true, true);
       }
     });
 
@@ -160,7 +164,6 @@ class App {
 
     const hash = window.location.hash || '#/';
     const path = this.currentPath();
-    if (path.startsWith('/book/') && this.lastRenderedHash === hash && document.querySelector('#main-content')) return;
     if (!force && this.lastRenderedHash === hash && document.querySelector('#main-content')) return;
 
     this.routeRunning = true;
@@ -240,9 +243,8 @@ class App {
       else if (path === '/publish/external') { pageHtml = renderPublishExternalPage(); initCallback = () => initPublishExternalEvents(); }
       else if (path === '/seller/apply') { pageHtml = renderSellerApplyPage(); initCallback = () => initSellerApplyEvents(); }
       else if (path === '/seller/settings') { pageHtml = renderSellerSettingsPage(); initCallback = () => initSellerSettingsEvents(); }
-      else if (path === '/admin' || path === '/admin/overview') { pageHtml = renderAdminDashboardPage('overview'); initCallback = () => initAdminDashboardEvents(); }
-      else if (path === '/admin/moderation') { pageHtml = renderAdminDashboardPage('moderation'); initCallback = () => initAdminDashboardEvents(); }
-      else if (path === '/admin/categories') { pageHtml = renderAdminDashboardPage('categories'); initCallback = () => initAdminDashboardEvents(); }
+      else if (path === '/admin' || path === '/admin/overview') { pageHtml = renderAdminDashboardPage(); initCallback = () => initAdminDashboardEvents(); }
+      else if (path === '/admin/moderation') { pageHtml = renderAdminModerationPage(); initCallback = () => initAdminModerationEvents(); }
       else if (path === '/admin/users') { pageHtml = renderAdminUsersPage(); initCallback = () => initAdminUsersEvents(); }
       else if (path === '/admin/sellers') { pageHtml = renderAdminSellersPage(); initCallback = () => initAdminSellersEvents(); }
       else if (path === '/admin/books') { pageHtml = renderAdminBooksPage(); initCallback = () => initAdminBooksEvents(); }
