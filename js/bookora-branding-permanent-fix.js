@@ -21,8 +21,10 @@
   const isStartupOrphanBox = el => {
     if (!(el instanceof HTMLElement)) return false;
     if (el.id === 'bookora-brevo-loader' || el.closest('#bookora-brevo-loader')) return false;
-    if (document.querySelector('#main-content')) return false;
 
+    // This guard intentionally remains active after #main-content exists.
+    // Some bootstrap/runtime code injects the unwanted blue square only after
+    // the SPA shell is mounted. The square is never a valid Bookora UI item.
     const rect = el.getBoundingClientRect();
     if (!rect.width || !rect.height || rect.width > 110 || rect.height > 110) return false;
 
@@ -178,14 +180,10 @@
     observer.observe(document.body, { childList: true, subtree: true });
     window.__BOOKORA_BRANDING_GUARD__ = observer;
 
-    // Stop the startup-only orphan cleanup once the application has rendered.
-    const stopWhenReady = setInterval(() => {
-      if (document.querySelector('#main-content')) {
-        clearInterval(stopWhenReady);
-        removeStartupOrphanBoxes(document.body);
-      }
-    }, 250);
-    setTimeout(() => clearInterval(stopWhenReady), 5000);
+    // Keep the orphan-box guard active permanently. It is deliberately narrow:
+    // only small, centered, empty blue fixed/absolute elements are removed.
+    const safetySweep = setInterval(() => removeStartupOrphanBoxes(document.body), 400);
+    window.__BOOKORA_LOADING_BOX_GUARD__ = safetySweep;
   };
 
   if (document.body) start();
