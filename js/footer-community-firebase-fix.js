@@ -53,7 +53,6 @@
     const starsEl = document.getElementById('bookora-footer-rating');
     const avatarsEl = document.getElementById('bookora-footer-avatars');
     if (!starsEl || !avatarsEl) return false;
-
     if (!window.firebase?.firestore) return false;
     const db = window.firebase.firestore();
     const reviews = await getReviews();
@@ -73,6 +72,7 @@
       selected.push(`<span class="bookora-footer__avatar-image" title="${esc(name)}"><img src="${esc(photo)}" alt="${esc(name)}" loading="lazy" referrerpolicy="no-referrer"></span>`);
     }
     avatarsEl.innerHTML = selected.join('');
+    avatarsEl.dataset.firebaseReady = '1';
     return true;
   }
 
@@ -83,7 +83,7 @@
     attempt();
     timer = setInterval(attempt, 5000);
     if (observer) observer.disconnect();
-    observer = new MutationObserver(() => { if (document.getElementById('bookora-footer-avatars') && !document.getElementById('bookora-footer-avatars').dataset.firebaseReady) attempt(); });
+    observer = new MutationObserver(() => { const el=document.getElementById('bookora-footer-avatars'); if (el && !el.dataset.firebaseReady) attempt(); });
     observer.observe(document.body, {childList:true, subtree:true});
   }
 
