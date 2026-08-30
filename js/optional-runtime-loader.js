@@ -4,7 +4,7 @@
 (() => {
   const route = () => (window.location.hash || '#/').split('?')[0].replace(/^#/, '') || '/';
   const homepage = ['./homepage-featured-removal-permanent.js?v=20260827-2','./globalInteractions.js?v=20260827-2','./homepage-catalog-enhancement.js?v=20260820-1','./homepage-catalog-cleanup.js?v=20260823-2','./homepage-seller-section-fix.js?v=20260820-1','./active-mode-persistence.js?v=20260826-1','./ai-single-trigger-permanent-fix.js?v=20260827-2'];
-  const common = ['./auth-logout-ui-permanent-fix.js?v=20260826-1','./backend-token-restore.js?v=20260823-3','./firebase-auth-token-bridge.js?v=20260821-9','./profile-menu-stability.js?v=20260822-1'];
+  const common = ['./auth-logout-ui-permanent-fix.js?v=20260826-1','./backend-token-restore.js?v=20260823-3','./firebase-auth-token-bridge.js?v=20260821-9','./profile-menu-stability.js?v=20260822-1','./ai-single-trigger-global-cleanup.js?v=20260830-single-ai'];
   const routeModules = {
     '/admin/review-submissions':['./admin-review-route-fix.js?v=20260828-1'],
     '/explore':['./smart-search-runtime.js?v=20260822-1','./catalog-dedupe-runtime.js?v=20260827-1','./explore-filter-runtime-fix.js?v=20260830-2','./public-category-data-runtime-fix.js?v=20260830-category-canonical-1'],
