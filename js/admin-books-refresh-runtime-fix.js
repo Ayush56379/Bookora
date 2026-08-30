@@ -7,6 +7,12 @@
   if (window.__BOOKORA_ADMIN_BOOKS_REFRESH_RUNTIME_FIX__) return;
   window.__BOOKORA_ADMIN_BOOKS_REFRESH_RUNTIME_FIX__ = true;
 
+  // Presentation-only enhancement: Firebase cover thumbnails for the existing
+  // Admin Books rows. It does not replace the existing books loader or actions.
+  import('./admin-books-cover-thumbnails.js?v=20260830-1').catch(error => {
+    console.warn('[Bookora Admin Books covers]', error?.message || error);
+  });
+
   const isBooksRefresh = target => {
     try { return !!target?.closest?.('#admin-books-refresh'); } catch (_) { return false; }
   };
