@@ -1,0 +1,72 @@
+/* Bookora — final profile/dropdown menu layout fix.
+   This file only normalizes the existing Header.js menu classes.
+   It does not change navigation or page functionality. */
+
+#user-menu-dropdown {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+#user-menu-dropdown .dropdown-item.bookora-icon-item,
+#user-menu-dropdown a.bookora-icon-item {
+  display: flex !important;
+  align-items: center !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: .65rem !important;
+  width: 100% !important;
+  min-height: 38px;
+  box-sizing: border-box;
+  padding: .55rem .65rem !important;
+  margin: 0 !important;
+  border-radius: 9px;
+  text-decoration: none !important;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+#user-menu-dropdown .dropdown-item.bookora-icon-item:hover,
+#user-menu-dropdown a.bookora-icon-item:hover {
+  background: #f8fafc;
+}
+
+#user-menu-dropdown .bookora-menu-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 20px !important;
+  width: 20px !important;
+  height: 20px !important;
+  line-height: 0 !important;
+}
+
+#user-menu-dropdown .bookora-menu-icon svg {
+  display: block !important;
+  flex: none !important;
+}
+
+#user-menu-dropdown .bookora-icon-item > span:last-child {
+  display: block !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  line-height: 1.25 !important;
+}
+
+#user-menu-dropdown .bookora-profile-mode-option {
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  box-sizing: border-box;
+}
+
+#user-menu-dropdown .bookora-profile-mode-option .bookora-menu-icon {
+  flex: 0 0 17px !important;
+  width: 17px !important;
+  height: 17px !important;
+}
+
+@media (max-width: 700px) {
+  #user-menu-dropdown {
+    right: 0;
+    width: min(290px, calc(100vw - 24px)) !important;
+  }
+}
