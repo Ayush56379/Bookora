@@ -1,6 +1,5 @@
 // Bookora AI single-trigger cleanup.
 // Keep the canonical "Ask Bookora AI" assistant and permanently remove
-// the legacy "AI Bookora Support" floating control on every route.
 // IMPORTANT: this cleanup initializes only the canonical assistant and never
 // creates a second AI trigger. It observes only added nodes to avoid loops.
 (() => {
