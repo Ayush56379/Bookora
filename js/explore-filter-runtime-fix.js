@@ -6,9 +6,21 @@
   window.__BOOKORA_EXPLORE_PRODUCTION_FILTER_V8__ = true;
 
   let moduleState = null;
+  let unsubscribeState = null;
+  const attachState = (s) => {
+    if (!s || typeof s.subscribe !== 'function') return;
+    if (unsubscribeState) unsubscribeState();
+    unsubscribeState = s.subscribe(event => {
+      // The Explore route can render once before Firebase/Firestore finishes.
+      // Re-render immediately when the canonical catalog is hydrated; this removes
+      // the need for a manual browser refresh while leaving CategoryPage untouched.
+      if (event === 'DATA_SYNCED' || event === 'AUTH_STATE_CHANGED') scheduleRefresh();
+    });
+  };
   import('./state.js').then(({ state }) => {
     moduleState = state;
     window.BookoraState = state;
+    attachState(state);
     if (document.querySelector('.explore-page')) scheduleRefresh();
   }).catch(error => console.warn('[Bookora Explore] state bridge skipped:', error));
 
@@ -143,17 +155,15 @@
       if (b.review_count === undefined && b.reviewCount !== undefined) b.review_count = Number(b.reviewCount) || 0;
     });
     removeAI(p); updatePrice(p, books); styleRating(p); syncCategories(p, books);
-    scheduleCanonicalRender();
+    // Do not force a render while the catalog is genuinely empty/loading. The
+    // state subscription above will run this again as soon as Firebase data lands.
+    if (books.length || getState()?.booksLoaded) scheduleCanonicalRender();
   };
   const scheduleRefresh = () => { if (queued) return; queued = true; requestAnimationFrame(refresh); };
 
   window.addEventListener('bookora:catalog-updated', scheduleRefresh, { passive:true });
   window.addEventListener('bookora:catalog-integrity-fixed', scheduleRefresh, { passive:true });
   window.addEventListener('hashchange', scheduleRefresh, { passive:true });
-  const subscribeState = (s) => {
-    if (typeof s?.subscribe === 'function') s.subscribe(event => { if (event === 'DATA_SYNCED') scheduleRefresh(); });
-  };
-  subscribeState(moduleState);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleRefresh, { once:true });
   else scheduleRefresh();
   setTimeout(scheduleRefresh, 0);
