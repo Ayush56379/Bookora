@@ -47,7 +47,6 @@
       if (!main) { main = document.createElement('main'); main.id = 'main-content'; main.style.cssText = 'flex:1;min-height:60vh'; app.appendChild(main); }
       main.innerHTML = pageModule.renderAdminModerationPage();
       window.__BOOKORA_ADMIN_MODERATION_RECOVERED__ = true;
-      // Never block route completion on Firebase. Data hydration starts independently.
       setTimeout(() => {
         if (!isModeration() || moderationInitialized) return;
         moderationInitialized = true;
@@ -67,7 +66,15 @@
     app.loadPage = async (path, params) => {
       if (path === '/admin/moderation') {
         const pageModule = await import('./pages/AdminModerationPage.js?v=20260830-moderation-1');
-        return { html: pageModule.renderAdminModerationPage() };
+        return {
+          html: pageModule.renderAdminModerationPage(),
+          // Do not await Firebase. The SPA route becomes interactive immediately.
+          init: () => {
+            if (moderationInitialized) return;
+            moderationInitialized = true;
+            setTimeout(() => Promise.resolve(pageModule.initAdminModerationEvents()).catch(error => console.error('[Bookora Moderation] init failed:', error)), 0);
+          }
+        };
       }
       return originalLoadPage(path, params);
     };
