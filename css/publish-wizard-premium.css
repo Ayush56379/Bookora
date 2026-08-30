@@ -25,8 +25,6 @@
 #publish-wizard-form .btn-secondary{background:#fff!important;color:#334155!important;border:1px solid #d8dee9!important}
 #publish-wizard-form .next-step-btn,#publish-wizard-form #submit-pub-btn{min-width:150px}
 #publish-wizard-form .prev-step-btn{min-width:105px}
-
-/* Step 2 upload layout: spacious, readable, and never lets button text disappear */
 #publish-wizard-form .publish-upload-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px!important;align-items:stretch!important}
 #publish-wizard-form .publish-upload-panel{min-width:0;border:1px solid #e5e7eb!important;border-radius:18px!important;background:#fff!important;padding:18px!important;box-shadow:0 5px 18px rgba(15,23,42,.04)!important}
 #publish-wizard-form .publish-upload-card{border:2px dashed #cbd5e1!important;background:#fafbff!important;border-radius:16px!important;padding:28px 20px!important;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;transition:border-color .2s,background .2s}
@@ -42,31 +40,22 @@
 #publish-wizard-form .publish-preview{background:linear-gradient(145deg,#f8fafc,#f5f3ff)!important;border:1px solid #e5e7eb;border-radius:18px!important;padding:24px!important}
 #publish-wizard-form .publish-preview-cover{width:90px;height:120px;border-radius:10px;background:#e2e8f0;display:grid;place-items:center;color:#94a3b8;font-size:28px}
 @keyframes publishWizardIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-
-/* Current step summary */
 #publish-wizard-form::before{content:"Step 1 of 5  •  Book Information";display:block;margin:-4px 0 18px;padding:13px 16px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;color:#3730a3;font-size:14px;font-weight:800;line-height:1.4}
 #publish-wizard-form::after{content:"① Book Information   →   ② Cover & Files   →   ③ Pricing   →   ④ Preview   →   ⑤ Submit";display:block;position:relative;margin:-2px 0 28px;padding:13px 14px;border-bottom:1px solid #edf0f6;color:#64748b;font-size:12px;font-weight:700;line-height:1.6;text-align:center;overflow-wrap:anywhere}
 #publish-wizard-form:has(#step-2[style*="display: block"])::before{content:"Step 2 of 5  •  Cover & Files"}
 #publish-wizard-form:has(#step-3[style*="display: block"])::before{content:"Step 3 of 5  •  Pricing"}
 #publish-wizard-form:has(#step-4[style*="display: block"])::before{content:"Step 4 of 5  •  Preview"}
 #publish-wizard-form:has(#step-5[style*="display: block"])::before{content:"Step 5 of 5  •  Submit for Admin Review"}
+@media (max-width:760px){#publish-wizard-shell{padding:12px 10px 40px}#publish-wizard-card{border-radius:18px}#publish-wizard-header{padding:20px 16px 18px}#publish-wizard-form{padding:20px 16px 24px}.publish-wizard-progress{display:flex;overflow-x:auto;gap:7px;padding-bottom:3px;scrollbar-width:none}.publish-wizard-progress::-webkit-scrollbar{display:none}.publish-wizard-progress-item{flex:0 0 88px;padding:9px 6px}.publish-wizard-status{font-size:12px}#publish-wizard-form .publish-upload-grid{grid-template-columns:1fr!important;gap:16px!important}#publish-wizard-form .publish-upload-panel{padding:14px!important}#publish-wizard-form .publish-upload-card{min-height:205px;padding:24px 14px!important}#publish-wizard-form .publish-action-row{flex-direction:column-reverse;align-items:stretch}#publish-wizard-form .publish-action-row>div{width:100%;display:grid;grid-template-columns:1fr 1.35fr}#publish-wizard-form .publish-action-row .btn{width:100%;min-width:0}#publish-wizard-form .prev-step-btn,#publish-wizard-form .next-step-btn,#publish-wizard-form #submit-pub-btn{min-width:0}#publish-wizard-form::after{text-align:left;font-size:11px;padding:12px 10px;margin-bottom:22px}}
+@media (max-width:420px){.publish-wizard-title{font-size:24px}.publish-wizard-progress-item{flex-basis:78px}.publish-wizard-progress-item .pwi-label{font-size:10px}#publish-wizard-form{padding:18px 13px 22px}#publish-wizard-form .wizard-section>h3{font-size:20px;margin-bottom:18px}#publish-wizard-form::before{font-size:12px;padding:11px 12px}#publish-wizard-form::after{font-size:10px;line-height:1.8}#publish-wizard-form .publish-action-row>div{grid-template-columns:1fr}}
 
-@media (max-width:760px){
- #publish-wizard-shell{padding:12px 10px 40px}#publish-wizard-card{border-radius:18px}#publish-wizard-header{padding:20px 16px 18px}#publish-wizard-form{padding:20px 16px 24px}
- .publish-wizard-progress{display:flex;overflow-x:auto;gap:7px;padding-bottom:3px;scrollbar-width:none}.publish-wizard-progress::-webkit-scrollbar{display:none}.publish-wizard-progress-item{flex:0 0 88px;padding:9px 6px}
- .publish-wizard-status{font-size:12px}
- #publish-wizard-form .publish-upload-grid{grid-template-columns:1fr!important;gap:16px!important}
- #publish-wizard-form .publish-upload-panel{padding:14px!important}
- #publish-wizard-form .publish-upload-card{min-height:205px;padding:24px 14px!important}
- #publish-wizard-form .publish-action-row{flex-direction:column-reverse;align-items:stretch}
- #publish-wizard-form .publish-action-row>div{width:100%;display:grid;grid-template-columns:1fr 1.35fr}
- #publish-wizard-form .publish-action-row .btn{width:100%;min-width:0}
- #publish-wizard-form .prev-step-btn,#publish-wizard-form .next-step-btn,#publish-wizard-form #submit-pub-btn{min-width:0}
- #publish-wizard-form::after{text-align:left;font-size:11px;padding:12px 10px;margin-bottom:22px}
-}
-@media (max-width:420px){
- .publish-wizard-title{font-size:24px}.publish-wizard-progress-item{flex-basis:78px}.publish-wizard-progress-item .pwi-label{font-size:10px}
- #publish-wizard-form{padding:18px 13px 22px}#publish-wizard-form .wizard-section>h3{font-size:20px;margin-bottom:18px}
- #publish-wizard-form::before{font-size:12px;padding:11px 12px}#publish-wizard-form::after{font-size:10px;line-height:1.8}
- #publish-wizard-form .publish-action-row>div{grid-template-columns:1fr}
-}
+/* Bookora universal loading language — same animated word everywhere */
+#main-content > div[style*="padding:60px 20px"]{min-height:60vh!important;display:grid!important;place-items:center!important;padding:32px 20px!important;background:#fff!important;color:transparent!important;font-size:0!important}
+#main-content > div[style*="padding:60px 20px"]::before{content:"Bookora";font:900 clamp(34px,6vw,58px)/1 Inter,system-ui,sans-serif;letter-spacing:-.045em;display:block;animation:bookoraLoaderColor 1.35s ease-in-out infinite alternate,bookoraLoaderFloat 1.35s ease-in-out infinite}
+@keyframes bookoraLoaderColor{0%{color:#2563eb}25%{color:#7c3aed}50%{color:#db2777}75%{color:#ea580c}100%{color:#16a34a}}
+@keyframes bookoraLoaderFloat{0%,100%{transform:translateY(0);opacity:.72}50%{transform:translateY(-5px);opacity:1}}
+body:not(:has(#main-content)) #app > main{min-height:100vh!important;display:grid!important;place-items:center!important;padding:24px!important;background:#fff!important;font-size:0!important;color:transparent!important}
+body:not(:has(#main-content)) #app > main > div{max-width:none!important;width:auto!important}
+body:not(:has(#main-content)) #app > main > div > div:first-child{display:none!important}
+body:not(:has(#main-content)) #app > main > div::before{content:"Bookora";font:900 clamp(34px,6vw,58px)/1 Inter,system-ui,sans-serif;letter-spacing:-.045em;display:block;animation:bookoraLoaderColor 1.35s ease-in-out infinite alternate,bookoraLoaderFloat 1.35s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){#main-content > div[style*="padding:60px 20px"]::before,body:not(:has(#main-content)) #app > main > div::before{animation:bookoraLoaderColor 2s linear infinite alternate}}
