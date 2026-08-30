@@ -4,14 +4,15 @@
 (() => {
   const route = () => (window.location.hash || '#/').split('?')[0].replace(/^#/, '') || '/';
   const homepage = ['./homepage-featured-removal-permanent.js?v=20260827-2','./globalInteractions.js?v=20260827-2','./homepage-catalog-enhancement.js?v=20260820-1','./homepage-catalog-cleanup.js?v=20260823-2','./homepage-seller-section-fix.js?v=20260820-1','./active-mode-persistence.js?v=20260826-1','./ai-single-trigger-permanent-fix.js?v=20260827-2'];
-  const common = ['./auth-logout-ui-permanent-fix.js?v=20260826-1','./backend-token-restore.js?v=20260823-3','./firebase-auth-token-bridge.js?v=20260821-9','./profile-menu-stability.js?v=20260822-1'];
+  const common = ['./auth-logout-ui-permanent-fix.js?v=20260826-1','./backend-token-restore.js?v=20260823-3','./firebase-auth-token-bridge.js?v=20260821-9','./profile-menu-stability.js?v=20260822-1','./wishlist-permission-fix.js?v=20260830-wishlist-1'];
   const routeModules = {
     '/admin/review-submissions':['./admin-review-route-fix.js?v=20260828-1'],
     '/explore':['./smart-search-runtime.js?v=20260822-1','./catalog-dedupe-runtime.js?v=20260827-1','./explore-filter-runtime-fix.js?v=20260830-2','./public-category-data-runtime-fix.js?v=20260830-category-canonical-1'],
     '/pricing':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/subscription':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
     '/subscription/manage':['./membership-firebase-runtime.js?v=20260826-3','./membership-autopay-runtime.js?v=20260826-3'],
-    '/library':['./wishlist-permission-fix.js?v=20260826-2'],
+    '/library':[],
+    '/wishlist':[],
     '/orders':['./orders-page-permanent-fix.js?v=20260821-6','./orders-page-render-sync.js?v=20260821-2'],
     '/publish':['./publish-file-selection-fix.js?v=20260829-1'],
     '/publish/external':[],
@@ -27,7 +28,7 @@
     '/settings':['./settings-runtime.js?v=20260823-1','./settings-route-sync-hotfix.js?v=20260822-1']
   };
   const isPrefix=(r,p)=>r===p||r.startsWith(`${p}/`);
-  const selected=()=>{const r=route();if(r==='/')return homepage;const exact=routeModules[r]||[];if(r==='/publish')return [...exact,...common];const key=Object.keys(routeModules).find(k=>isPrefix(r,k));return [...common,...(key?routeModules[key]:[])];};
+  const selected=()=>{const r=route();if(r==='/')return [...homepage,'./wishlist-permission-fix.js?v=20260830-wishlist-1'];const exact=routeModules[r]||[];if(r==='/publish')return [...exact,...common];const key=Object.keys(routeModules).find(k=>isPrefix(r,k));return [...common,...(key?routeModules[key]:[])];};
   const loaded=new Set();
   const loadOne=src=>{if(loaded.has(src))return Promise.resolve();loaded.add(src);return import(src).catch(error=>console.warn('[Bookora optional runtime skipped]',src,error));};
   let generation=0;
