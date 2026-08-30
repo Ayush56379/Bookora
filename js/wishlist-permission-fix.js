@@ -1,8 +1,7 @@
 // Bookora — Wishlist persistence bridge.
 // Firebase Auth remains the identity authority. Wishlist writes/reads go through
 // the authenticated Bookora backend, which owns the server-side Firestore write.
-// This avoids browser Firestore permission failures while keeping Firebase data
-// as the persistent source of truth.
+// This bridge is intentionally optimistic so the heart responds immediately.
 import { state } from './state.js';
 import { apiFetch } from './config.js';
 
@@ -38,12 +37,9 @@ async function loadWishlistFromBackend() {
   rerenderWishlist();
 }
 
-async function addWishlist(bookId) {
+async function persistAdd(bookId) {
   const id = String(bookId);
-  const attempts = [
-    { bookId: id },
-    { book_id: id }
-  ];
+  const attempts = [{ bookId: id }, { book_id: id }];
   let lastError = null;
   for (const body of attempts) {
     try {
@@ -56,40 +52,52 @@ async function addWishlist(bookId) {
   throw lastError || new Error('Wishlist add failed.');
 }
 
-async function removeWishlist(bookId) {
+async function persistRemove(bookId) {
   const response = await apiFetch(`/api/wishlist/${encodeURIComponent(String(bookId))}`, { method: 'DELETE' });
   if (response.ok || response.status === 204 || response.status === 404) return true;
   throw new Error(`Wishlist DELETE HTTP ${response.status}`);
 }
 
-state.toggleWishlist = async function(bookId) {
+function notifyChanged(bookId, isAdded) {
+  try { state.notify('WISHLIST_UPDATED', { bookId, isAdded, persistence: 'firebase-backend' }); } catch (_) {}
+  rerenderWishlist();
+}
+
+state.toggleWishlist = function(bookId) {
   const normalizedId = String(bookId || '').trim();
   if (!normalizedId) throw new Error('BOOK_ID_MISSING');
   if (!this.isAuthenticated || !this.currentUser?.uid) throw new Error('Please login first.');
 
   const isAdded = !this.wishlist.has(normalizedId);
-  if (isAdded) await addWishlist(normalizedId);
-  else await removeWishlist(normalizedId);
-
-  // Optimistic in-memory state is updated only after the server confirms the
-  // operation. The server authenticates with Firebase and persists the record.
   if (isAdded) this.wishlist.add(normalizedId);
   else this.wishlist.delete(normalizedId);
-  this.notify('WISHLIST_UPDATED', {
-    bookId: normalizedId,
-    isAdded,
-    persistence: 'firebase-backend'
+  notifyChanged(normalizedId, isAdded);
+
+  // Persist in the background so the heart fills instantly and never waits on
+  // network latency. If persistence fails, roll the in-memory state back.
+  const persist = (async () => {
+    if (isAdded) await persistAdd(normalizedId);
+    else await persistRemove(normalizedId);
+  })().catch(async error => {
+    const stillSameIntent = this.wishlist.has(normalizedId) === isAdded;
+    if (stillSameIntent) {
+      if (isAdded) this.wishlist.delete(normalizedId);
+      else this.wishlist.add(normalizedId);
+      notifyChanged(normalizedId, !isAdded);
+    }
+    console.error('[Bookora Wishlist] persistence failed:', error);
+    try {
+      const { Toast } = await import('./components/Toast.js');
+      Toast.show('Wishlist save failed. Please try again.', 'error');
+    } catch (_) {}
   });
-  rerenderWishlist();
+  this.__wishlistLastWrite = persist;
   return isAdded;
 };
 
 async function reconcile() {
-  try {
-    await loadWishlistFromBackend();
-  } catch (error) {
-    console.warn('[Bookora Wishlist] Backend sync skipped:', error?.message || error);
-  }
+  try { await loadWishlistFromBackend(); }
+  catch (error) { console.warn('[Bookora Wishlist] Backend sync skipped:', error?.message || error); }
 }
 
 state.subscribe(event => {
@@ -98,3 +106,14 @@ state.subscribe(event => {
 });
 
 reconcile();
+
+if (!document.getElementById('bookora-wishlist-fill-style')) {
+  const style = document.createElement('style');
+  style.id = 'bookora-wishlist-fill-style';
+  style.textContent = `
+    .book-card .book-wishlist-btn.active{background:#E11D48!important;border-color:#E11D48!important;color:#fff!important;box-shadow:0 5px 14px rgba(225,29,72,.28)!important;transform:scale(1.04)}
+    .book-card .book-wishlist-btn.active:hover{background:#BE123C!important;border-color:#BE123C!important;color:#fff!important}
+    .bd-wish.active{background:#E11D48!important;border-color:#E11D48!important;color:#fff!important}
+  `;
+  document.head.appendChild(style);
+}
