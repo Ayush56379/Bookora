@@ -45,7 +45,7 @@ class SafeApp {
     if(path==='/payment/success'){const m=await safeImport('./pages/PaymentSuccessPage.js');return{html:m.renderPaymentSuccessPage()};}
     if(path==='/payment/failed'){const m=await safeImport('./pages/PaymentFailedPage.js');return{html:m.renderPaymentFailedPage()};}
     if(['/seller','/seller/dashboard','/creator','/creator/dashboard'].includes(path)){const m=await safeImport('./pages/CreatorDashboardPage.js');return{html:m.renderCreatorDashboardPage(),init:m.initCreatorDashboardEvents};}
-    if(path==='/publish'){const m=await safeImport('./pages/PublishInternalPageV2.js?v=20260830-publish-v2');return{html:m.renderPublishInternalPage(),init:m.initPublishInternalEvents};}
+    if(path==='/publish'){const m=await safeImport('./pages/PublishInternalPageV2.js?v=20260830-publish-v3');return{html:m.renderPublishInternalPage(),init:m.initPublishInternalEvents};}
     if(path.startsWith('/publish/external/integration/')){const m=await safeImport('./pages/ExternalIntegrationPage.js');const bookId=decodeURIComponent(path.replace('/publish/external/integration/','').split('/')[0]);return{html:m.renderExternalIntegrationPage(),init:()=>m.initExternalIntegrationPage(bookId)};}
     if(path==='/publish/external'){const m=await safeImport('./pages/PublishExternalPage.js');return{html:m.renderPublishExternalPage(),init:m.initPublishExternalEvents};}
     if(path==='/seller/apply'){const m=await safeImport('./pages/SellerApplyPage.js?v=20260827-3');return{html:m.renderSellerApplyPage(),init:m.initSellerApplyEvents};}
