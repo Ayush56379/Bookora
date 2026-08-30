@@ -1,8 +1,8 @@
-/* Bookora Publish Wizard Navigation v4 — reliable SPA-safe step navigation */
+/* Bookora Publish Wizard Navigation v5 — deterministic, non-blocking step navigation */
 (() => {
   'use strict';
-  if (window.__BOOKORA_PUBLISH_NAV_V4__) return;
-  window.__BOOKORA_PUBLISH_NAV_V4__ = true;
+  if (window.__BOOKORA_PUBLISH_NAV_V5__) return;
+  window.__BOOKORA_PUBLISH_NAV_V5__ = true;
 
   const toast = (message, type = 'warning') => {
     try {
@@ -11,15 +11,18 @@
       else console.warn('[Bookora publish wizard]', message);
     } catch (_) { console.warn('[Bookora publish wizard]', message); }
   };
-  const value = id => String(document.getElementById(id)?.value || '').trim();
-  const number = id => Number(document.getElementById(id)?.value || 0);
-  const file = id => document.getElementById(id)?.files?.[0] || null;
+  const el = id => document.getElementById(id);
+  const value = id => String(el(id)?.value || '').trim();
+  const number = id => Number(el(id)?.value || 0);
+  const file = id => el(id)?.files?.[0] || null;
+  const form = () => el('publish-wizard-form');
 
-  function form() { return document.getElementById('publish-wizard-form'); }
   function currentStep() {
     for (let i = 1; i <= 5; i++) {
-      const el = document.getElementById(`step-${i}`);
-      if (el && getComputedStyle(el).display !== 'none') return i;
+      const section = el(`step-${i}`);
+      if (!section) continue;
+      if (section.hidden === false && getComputedStyle(section).display !== 'none') return i;
+      if (section.hidden !== true && section.style.display !== 'none') return i;
     }
     return 1;
   }
@@ -44,28 +47,36 @@
       const price = number('pub-price');
       const rawSale = value('pub-saleprice');
       const sale = rawSale === '' ? null : Number(rawSale);
-      if (!(price > 0)) { toast('Please enter a valid list price.'); return false; }
+      if (!(price > 0) || !Number.isFinite(price)) { toast('Please enter a valid list price.'); return false; }
       if (sale !== null && (!Number.isFinite(sale) || sale < 0 || sale > price)) { toast('Please enter a valid sale price.'); return false; }
     }
     return true;
   }
 
-  function go(step) {
+  function setStep(step) {
     const target = Math.max(1, Math.min(5, Number(step) || 1));
+    const sections = [];
     for (let i = 1; i <= 5; i++) {
-      const section = document.getElementById(`step-${i}`);
-      if (section) {
-        section.style.display = i === target ? 'block' : 'none';
-        section.hidden = i !== target;
-      }
+      const section = el(`step-${i}`);
+      if (!section) continue;
+      sections.push(section);
+      const active = i === target;
+      section.hidden = !active;
+      section.setAttribute('aria-hidden', active ? 'false' : 'true');
+      section.style.setProperty('display', active ? 'block' : 'none', 'important');
     }
-    const active = document.getElementById(`step-${target}`);
-    if (active) active.hidden = false;
-    if (target === 4) {
-      window.dispatchEvent(new CustomEvent('bookora:publish-preview')); 
+    const active = el(`step-${target}`);
+    if (!active) {
+      toast('The next publish step is temporarily unavailable. Please retry.','error');
+      return false;
     }
+    active.hidden = false;
+    active.removeAttribute('aria-hidden');
+    active.style.setProperty('display', 'block', 'important');
+    if (target === 4) window.dispatchEvent(new CustomEvent('bookora:publish-preview'));
     window.dispatchEvent(new CustomEvent('bookora:publish-step-changed', { detail: { step: target } }));
-    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    return true;
   }
 
   function handle(event) {
@@ -73,30 +84,37 @@
     if (!root) return;
     const button = event.target?.closest?.('button[data-next], button[data-prev], button.next-step-btn, button.prev-step-btn');
     if (!button || !root.contains(button)) return;
-    const target = button.dataset.next != null ? Number(button.dataset.next) : Number(button.dataset.prev);
-    if (!Number.isFinite(target)) return;
-    const from = currentStep();
 
-    // Let the wizard navigation own these controls. Prevent the old competing handlers.
+    const rawTarget = button.dataset.next != null ? button.dataset.next : button.dataset.prev;
+    const target = Number(rawTarget);
+    if (!Number.isFinite(target)) return;
+
     event.preventDefault();
     event.stopImmediatePropagation();
 
+    const from = currentStep();
     if (target > from && !validate(from)) return;
-    go(target);
+
+    // Run outside the click call stack so competing legacy handlers cannot
+    // immediately re-render the wizard back to the previous step.
+    queueMicrotask(() => setStep(target));
   }
 
-  // Capture phase handles dynamically rendered SPA forms before any stale page handler.
+  // Capture phase owns wizard navigation before any older delegated handlers.
   document.addEventListener('click', handle, true);
 
-  // Keep button behavior deterministic after SPA re-renders.
-  const observer = new MutationObserver(() => {
+  // Keep every wizard navigation button clickable after SPA renders/re-renders.
+  const normalize = () => {
     const root = form();
     if (!root) return;
     root.querySelectorAll('button[data-next],button[data-prev],button.next-step-btn,button.prev-step-btn').forEach(button => {
       button.type = 'button';
       button.disabled = false;
+      button.removeAttribute('aria-disabled');
       button.style.pointerEvents = 'auto';
     });
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  };
+
+  normalize();
+  new MutationObserver(normalize).observe(document.documentElement, { childList: true, subtree: true });
 })();
