@@ -21,6 +21,14 @@
     console.warn('[Bookora Admin Books actions]', error?.message || error);
   });
 
+  // Admin Orders fast/retry runtime. It is intentionally imported from this
+  // already-loaded global admin runtime so index.html does not need another
+  // global script entry. It only activates on #/admin/orders and reuses the
+  // existing AdminOrdersPage renderer/listener.
+  import('./admin-orders-firebase-fast-runtime.js?v=20260830-1').catch(error => {
+    console.warn('[Bookora Admin Orders fast runtime]', error?.message || error);
+  });
+
   const isBooksRefresh = target => {
     try { return !!target?.closest?.('#admin-books-refresh'); } catch (_) { return false; }
   };
