@@ -3,8 +3,8 @@
 (() => {
   const MAX_VISIBLE = 2;
   let showAll = false;
-  let timer = null;
   let lastSignature = '';
+  let inFlight = false;
 
   const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const valid = a => Array.isArray(a) ? a.filter(r => r && Number(r.rating) >= 1 && Number(r.rating) <= 5) : [];
@@ -65,22 +65,22 @@
   }
 
   async function attempt() {
+    if (inFlight) return;
+    if (!document.getElementById('rs-reviews-section')) return;
+    inFlight = true;
     try {
-      if (!document.getElementById('rs-reviews-section')) return;
       const reviews = await readReviews();
       render(reviews);
     } catch (e) {
       console.warn('[Bookora review Firebase runtime]', e?.message || e);
+    } finally {
+      inFlight = false;
     }
   }
 
   function boot() {
-    if (timer) clearInterval(timer);
-    attempt();
-    timer = setInterval(attempt, 5000);
-    new MutationObserver(() => {
-      if (document.getElementById('rs-reviews-section') && !document.getElementById('rs-reviews-controls')) attempt();
-    }).observe(document.body, { childList: true, subtree: true });
+    void attempt();
+    window.addEventListener('hashchange', () => setTimeout(() => { void attempt(); }, 100), { passive: true });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });

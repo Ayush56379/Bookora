@@ -5,6 +5,7 @@
 (() => {
   const API = window.BOOKORA_API_URL || 'https://bookora-backend-x08l.onrender.com';
   let busy = false;
+  let verifyInFlight = false;
 
   const getAuthToken = async () => {
     try {
@@ -43,8 +44,10 @@
   };
 
   async function verifyReturnedOrder() {
+    if (verifyInFlight) return;
     const orderId = readOrderId();
     if (!orderId || !document.getElementById('rs-donate-msg')) return;
+    verifyInFlight = true;
     message('Verifying Cashfree payment…');
     try {
       let result = null;
@@ -60,6 +63,8 @@
       }
     } catch (error) {
       message(error.message || 'Unable to verify the Cashfree payment yet.');
+    } finally {
+      verifyInFlight = false;
     }
   }
 
@@ -117,7 +122,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 
-  new MutationObserver(() => {
-    if (document.getElementById('rs-donate-msg')) verifyReturnedOrder();
-  }).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('hashchange', () => setTimeout(verifyReturnedOrder, 0), { passive: true });
 })();

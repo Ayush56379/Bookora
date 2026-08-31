@@ -3,8 +3,8 @@
 (() => {
   const STYLE_ID = 'bookora-footer-community-firebase-style';
   const MAX_AVATARS = 6;
-  let timer = null;
-  let observer = null;
+  let renderInFlight = false;
+  let renderQueued = false;
 
   const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const validUrl = v => /^https?:\/\//i.test(String(v || '').trim()) ? String(v).trim() : '';
@@ -49,42 +49,46 @@
   }
 
   async function render() {
-    styles();
-    const starsEl = document.getElementById('bookora-footer-rating');
-    const avatarsEl = document.getElementById('bookora-footer-avatars');
-    if (!starsEl || !avatarsEl) return false;
-    if (!window.firebase?.firestore) return false;
-    const db = window.firebase.firestore();
-    const reviews = await getReviews();
-    if (!reviews) return false;
-
-    const average = reviews.length ? reviews.reduce((sum,r) => sum + Number(r.rating || 0), 0) / reviews.length : 0;
-    const rounded = Math.max(0, Math.min(5, Math.round(average)));
-    starsEl.innerHTML = Array.from({length:5}, (_,i) => `<span class="footer-star">${i < rounded ? '★' : '☆'}</span>`).join('');
-    starsEl.setAttribute('aria-label', reviews.length ? `${average.toFixed(1)} out of 5 stars` : 'No ratings yet');
-
-    const selected = [];
-    for (const review of reviews) {
-      if (selected.length >= MAX_AVATARS) break;
-      const photo = await resolvePhoto(review, db);
-      if (!photo) continue;
-      const name = String(review.displayName || review.publicName || review.name || 'Bookora Reader').trim() || 'Bookora Reader';
-      selected.push(`<span class="bookora-footer__avatar-image" title="${esc(name)}"><img src="${esc(photo)}" alt="${esc(name)}" loading="lazy" referrerpolicy="no-referrer"></span>`);
+    if (renderInFlight) { renderQueued = true; return false; }
+    renderInFlight = true;
+    try {
+      styles();
+      const starsEl = document.getElementById('bookora-footer-rating');
+      const avatarsEl = document.getElementById('bookora-footer-avatars');
+      if (!starsEl || !avatarsEl || !window.firebase?.firestore) return false;
+      const db = window.firebase.firestore();
+      const reviews = await getReviews();
+      if (!reviews) return false;
+      const average = reviews.length ? reviews.reduce((sum,r) => sum + Number(r.rating || 0), 0) / reviews.length : 0;
+      const rounded = Math.max(0, Math.min(5, Math.round(average)));
+      starsEl.innerHTML = Array.from({length:5}, (_,i) => `<span class="footer-star">${i < rounded ? '★' : '☆'}</span>`).join('');
+      starsEl.setAttribute('aria-label', reviews.length ? `${average.toFixed(1)} out of 5 stars` : 'No ratings yet');
+      const selected = [];
+      for (const review of reviews) {
+        if (selected.length >= MAX_AVATARS) break;
+        const photo = await resolvePhoto(review, db);
+        if (!photo) continue;
+        const name = String(review.displayName || review.publicName || review.name || 'Bookora Reader').trim() || 'Bookora Reader';
+        selected.push(`<span class="bookora-footer__avatar-image" title="${esc(name)}"><img src="${esc(photo)}" alt="${esc(name)}" loading="lazy" referrerpolicy="no-referrer"></span>`);
+      }
+      avatarsEl.innerHTML = selected.join('');
+      avatarsEl.dataset.firebaseReady = '1';
+      return true;
+    } finally {
+      renderInFlight = false;
+      if (renderQueued) {
+        renderQueued = false;
+        setTimeout(() => { void render(); }, 0);
+      }
     }
-    avatarsEl.innerHTML = selected.join('');
-    avatarsEl.dataset.firebaseReady = '1';
-    return true;
   }
+
 
   function boot() {
     styles();
-    if (timer) clearInterval(timer);
-    const attempt = async () => { try { await render(); } catch (e) { console.warn('[Bookora footer community]', e?.message || e); } };
-    attempt();
-    timer = setInterval(attempt, 5000);
-    if (observer) observer.disconnect();
-    observer = new MutationObserver(() => { const el=document.getElementById('bookora-footer-avatars'); if (el && !el.dataset.firebaseReady) attempt(); });
-    observer.observe(document.body, {childList:true, subtree:true});
+    void render();
+    window.addEventListener('hashchange', () => setTimeout(() => { void render(); }, 100), { passive: true });
+    window.addEventListener('bookora:catalog-updated', () => { void render(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, {once:true});
