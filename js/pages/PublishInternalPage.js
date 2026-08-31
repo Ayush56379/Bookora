@@ -117,33 +117,35 @@ function showStep(step){document.querySelectorAll('.bp-panel').forEach(p=>p.clas
 function collectDetails() {
   const category = field('bp-category');
   return {
-    title:field('bp-title'), subtitle:field('bp-subtitle'), authorName:field('bp-author'), category:category==='Other'?field('bp-custom-category'):category,
-    categorySelection:category, customCategory:field('bp-custom-category'), language:field('bp-language'), publisherName:field('bp-publisher'), isbn:field('bp-isbn'), edition:field('bp-edition'), publicationYear:field('bp-year'),
+    title:field('bp-title'), subtitle:field('bp-subtitle'), authorName:field('bp-author'), category,
+    categorySelection:category, customCategory:field('bp-custom-category'), language:field('bp-language'),
+    publisherName:field('bp-publisher'), isbn:field('bp-isbn'), edition:field('bp-edition'), publicationYear:field('bp-year'),
     contentType:field('bp-content-type'), description:field('bp-description'), tags:field('bp-tags'), aboutAuthor:field('bp-about-author')
   };
 }
-function collectPricing(){
+
+function collectPricing() {
   const pdfUrl=field('bp-pdf-url'), coverUrl=field('bp-cover-url');
-  const listPrice=Number(field('bp-list-price')), salePrice=Number(field('bp-sale-price'));
-  return { pdfUrl, coverUrl, listPrice, salePrice, usablePdfUrl:usableUrl(pdfUrl,'pdf'), usableCoverUrl:usableUrl(coverUrl,'cover') };
+  return { pdfUrl, coverUrl, usablePdfUrl:usableUrl(pdfUrl,'pdf'), usableCoverUrl:usableUrl(coverUrl,'cover'), listPrice:Number(field('bp-list-price')), salePrice:Number(field('bp-sale-price')) };
 }
 
 function validateStep1(d){
-  if(!d.title)return 'Please enter the eBook title.';
-  if(!d.authorName)return 'Please enter the author name.';
+  if(!d.title)return 'eBook title is required.';
+  if(!d.authorName)return 'Author name is required.';
   if(!d.category)return 'Please select a category.';
-  if(d.categorySelection==='Other'&&!d.customCategory)return 'Please enter your custom category.';
-  if(!d.language)return 'Please select the language.';
-  if(d.description.length<20)return 'Description must contain at least 20 characters.';
+  if(d.category==='Other'&&!d.customCategory)return 'Please enter your custom category.';
+  if(!d.language)return 'Please select a language.';
+  if(d.description.length<20)return 'Description must be at least 20 characters.';
   if(!d.tags)return 'Please enter at least one tag.';
   return '';
 }
-function validateStep2(d){
-  if(!d.pdfUrl||!validUrl(d.pdfUrl))return 'Please enter a valid PDF URL.';
-  if(!d.coverUrl||!validUrl(d.coverUrl))return 'Please enter a valid cover image URL.';
-  if(!Number.isFinite(d.listPrice)||d.listPrice<0)return 'Please enter a valid list price.';
-  if(!Number.isFinite(d.salePrice)||d.salePrice<0)return 'Please enter a valid sale price.';
-  if(d.salePrice>d.listPrice)return 'Sale price cannot be greater than list price.';
+
+function validateStep2(p){
+  if(!p.pdfUrl||!validUrl(p.pdfUrl))return 'Please enter a valid PDF link.';
+  if(!p.coverUrl||!validUrl(p.coverUrl))return 'Please enter a valid cover image link.';
+  if(!Number.isFinite(p.listPrice)||p.listPrice<0)return 'Please enter a valid list price.';
+  if(!Number.isFinite(p.salePrice)||p.salePrice<0)return 'Please enter a valid sale price.';
+  if(p.salePrice>p.listPrice)return 'Sale price cannot be greater than list price.';
   return '';
 }
 
@@ -159,12 +161,15 @@ async function saveDraft(status='draft') {
     description:details.description,tags:details.tags.split(',').map(x=>x.trim()).filter(Boolean),tagsText:details.tags,aboutAuthor:details.aboutAuthor,
     pdfUrl:pricing.pdfUrl,pdf_url:pricing.pdfUrl,usablePdfUrl:pricing.usablePdfUrl,coverUrl:pricing.coverUrl,cover_url:pricing.coverUrl,usableCoverUrl:pricing.usableCoverUrl,
     listPrice:pricing.listPrice,list_price:pricing.listPrice,salePrice:pricing.salePrice,sale_price:pricing.salePrice,price:pricing.salePrice,
-    source_type:'internal',source:'bookora',creator_id:user.uid,creatorId:user.uid,sellerId:user.uid,publisher_id:user.uid,publisher_email:user.email||'',
+    source_type:'internal',source:'bookora',
+    ownerId:user.uid,
+    creator_id:user.uid,creatorId:user.uid,sellerId:user.uid,publisher_id:user.uid,publisher_email:user.email||'',
     status,updatedAt:window.firebase.firestore.FieldValue.serverTimestamp()
   };
   const ref=db().collection('books').doc(id);
-  const snap=await ref.get();
-  if(!snap.exists) payload.createdAt=window.firebase.firestore.FieldValue.serverTimestamp();
+  // Do not read the draft before writing. A new document has no readable resource
+  // and that pre-read was causing Firestore "Missing or insufficient permissions".
+  // Merge keeps the same draft document across all three steps without duplicates.
   await ref.set(payload,{merge:true});
   return id;
 }
