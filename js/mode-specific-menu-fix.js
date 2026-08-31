@@ -1,6 +1,5 @@
 // Mode-specific navigation drawer for Buyer / Seller / Admin.
 // Keeps the mobile menu aligned with the currently selected mode.
-import './admin-mode-persistence-hotfix.js';
 import { state } from './state.js';
 
 const ICON = {
