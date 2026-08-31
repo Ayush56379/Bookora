@@ -15,6 +15,18 @@
 #app .book-card.book-card-premium{width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
 #app .book-card .book-cover-container,#app .book-card .book-cover-premium{position:relative!important;width:100%!important;height:auto!important;min-height:0!important;max-width:none!important;aspect-ratio:2/3!important;overflow:hidden!important;box-sizing:border-box!important;}
 #app .book-card .book-cover-image{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;display:block!important;object-fit:cover!important;object-position:center!important;}
+
+/* Homepage only: make the real cover meet the card's outer top corners.
+   This removes only the 1px card-border inset around the cover; all card
+   content, sizing, data, actions and non-homepage layouts remain unchanged. */
+#app .bookora-home-clean .home-catalog-item > .book-card > .book-cover-container{
+ margin:-1px -1px 0!important;
+ width:calc(100% + 2px)!important;
+ max-width:none!important;
+ border-top-left-radius:14px!important;
+ border-top-right-radius:14px!important;
+}
+
 /* Real cover: no duplicate title, author, category, subtitle, format, gradient or metadata overlay. Existing fallback stays for missing/failed covers. */
 #app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-shade,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-spine,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-content,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-fallback{display:none!important;}
 #app .book-card .book-wishlist-btn{z-index:20!important;}
