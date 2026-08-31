@@ -1,12 +1,12 @@
-// Bookora homepage: permanently replace the old Featured catalog with
-// Firebase-backed Trending + All eBooks sections. This module only touches
-// the public homepage catalog and leaves the rest of the app unchanged.
+// Bookora homepage: Firebase-backed Trending + All eBooks sections.
+// IMPORTANT: this module must not continuously observe #app because that can
+// create a render loop and make the public site feel stuck. Updates happen
+// only on explicit catalog/navigation events.
 import { state } from './state.js';
 import { renderBookCard } from './components/BookCard.js';
 
 const STYLE_ID = 'bookora-home-trending-six-styles';
 const SECTION_ID = 'bookora-home-catalog-v2';
-let observer = null;
 let lastRenderKey = '';
 
 function approvedBooks() {
@@ -119,8 +119,6 @@ function init() {
   window.addEventListener('bookora:catalog-updated', () => { lastRenderKey = ''; scheduleRender(); });
   window.addEventListener('bookora:fast-catalog', () => { lastRenderKey = ''; scheduleRender(); });
   window.addEventListener('bookora:wishlist-updated', () => { lastRenderKey = ''; scheduleRender(); });
-  observer = new MutationObserver(() => scheduleRender());
-  observer.observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
   scheduleRender();
 }
 
