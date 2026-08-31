@@ -21,6 +21,20 @@
   });
   window.addEventListener('unhandledrejection', event => console.warn('[Bookora stability guard] unhandled promise:', event.reason));
 
+  // If a route remains on the bootstrap Bookora screen too long, recover instead of
+  // trapping the user behind an infinite-looking loader.
+  let loadingSince = 0;
+  setInterval(() => {
+    const main = document.getElementById('main-content');
+    const loader = main?.querySelector('[aria-label="Loading Bookora"]');
+    if (!loader) { loadingSince = 0; return; }
+    if (!loadingSince) loadingSince = Date.now();
+    if (Date.now() - loadingSince < 12000) return;
+    loader.outerHTML = '<div role="alert" style="min-height:60vh;display:grid;place-items:center;text-align:center;padding:40px 20px;font-family:Inter,system-ui,sans-serif;color:#334155"><div><strong style="display:block;font-size:20px;margin-bottom:8px">This page is taking too long to load.</strong><span style="display:block;font-size:14px;color:#64748b;margin-bottom:18px">The network or a service may be temporarily unavailable.</span><button type="button" id="bookora-stability-retry" style="border:0;border-radius:10px;padding:10px 16px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer">Try again</button></div></div>';
+    document.getElementById('bookora-stability-retry')?.addEventListener('click', () => window.__BOOKORA_APP_INSTANCE__?.route(true, false));
+    loadingSince = 0;
+  }, 2000);
+
   const patchState = async () => {
     try {
       const { state } = await import('./state.js');
