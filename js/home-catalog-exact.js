@@ -46,20 +46,18 @@ function applyExactCatalog() {
 }
 
 function boot() {
-  const observer = new MutationObserver(() => applyExactCatalog());
-  const watch = () => {
-    const root = document.getElementById('home-live-catalog');
-    if (root && !root.dataset.exactCatalogObserver) {
-      root.dataset.exactCatalogObserver = '1';
-      observer.observe(root, { childList: true, subtree: true });
-      applyExactCatalog();
-    }
-  };
+  // Do not poll continuously. The app already emits catalog/navigation events;
+  // a few one-shot retries only cover the initial async route mount.
+  const watch = () => applyExactCatalog();
   watch();
-  window.addEventListener('bookora:fast-catalog', applyExactCatalog);
-  window.addEventListener('bookora:catalog-updated', applyExactCatalog);
-  window.addEventListener('hashchange', () => setTimeout(watch, 0));
-  setInterval(watch, 500);
+  window.addEventListener('bookora:fast-catalog', watch);
+  window.addEventListener('bookora:catalog-updated', watch);
+  window.addEventListener('hashchange', () => {
+    setTimeout(watch, 0);
+    setTimeout(watch, 250);
+  });
+  setTimeout(watch, 250);
+  setTimeout(watch, 1000);
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
