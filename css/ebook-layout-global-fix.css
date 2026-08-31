@@ -1,9 +1,18 @@
-/* Bookora — GLOBAL RESPONSIVE EBOOK DISPLAY STANDARD. Presentation only. */
-#app [class*="grid"]:has(.book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){
+/* Bookora — GLOBAL RESPONSIVE EBOOK DISPLAY STANDARD
+   IMPORTANT: only containers whose DIRECT children are BookCards are affected.
+   This prevents Explore/category/filter layouts from being accidentally restyled. */
+#app [class*="grid"]:has(> .book-card),
+#app .home-catalog-grid,
+#app :where(div,section,ul):has(> .book-card){
  display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;width:100%!important;min-width:0!important;max-width:none!important;box-sizing:border-box!important;gap:clamp(10px,1.25vw,22px)!important;align-items:stretch!important;
 }
-#app [class*="grid"]:has(.book-card)>*,#app .home-catalog-grid>*,#app :where(div,section,ul):has(> .book-card)>*{width:100%!important;min-width:0!important;max-width:none!important;box-sizing:border-box!important;display:flex!important;justify-content:stretch!important;}
-#app [class*="grid"]:has(.book-card) .book-card,#app .home-catalog-grid .book-card,#app :where(div,section,ul):has(> .book-card) .book-card,#app .book-card.book-card-premium{width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
+#app [class*="grid"]:has(> .book-card)>*,
+#app .home-catalog-grid>*,
+#app :where(div,section,ul):has(> .book-card)>*{width:100%!important;min-width:0!important;max-width:none!important;box-sizing:border-box!important;display:flex!important;justify-content:stretch!important;}
+#app [class*="grid"]:has(> .book-card)> .book-card,
+#app .home-catalog-grid> .book-card,
+#app :where(div,section,ul):has(> .book-card)> .book-card,
+#app .book-card.book-card-premium{width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
 #app .book-card .book-cover-container,#app .book-card .book-cover-premium{position:relative!important;width:100%!important;height:auto!important;min-height:0!important;max-width:none!important;aspect-ratio:2/3!important;overflow:hidden!important;box-sizing:border-box!important;}
 #app .book-card .book-cover-image{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;display:block!important;object-fit:cover!important;object-position:center!important;}
 /* Real cover: no duplicate title, author, category, subtitle, format, gradient or metadata overlay. Existing fallback stays for missing/failed covers. */
@@ -12,14 +21,14 @@
 #app .book-card-info,#app .book-card-title-link,#app .book-card-title-link h3,#app .book-card-author,#app .book-card-price-row{max-width:100%!important;min-width:0!important;box-sizing:border-box!important;}
 #app .book-card-title-link h3{display:-webkit-box!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important;overflow:hidden!important;}
 #app .book-card-author{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
-@media(min-width:1100px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(6,minmax(0,1fr))!important;}}
-@media(min-width:768px) and (max-width:1099px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(4,minmax(0,1fr))!important;}}
-@media(min-width:480px) and (max-width:767px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
-@media(max-width:479px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}}
-@media(max-width:380px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}#app .book-card .book-wishlist-btn{width:30px!important;height:30px!important;top:6px!important;right:6px!important;}}
-#app [class*="grid"]:has(.book-card),#app :where(div,section,ul):has(> .book-card){min-width:0!important;}
+@media(min-width:1100px){#app [class*="grid"]:has(> .book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(6,minmax(0,1fr))!important;}}
+@media(min-width:768px) and (max-width:1099px){#app [class*="grid"]:has(> .book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(4,minmax(0,1fr))!important;}}
+@media(min-width:480px) and (max-width:767px){#app [class*="grid"]:has(> .book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
+@media(max-width:479px){#app [class*="grid"]:has(> .book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}}
+@media(max-width:380px){#app [class*="grid"]:has(> .book-card),#app .home-catalog-grid,#app :where(div,section,ul):has(> .book-card){grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}#app .book-card .book-wishlist-btn{width:30px!important;height:30px!important;top:6px!important;right:6px!important;}}
+#app [class*="grid"]:has(> .book-card),#app :where(div,section,ul):has(> .book-card){min-width:0!important;}
 
-/* Curated catalog pages use an inline grid. Keep the same universal ebook layout. */
+/* Curated catalog pages use an inline grid. Only this known ebook list is overridden. */
 #app .curated-catalog-page .container > div[style*="display:grid"]{
  display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:clamp(10px,1.25vw,22px)!important;width:100%!important;min-width:0!important;max-width:none!important;
 }
