@@ -1,120 +1,20 @@
-/* Bookora — GLOBAL ebook presentation fix
-   Scope: ebook cards only. No Firebase/data/navigation/business logic changes. */
-
-/* A real cover must remain a clean cover: never place metadata/text over it. */
-#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-shade,
-#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-spine,
-#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-content,
-#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-fallback {
-  display: none !important;
+/* Bookora — GLOBAL RESPONSIVE EBOOK DISPLAY STANDARD. Presentation only. */
+#app [class*="grid"]:has(.book-card),#app .home-catalog-grid{
+ display:grid!important;grid-template-columns:repeat(6,minmax(0,1fr))!important;width:100%!important;min-width:0!important;max-width:none!important;box-sizing:border-box!important;gap:clamp(10px,1.25vw,22px)!important;align-items:stretch!important;
 }
-
-/* Every known ebook grid + any grid whose contents are Bookora ebook cards.
-   The :has() rule catches page-specific grids such as New Releases, Wishlist,
-   category/search/related sections without changing unrelated grids. */
-#app .kdp-book-grid,
-#app .bookora-catalog-grid,
-#app #explore-books-grid,
-#app .explore-books-grid,
-#app .home-catalog-grid,
-#app .books-grid,
-#app .book-grid,
-#app .products-grid,
-#app .catalog-grid,
-#app .related-books-grid,
-#app [class*="book"][class*="grid"]:has(.book-card),
-#app [class*="ebook"][class*="grid"]:has(.book-card),
-#app [class*="catalog"][class*="grid"]:has(.book-card),
-#app [class*="release"][class*="grid"]:has(.book-card),
-#app [class*="related"][class*="grid"]:has(.book-card),
-#app [class*="result"][class*="grid"]:has(.book-card),
-#app [class*="search"][class*="grid"]:has(.book-card),
-#app [class*="wishlist"][class*="grid"]:has(.book-card),
-#app [class*="grid"]:has(.book-card) {
-  display: grid !important;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  box-sizing: border-box !important;
-  align-items: stretch !important;
-}
-
-/* Home catalog has one wrapper around each card. */
-#app .home-catalog-grid > .home-catalog-item,
-#app .home-catalog-grid > *,
-#app [class*="grid"]:has(.book-card) > * {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  box-sizing: border-box !important;
-  display: flex !important;
-  justify-content: stretch !important;
-}
-
-#app .home-catalog-grid .book-card,
-#app [class*="grid"]:has(.book-card) .book-card {
-  width: 100% !important;
-  max-width: none !important;
-  min-width: 0 !important;
-}
-
-/* Device density: desktop/laptop = 6, tablet = 4, phone = 2/3. */
-@media (min-width: 1100px) {
-  #app [class*="grid"]:has(.book-card),
-  #app .home-catalog-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (min-width: 768px) and (max-width: 1099px) {
-  #app [class*="grid"]:has(.book-card),
-  #app .home-catalog-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (min-width: 480px) and (max-width: 767px) {
-  #app [class*="grid"]:has(.book-card),
-  #app .home-catalog-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (max-width: 479px) {
-  #app [class*="grid"]:has(.book-card),
-  #app .home-catalog-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-}
-
-/* Keep the portrait cover itself consistent everywhere. */
-#app .book-card .book-cover-container,
-#app .book-card .book-cover-premium {
-  width: 100% !important;
-  max-width: none !important;
-  height: auto !important;
-  min-height: 0 !important;
-  aspect-ratio: 2 / 3 !important;
-  overflow: hidden !important;
-  box-sizing: border-box !important;
-}
-
-#app .book-card .book-cover-image {
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  max-width: none !important;
-  object-fit: cover !important;
-  object-position: center !important;
-  display: block !important;
-}
-
-/* Do not let the old 250px card cap turn a six-column grid into 4 visible cards. */
-@media (min-width: 1100px) {
-  #app [class*="grid"]:has(.book-card) .book-card,
-  #app .home-catalog-grid .book-card {
-    max-width: none !important;
-  }
-}
+#app [class*="grid"]:has(.book-card)>*,#app .home-catalog-grid>*{width:100%!important;min-width:0!important;max-width:none!important;box-sizing:border-box!important;display:flex!important;justify-content:stretch!important;}
+#app [class*="grid"]:has(.book-card) .book-card,#app .home-catalog-grid .book-card,#app .book-card.book-card-premium{width:100%!important;max-width:none!important;min-width:0!important;box-sizing:border-box!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
+#app .book-card .book-cover-container,#app .book-card .book-cover-premium{position:relative!important;width:100%!important;height:auto!important;min-height:0!important;max-width:none!important;aspect-ratio:2/3!important;overflow:hidden!important;box-sizing:border-box!important;}
+#app .book-card .book-cover-image{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;display:block!important;object-fit:cover!important;object-position:center!important;}
+/* Real cover: no duplicate title, author, category, subtitle, format, gradient or metadata overlay. Existing fallback stays for missing/failed covers. */
+#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-shade,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-spine,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-content,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-fallback{display:none!important;}
+#app .book-card .book-wishlist-btn{z-index:20!important;}
+#app .book-card-info,#app .book-card-title-link,#app .book-card-title-link h3,#app .book-card-author,#app .book-card-price-row{max-width:100%!important;min-width:0!important;box-sizing:border-box!important;}
+#app .book-card-title-link h3{display:-webkit-box!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important;overflow:hidden!important;}
+#app .book-card-author{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+@media(min-width:1100px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid{grid-template-columns:repeat(6,minmax(0,1fr))!important;}}
+@media(min-width:768px) and (max-width:1099px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;}}
+@media(min-width:480px) and (max-width:767px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
+@media(max-width:479px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}}
+@media(max-width:380px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}#app .book-card .book-wishlist-btn{width:30px!important;height:30px!important;top:6px!important;right:6px!important;}}
+#app [class*="grid"]:has(.book-card){min-width:0!important;}
