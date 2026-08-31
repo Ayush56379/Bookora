@@ -18,3 +18,20 @@
 @media(max-width:479px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}}
 @media(max-width:380px){#app [class*="grid"]:has(.book-card),#app .home-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}#app .book-card .book-wishlist-btn{width:30px!important;height:30px!important;top:6px!important;right:6px!important;}}
 #app [class*="grid"]:has(.book-card){min-width:0!important;}
+
+/* Curated catalog pages (New Releases / Trending / Best Sellers) use an inline
+   auto-fill grid. Override only that presentation rule so they use the same
+   global 6/4/3/2 ebook grid without touching their data or actions. */
+#app .curated-catalog-page .container > div[style*="display:grid"]{
+ display:grid!important;
+ grid-template-columns:repeat(6,minmax(0,1fr))!important;
+ gap:clamp(10px,1.25vw,22px)!important;
+ width:100%!important;min-width:0!important;max-width:none!important;
+}
+#app .curated-catalog-page .container > div[style*="display:grid"] > .book-card{
+ width:100%!important;min-width:0!important;max-width:none!important;box-sizing:border-box!important;
+}
+@media(min-width:768px) and (max-width:1099px){#app .curated-catalog-page .container > div[style*="display:grid"]{grid-template-columns:repeat(4,minmax(0,1fr))!important;}}
+@media(min-width:480px) and (max-width:767px){#app .curated-catalog-page .container > div[style*="display:grid"]{grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
+@media(max-width:479px){#app .curated-catalog-page .container > div[style*="display:grid"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}}
+@media(max-width:380px){#app .curated-catalog-page .container > div[style*="display:grid"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}}
