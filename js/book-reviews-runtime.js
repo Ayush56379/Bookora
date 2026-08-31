@@ -13,6 +13,21 @@ const stars = rating => { const r=Math.max(0,Math.min(5,Number(rating)||0)); ret
 const getBook = () => { const hash=window.location.hash||''; const match=hash.match(/^#\/book\/([^?]+)/); return match?state.getBookBySlug(decodeURIComponent(match[1])):null; };
 const getDb = () => window.firebase?.apps?.length ? window.firebase.firestore() : null;
 
+function dedupeOneReviewPerUserBook(reviews){
+  const unique = new Map();
+  for(const review of Array.isArray(reviews)?reviews:[]){
+    const userKey = String(review.user_id || review.userId || review.uid || review.firebaseUid || review.email || review.user_email || review.userEmail || '').trim().toLowerCase();
+    const bookKey = String(review.book_id || review.bookId || review.bookID || '').trim();
+    const identityKey = userKey && bookKey ? `user-book:${userKey}|${bookKey}` : `review:${String(review.id || review.review_id || `${bookKey}|${review.created_at||review.createdAt||review.date||''}`)}`;
+    const current = unique.get(identityKey);
+    if(!current){ unique.set(identityKey, review); continue; }
+    const currentTime = current.created_at?.toDate ? current.created_at.toDate().getTime() : new Date(current.created_at || current.createdAt || current.date || 0).getTime();
+    const nextTime = review.created_at?.toDate ? review.created_at.toDate().getTime() : new Date(review.created_at || review.createdAt || review.date || 0).getTime();
+    if(nextTime > currentTime) unique.set(identityKey, review);
+  }
+  return [...unique.values()];
+}
+
 async function ensureFirebaseReader(){
   let firebaseUser = window.firebase?.auth?.()?.currentUser || null;
   if(!firebaseUser && window.BookoraAuthReady){ try { firebaseUser = await Promise.race([window.BookoraAuthReady,new Promise(resolve=>setTimeout(()=>resolve(window.firebase?.auth?.()?.currentUser||null),2500))]); } catch (_) {} }
@@ -36,14 +51,12 @@ function renderReviews(bookId,reviews){
   if(!String(window.location.hash||'').startsWith('#/book/'))return;
   const list=document.getElementById('review-list'),summary=document.querySelector('[data-panel="reviews"] .bd-review-summary'),tab=document.querySelector('.bd-tab[data-tab="reviews"]');
   const book=state.getBookBySlug(bookId)||[...(state.books||[])].find(b=>String(b.id)===String(bookId));
-  const unique=new Map();
-  for(const review of Array.isArray(reviews)?reviews:[]){const id=String(review.id||review.review_id||`${review.book_id||review.bookId}|${review.user_id||review.userId||review.uid}|${review.created_at||review.createdAt||review.date||''}`);if(!unique.has(id))unique.set(id,review);}
-  const sorted=[...unique.values()].sort((a,b)=>{const ta=a.created_at?.toDate?a.created_at.toDate().getTime():new Date(a.created_at||a.date||0).getTime(),tb=b.created_at?.toDate?b.created_at.toDate().getTime():new Date(b.created_at||b.date||0).getTime();return tb-ta;});
+  const sorted=dedupeOneReviewPerUserBook(reviews).sort((a,b)=>{const ta=a.created_at?.toDate?a.created_at.toDate().getTime():new Date(a.created_at||a.date||0).getTime(),tb=b.created_at?.toDate?b.created_at.toDate().getTime():new Date(b.created_at||b.date||0).getTime();return tb-ta;});
   updateHeaderRating(book,sorted); if(!list||!summary)return;
   const total=sorted.length,average=total?sorted.reduce((sum,r)=>sum+Number(r.rating||0),0)/total:0,score=summary.querySelector('.bd-score');
   if(score)score.innerHTML=`<div class="bd-score-number">${total?average.toFixed(1):'—'}</div><div class="bd-rating-stars">${stars(average)}</div><small>${total} reader ${total===1?'review':'reviews'}</small>`;
   if(tab)tab.textContent=`Reviews (${total})`;
-  list.innerHTML=total?sorted.map(review=>{const date=review.created_at?.toDate?review.created_at.toDate():(review.date||review.createdAt||''),dateText=date?new Date(date).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'',name=review.user_name||review.userName||'Bookora Reader';return `<article class="bd-review" data-review-id="${esc(review.id||'')}"><div class="bd-review-top"><div><div class="bd-rating-stars">${stars(review.rating)}</div><div class="bd-review-title">${esc(review.title||'Reader review')}</div></div><span class="bd-review-meta">${esc(dateText)}</span></div><p class="bd-review-comment">${esc(review.comment||'')}</p><div class="bd-review-meta">${esc(name)} ${review.verified_purchase?'<span class="bd-verified">• ✓ Verified Purchase</span>':'<span class="bd-verified">• Reader Review</span>'}</div></article>`;}).join(''):'<div class="bd-empty">No customer reviews yet. Be the first reader to share your feedback.</div>';
+  list.innerHTML=total?sorted.map(review=>{const date=review.created_at?.toDate?review.created_at.toDate():(review.date||review.createdAt||''),dateText=date?new Date(date).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'}):'',name=review.user_name||review.userName||review.displayName||'Bookora Reader';return `<article class="bd-review" data-review-id="${esc(review.id||'')}"><div class="bd-review-top"><div><div class="bd-rating-stars">${stars(review.rating)}</div><div class="bd-review-title">${esc(review.title||'Reader review')}</div></div><span class="bd-review-meta">${esc(dateText)}</span></div><p class="bd-review-comment">${esc(review.comment||'')}</p><div class="bd-review-meta">${esc(name)} ${review.verified_purchase?'<span class="bd-verified">• ✓ Verified Purchase</span>':'<span class="bd-verified">• Reader Review</span>'}</div></article>`;}).join(''):'<div class="bd-empty">No customer reviews yet. Be the first reader to share your feedback.</div>';
 }
 
 async function watchBook(book){
