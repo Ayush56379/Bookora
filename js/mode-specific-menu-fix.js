@@ -1,5 +1,6 @@
 // Mode-specific navigation drawer for Buyer / Seller / Admin.
 // Keeps the mobile menu aligned with the currently selected mode.
+// This file intentionally changes ONLY the existing mobile drawer content.
 import { state } from './state.js';
 
 const ICON = {
@@ -66,38 +67,77 @@ function renderModeMenu(mode){
     ${item('#/profile','profile','Profile')}`;
 }
 
+let lastDrawer = null;
+let lastAppliedMode = '';
+let observerStarted = false;
+let syncTimer = null;
+
 function apply(){
   const drawer = document.getElementById('mobile-nav-drawer');
-  if(!drawer) return;
-  const container = drawer.querySelector('.bookora-mode-menu-content');
-  if(!container) return;
-  container.innerHTML = renderModeMenu(state.activeMode || 'buyer');
+  if(!drawer) return false;
+  let container = drawer.querySelector('.bookora-mode-menu-content');
+  if(!container) {
+    container = document.createElement('div');
+    container.className = 'bookora-mode-menu-content';
+    container.style.cssText = 'display:flex;flex-direction:column;gap:.35rem;flex:1;overflow:auto;padding-bottom:1rem;';
+    const old = drawer.querySelector('div[style*="flex-direction: column"]');
+    if(old) old.replaceWith(container); else drawer.appendChild(container);
+  }
+
+  const mode = ['buyer','seller','admin'].includes(state.activeMode) ? state.activeMode : 'buyer';
+  // Do not rewrite an already-correct drawer. This also prevents observer loops.
+  if(lastDrawer === drawer && lastAppliedMode === mode && container.dataset.bookoraMode === mode) return true;
+
+  container.innerHTML = renderModeMenu(mode);
+  container.dataset.bookoraMode = mode;
+  lastDrawer = drawer;
+  lastAppliedMode = mode;
+
   container.querySelectorAll('.mobile-drawer-link').forEach(link=>link.addEventListener('click',()=>{
     drawer.classList.remove('open');
     document.getElementById('mobile-drawer-backdrop')?.classList.remove('open');
   }));
-}
-
-function inject(){
-  const drawer=document.getElementById('mobile-nav-drawer');
-  if(!drawer) return false;
-  let content=drawer.querySelector('.bookora-mode-menu-content');
-  if(!content){
-    content=document.createElement('div');
-    content.className='bookora-mode-menu-content';
-    content.style.cssText='display:flex;flex-direction:column;gap:.35rem;flex:1;overflow:auto;padding-bottom:1rem;';
-    const old=drawer.querySelector('div[style*="flex-direction: column"]');
-    if(old) old.replaceWith(content); else drawer.appendChild(content);
-  }
-  apply();
   return true;
 }
 
-function boot(){
-  if(!inject()) setTimeout(boot,50);
+function scheduleSync(){
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    apply();
+  }, 0);
 }
+
+function boot(){
+  if(!apply()) setTimeout(boot,50);
+  if(observerStarted) return;
+  observerStarted = true;
+
+  // The SPA can replace the header/drawer after MODE_CHANGED. Watch only
+  // structural insertions/removals so the newly-rendered drawer is immediately
+  // brought to the current mode without touching any other page content.
+  const app = document.getElementById('app');
+  if(app){
+    const observer = new MutationObserver(() => {
+      const drawer = document.getElementById('mobile-nav-drawer');
+      if(drawer !== lastDrawer || !drawer?.querySelector('.bookora-mode-menu-content')) scheduleSync();
+    });
+    observer.observe(app,{childList:true,subtree:true});
+  }
+}
+
 boot();
 state.subscribe((event)=>{
-  if(['MODE_CHANGED','USER_LOGGED_IN','DATA_SYNCED','AUTH_STATE_CHANGED'].includes(event)) setTimeout(()=>{inject();apply();},0);
+  if(['MODE_CHANGED','USER_LOGGED_IN','DATA_SYNCED','AUTH_STATE_CHANGED'].includes(event)) {
+    // Run after the SPA's header/route subscriber too. This fixes the case where
+    // the old drawer was rendered first and replaced again during the same tick.
+    scheduleSync();
+    requestAnimationFrame(() => apply());
+    setTimeout(() => apply(), 25);
+    setTimeout(() => apply(), 100);
+  }
 });
-window.addEventListener('hashchange',()=>setTimeout(()=>{inject();apply();},0));
+window.addEventListener('hashchange',()=>{
+  scheduleSync();
+  requestAnimationFrame(() => apply());
+});
