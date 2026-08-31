@@ -27,6 +27,15 @@
  border-top-right-radius:14px!important;
 }
 
+/* Homepage only: use the same wider side rail as the reference catalog.
+   This changes only the horizontal whitespace around homepage eBook rows. */
+#app .bookora-home-clean .home-catalog-block{
+ width:min(1480px,calc(100% - 40px))!important;
+ max-width:1480px!important;
+ margin-left:auto!important;
+ margin-right:auto!important;
+}
+
 /* Real cover: no duplicate title, author, category, subtitle, format, gradient or metadata overlay. Existing fallback stays for missing/failed covers. */
 #app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-shade,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-spine,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-content,#app .book-cover-container:has(.book-cover-image:not([style*="display: none"])) .book-cover-fallback{display:none!important;}
 #app .book-card .book-wishlist-btn{z-index:20!important;}
