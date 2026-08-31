@@ -32,7 +32,26 @@ function getFirebaseAuth() {
   } catch (_) { return null; }
 }
 
+const API_REQUEST_TIMEOUT_MS = 15000;
 let authReadyPromise = null;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = API_REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const externalSignal = options.signal;
+  const relay = () => controller.abort();
+  try {
+    if (externalSignal) {
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener('abort', relay, { once: true });
+    }
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener?.('abort', relay);
+  }
+}
+
 function waitForFirebaseAuthResolution(auth, timeoutMs = 7000) {
   if (!auth) return Promise.resolve(null);
   if (auth.currentUser) return Promise.resolve(auth.currentUser);
@@ -85,7 +104,7 @@ export async function apiFetch(endpoint, options = {}) {
 
   // Critical auth fix: never short-circuit /api/auth/firebase with a local response.
   // The verified Render request must complete because the backend sends the security email.
-  let response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers });
+  let response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { ...options, method, headers });
   if (response.status === 401) {
     const authHeader = String(headers.get('Authorization') || '').toLowerCase();
     const explicitNonFirebaseAuth = headers.has('Authorization') && !authHeader.startsWith('bearer ey');
@@ -94,7 +113,7 @@ export async function apiFetch(endpoint, options = {}) {
       if (refreshedToken) {
         const retryHeaders = new Headers(headers);
         retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
-        response = await fetch(`${API_BASE_URL}${path}`, { ...options, method, headers: retryHeaders });
+        response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { ...options, method, headers: retryHeaders });
       }
     }
   }
