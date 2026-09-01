@@ -1,0 +1,46 @@
+/* Bookora: stable related-books layout only. No DOM rewriting. */
+#app .bd-page .bd-related {
+  display: flex !important;
+  grid-template-columns: none !important;
+  gap: 16px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scroll-behavior: smooth !important;
+  scroll-snap-type: none !important;
+  overscroll-behavior-x: contain !important;
+  overflow-anchor: none !important;
+  padding: 2px 4px 10px 2px !important;
+  min-width: 0 !important;
+  touch-action: pan-x !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: thin !important;
+}
+
+#app .bd-page .bd-related > * {
+  flex: 0 0 clamp(220px, 23vw, 260px) !important;
+  width: clamp(220px, 23vw, 260px) !important;
+  min-width: clamp(220px, 23vw, 260px) !important;
+  max-width: clamp(220px, 23vw, 260px) !important;
+}
+
+@media (max-width: 600px) {
+  #app .bd-page .bd-related {
+    gap: 12px !important;
+    padding: 2px 2px 8px !important;
+  }
+  #app .bd-page .bd-related > * {
+    flex-basis: clamp(190px, 72vw, 230px) !important;
+    width: clamp(190px, 72vw, 230px) !important;
+    min-width: clamp(190px, 72vw, 230px) !important;
+    max-width: clamp(190px, 72vw, 230px) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  #app .bd-page .bd-related > * {
+    flex-basis: 190px !important;
+    width: 190px !important;
+    min-width: 190px !important;
+    max-width: 190px !important;
+  }
+}
