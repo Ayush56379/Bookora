@@ -33,7 +33,7 @@ function trendingBooks(books) {
 }
 
 function latestBooks(books) {
-  return [...books].sort((a, b) => createdTime(b) - createdTime(a)).slice(0, 6);
+  return [...books].sort((a, b) => createdTime(b) - createdTime(a)).slice(0, 60);
 }
 
 function cardGrid(books) {
