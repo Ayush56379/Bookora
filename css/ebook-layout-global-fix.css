@@ -58,3 +58,32 @@
 @media(min-width:480px) and (max-width:767px){#app .curated-catalog-page .container > div[style*="display:grid"]{grid-template-columns:repeat(3,minmax(0,1fr))!important;}}
 @media(max-width:479px){#app .curated-catalog-page .container > div[style*="display:grid"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}}
 @media(max-width:380px){#app .curated-catalog-page .container > div[style*="display:grid"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}}
+
+/* BOOK DETAIL ONLY — responsive sizing and stable scrolling. */
+#app .bd-page{overflow-anchor:none;scroll-margin-top:72px;}
+#app .bd-page .bd-hero{grid-template-columns:minmax(0,280px) minmax(0,1fr)!important;gap:32px!important;padding:24px!important;}
+#app .bd-page .bd-cover{width:min(100%,260px)!important;max-width:260px!important;margin-left:auto!important;margin-right:auto!important;}
+#app .bd-page .bd-cover-img{object-fit:contain!important;object-position:center!important;}
+#app .bd-page,.bd-page *{animation:none!important;}
+@media (min-width:931px){
+ #app .bd-page .bd-hero{grid-template-columns:minmax(0,280px) minmax(0,1fr)!important;}
+ #app .bd-page .bd-cover{max-width:260px!important;}
+}
+@media (min-width:601px) and (max-width:930px){
+ #app .bd-page .bd-wrap{width:min(100%,calc(100% - 28px))!important;}
+ #app .bd-page .bd-hero{grid-template-columns:minmax(0,230px) minmax(0,1fr)!important;gap:24px!important;padding:20px!important;}
+ #app .bd-page .bd-cover{max-width:220px!important;}
+}
+@media (max-width:600px){
+ #app .bd-page{padding-top:18px!important;padding-bottom:48px!important;}
+ #app .bd-page .bd-wrap{width:calc(100% - 20px)!important;}
+ #app .bd-page .bd-hero{grid-template-columns:1fr!important;gap:22px!important;padding:16px!important;border-radius:18px!important;}
+ #app .bd-page .bd-cover{width:min(100%,210px)!important;max-width:210px!important;margin:0 auto 14px!important;}
+ #app .bd-page .bd-title{font-size:clamp(1.8rem,9vw,2.35rem)!important;}
+ #app .bd-page .bd-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+}
+@media (max-width:380px){
+ #app .bd-page .bd-wrap{width:calc(100% - 14px)!important;}
+ #app .bd-page .bd-hero{padding:12px!important;gap:18px!important;}
+ #app .bd-page .bd-cover{max-width:190px!important;}
+}
