@@ -2,6 +2,8 @@ import { state } from './state.js';
 import { renderBookCard } from './components/BookCard.js';
 
 const STYLE_ID = 'bookora-related-carousel-fix-v1';
+let applyTimer = 0;
+let applying = false;
 
 function normalize(value = '') {
   return String(value || '')
@@ -60,7 +62,6 @@ function addStyles() {
       overscroll-behavior-x:contain!important;
       scrollbar-width:thin!important;
       padding:2px 48px 10px 2px!important;
-      -webkit-overflow-scrolling:touch!important;
     }
     #app .bd-page .bd-related > *{
       flex:0 0 clamp(220px,23vw,260px)!important;
@@ -102,6 +103,7 @@ function addStyles() {
 }
 
 function applyRelatedCarousel() {
+  if (applying) return;
   const page = document.querySelector('#app .bd-page');
   const related = page?.querySelector('.bd-related');
   if (!page || !related || related.dataset.carouselReady === '1') return;
@@ -121,32 +123,53 @@ function applyRelatedCarousel() {
 
   if (!candidates.length) return;
 
-  related.innerHTML = candidates.map(item => renderBookCard(item)).join('');
-  related.dataset.carouselReady = '1';
+  applying = true;
+  try {
+    related.innerHTML = candidates.map(item => renderBookCard(item)).join('');
+    related.dataset.carouselReady = '1';
 
-  const wrap = related.parentElement;
-  if (!wrap?.classList.contains('bd-related-carousel')) {
-    const carousel = document.createElement('div');
-    carousel.className = 'bd-related-carousel';
-    related.parentNode.insertBefore(carousel, related);
-    carousel.appendChild(related);
-    const next = document.createElement('button');
-    next.type = 'button';
-    next.className = 'bd-related-next';
-    next.setAttribute('aria-label', 'Show more related books');
-    next.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
-    next.addEventListener('click', () => {
-      related.scrollBy({ left: Math.max(260, related.clientWidth * 0.8), behavior: 'smooth' });
-    });
-    carousel.appendChild(next);
+    let carousel = related.parentElement;
+    if (!carousel?.classList.contains('bd-related-carousel')) {
+      carousel = document.createElement('div');
+      carousel.className = 'bd-related-carousel';
+      related.parentNode.insertBefore(carousel, related);
+      carousel.appendChild(related);
+      const next = document.createElement('button');
+      next.type = 'button';
+      next.className = 'bd-related-next';
+      next.setAttribute('aria-label', 'Show more related books');
+      next.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+      next.addEventListener('click', () => {
+        related.scrollBy({ left: Math.max(260, related.clientWidth * 0.8), behavior: 'smooth' });
+      });
+      carousel.appendChild(next);
+    }
+  } finally {
+    applying = false;
   }
 }
 
 function scheduleApply() {
-  requestAnimationFrame(() => setTimeout(applyRelatedCarousel, 0));
+  if (applyTimer) return;
+  applyTimer = window.setTimeout(() => {
+    applyTimer = 0;
+    requestAnimationFrame(applyRelatedCarousel);
+  }, 0);
 }
 
 addStyles();
 scheduleApply();
-window.addEventListener('hashchange', scheduleApply);
-new MutationObserver(scheduleApply).observe(document.getElementById('app') || document.body, { childList: true, subtree: true });
+
+const app = document.getElementById('app') || document.body;
+new MutationObserver(mutations => {
+  if (applying) return;
+  const relevantChange = mutations.some(mutation => {
+    const target = mutation.target?.closest?.('.bd-related');
+    if (target) return false;
+    return Array.from(mutation.addedNodes || []).some(node => {
+      if (node.nodeType !== 1) return true;
+      return !node.closest?.('.bd-related-carousel');
+    });
+  });
+  if (relevantChange) scheduleApply();
+}).observe(app, { childList: true, subtree: true });
