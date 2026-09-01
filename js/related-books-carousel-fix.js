@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { renderBookCard } from './components/BookCard.js';
 
-const STYLE_ID = 'bookora-related-carousel-fix-v3';
+const STYLE_ID = 'bookora-related-carousel-fix-v4';
 let observer = null;
 let pollTimer = 0;
 let applying = false;
@@ -49,10 +49,11 @@ function addStyles() {
     #app .bd-page .bd-related{
       display:flex!important;grid-template-columns:none!important;gap:16px!important;
       overflow-x:auto!important;overflow-y:hidden!important;
-      scroll-behavior:auto!important;scroll-snap-type:none!important;
+      scroll-behavior:smooth!important;scroll-snap-type:none!important;
       overscroll-behavior-x:contain!important;overflow-anchor:none!important;
       scrollbar-width:thin!important;padding:2px 48px 10px 2px!important;
-      min-width:0!important;
+      min-width:0!important;touch-action:pan-x!important;
+      -webkit-overflow-scrolling:touch!important;
     }
     #app .bd-page .bd-related > *{
       flex:0 0 clamp(220px,23vw,260px)!important;
@@ -68,6 +69,7 @@ function addStyles() {
       box-shadow:0 8px 22px rgba(15,23,42,.14)!important;backdrop-filter:blur(8px)!important;
     }
     #app .bd-page .bd-related-next svg{width:22px!important;height:22px!important;fill:none!important;stroke:currentColor!important;stroke-width:2!important;}
+    #app .bd-page .bd-related-next:hover{transform:translateY(-50%) scale(1.04)!important;}
     @media(max-width:600px){
       #app .bd-page .bd-related{gap:12px!important;padding:2px 46px 8px 2px!important;}
       #app .bd-page .bd-related > *{flex-basis:clamp(190px,72vw,230px)!important;width:clamp(190px,72vw,230px)!important;min-width:clamp(190px,72vw,230px)!important;max-width:clamp(190px,72vw,230px)!important;}
@@ -83,6 +85,10 @@ function decorateRatings(items) {
     const r = ratingData(item);
     return r.rating > 0 ? { ...item, rating: r.rating, review_count: r.count } : item;
   });
+}
+
+function candidateSignature(items) {
+  return items.map(item => String(item?.id || item?.slug || item?.title || '')).join('|');
 }
 
 function applyRelatedCarousel() {
@@ -105,6 +111,12 @@ function applyRelatedCarousel() {
     .map(entry => entry.item);
   if (!candidates.length) return;
 
+  const signature = candidateSignature(candidates);
+  if (related.dataset.relatedSignature === signature) {
+    related.dataset.carouselReady = '1';
+    return;
+  }
+
   applying = true;
   try {
     const enriched = decorateRatings(candidates);
@@ -116,10 +128,10 @@ function applyRelatedCarousel() {
       carousel.appendChild(related);
     }
 
-    related.style.visibility = 'hidden';
+    const previousScrollLeft = related.scrollLeft;
     related.innerHTML = enriched.map(item => renderBookCard(item)).join('');
+    related.dataset.relatedSignature = signature;
     related.dataset.carouselReady = '1';
-    related.style.visibility = 'visible';
 
     if (!carousel.querySelector('.bd-related-next')) {
       const next = document.createElement('button');
@@ -128,9 +140,15 @@ function applyRelatedCarousel() {
       next.setAttribute('aria-label', 'Show more related books');
       next.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
       next.addEventListener('click', () => {
-        related.scrollLeft += Math.max(260, related.clientWidth * 0.8);
+        related.scrollBy({ left: Math.max(260, related.clientWidth * 0.8), behavior: 'smooth' });
       });
       carousel.appendChild(next);
+    }
+
+    if (previousScrollLeft > 0) {
+      requestAnimationFrame(() => {
+        related.scrollLeft = Math.min(previousScrollLeft, Math.max(0, related.scrollWidth - related.clientWidth));
+      });
     }
   } finally {
     applying = false;
