@@ -28,6 +28,9 @@ const usableUrl = (value, kind) => {
     : `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`;
 };
 
+let pdfJsPromise = null;
+let pdfDetectionToken = 0;
+
 function db() {
   if (!window.firebase?.firestore) throw new Error('Firebase Firestore is not ready. Please try again.');
   return window.firebase.firestore();
@@ -100,7 +103,8 @@ export function renderPublishInternalPage() {
         </div><div class="bp-actions"><span class="bp-save">✓ Firebase draft · One record only</span><button class="bp-btn bp-primary" id="bp-next-1">Save & Continue →</button></div></section>
 
         <section class="bp-panel" data-panel="2"><h2 class="bp-heading">PDF, Cover & Pricing</h2><p class="bp-help">No file upload. Paste public/shareable links and save pricing to the same Firebase record.</p><div class="bp-grid">
-          <div class="bp-field bp-full"><label>eBook PDF Link <span class="bp-required">*</span></label><input id="bp-pdf-url" type="url" placeholder="Paste your public PDF link"><div class="bp-hint">Public HTTPS PDF links and Google Drive share links are supported.</div></div>
+          <div class="bp-field bp-full"><label>eBook PDF Link <span class="bp-required">*</span></label><input id="bp-pdf-url" type="url" placeholder="Paste your public PDF link"><div class="bp-hint" id="bp-pdf-status">Public HTTPS PDF links and Google Drive share links are supported.</div></div>
+          <div class="bp-field"><label>Page Count</label><input id="bp-page-count" type="number" min="1" readonly placeholder="Automatically detected"><div class="bp-hint" id="bp-page-count-status">Paste a PDF link to detect the total pages automatically.</div></div>
           <div class="bp-field bp-full"><label>Cover Image Link <span class="bp-required">*</span></label><input id="bp-cover-url" type="url" placeholder="Paste your public cover image link"><div class="bp-hint">Use a public JPG, PNG or WEBP image URL.</div></div>
           <div class="bp-field"><label>List Price (₹) <span class="bp-required">*</span></label><input id="bp-list-price" type="number" min="0" step="0.01" placeholder="e.g. 299"></div>
           <div class="bp-field"><label>Sale Price (₹) <span class="bp-required">*</span></label><input id="bp-sale-price" type="number" min="0" step="0.01" placeholder="e.g. 199"><div class="bp-hint">Sale price cannot be greater than list price.</div></div>
@@ -126,7 +130,87 @@ function collectDetails() {
 
 function collectPricing() {
   const pdfUrl=field('bp-pdf-url'), coverUrl=field('bp-cover-url');
-  return { pdfUrl, coverUrl, usablePdfUrl:usableUrl(pdfUrl,'pdf'), usableCoverUrl:usableUrl(coverUrl,'cover'), listPrice:Number(field('bp-list-price')), salePrice:Number(field('bp-sale-price')) };
+  const pageCount=Number(field('bp-page-count')) || null;
+  return { pdfUrl, coverUrl, usablePdfUrl:usableUrl(pdfUrl,'pdf'), usableCoverUrl:usableUrl(coverUrl,'cover'), pageCount, listPrice:Number(field('bp-list-price')), salePrice:Number(field('bp-sale-price')) };
+}
+
+async function loadPdfJs() {
+  if (window.pdfjsLib?.getDocument) return window.pdfjsLib;
+  if (pdfJsPromise) return pdfJsPromise;
+  pdfJsPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-bookora-pdfjs]');
+    if (existing) {
+      const wait = () => window.pdfjsLib?.getDocument ? resolve(window.pdfjsLib) : setTimeout(wait, 50);
+      wait();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.async = true;
+    script.dataset.bookoraPdfjs = 'true';
+    script.onload = () => {
+      if (!window.pdfjsLib?.getDocument) {
+        reject(new Error('PDF page detector could not be loaded.'));
+        return;
+      }
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    script.onerror = () => reject(new Error('PDF page detector could not be loaded.'));
+    document.head.appendChild(script);
+  }).catch(error => {
+    pdfJsPromise = null;
+    throw error;
+  });
+  return pdfJsPromise;
+}
+
+async function detectPdfPageCount(url) {
+  const pdfjs = await loadPdfJs();
+  const response = await fetch(usableUrl(url,'pdf'), { method:'GET', mode:'cors', credentials:'omit' });
+  if (!response.ok) throw new Error(`PDF could not be read (HTTP ${response.status}).`);
+  const buffer = await response.arrayBuffer();
+  if (!buffer.byteLength) throw new Error('The PDF file is empty.');
+  const pdf = await pdfjs.getDocument({ data:new Uint8Array(buffer), disableAutoFetch:false, disableStream:false }).promise;
+  const pages = Number(pdf.numPages);
+  try { await pdf.destroy(); } catch (_) {}
+  if (!Number.isInteger(pages) || pages < 1) throw new Error('Could not determine PDF page count.');
+  return pages;
+}
+
+async function detectAndSavePageCount() {
+  const input=document.getElementById('bp-pdf-url');
+  const pageInput=document.getElementById('bp-page-count');
+  const status=document.getElementById('bp-page-count-status');
+  const pdfStatus=document.getElementById('bp-pdf-status');
+  const url=String(input?.value||'').trim();
+  const token=++pdfDetectionToken;
+  if(!url){
+    if(pageInput) pageInput.value='';
+    if(status) status.textContent='Paste a PDF link to detect the total pages automatically.';
+    if(pdfStatus) pdfStatus.textContent='Public HTTPS PDF links and Google Drive share links are supported.';
+    return;
+  }
+  if(!validUrl(url)){
+    if(status) status.textContent='Enter a valid PDF link first.';
+    return;
+  }
+  if(status) status.textContent='Detecting PDF page count…';
+  if(pdfStatus) pdfStatus.textContent='Reading the PDF to determine its exact page count…';
+  try{
+    const pages=await detectPdfPageCount(url);
+    if(token!==pdfDetectionToken) return;
+    if(pageInput) pageInput.value=String(pages);
+    if(status) status.textContent=`Detected ${pages} page${pages===1?'':'s'} successfully.`;
+    if(pdfStatus) pdfStatus.textContent='PDF page count detected successfully.';
+    await saveDraft('draft');
+  }catch(error){
+    if(token!==pdfDetectionToken) return;
+    if(pageInput) pageInput.value='';
+    if(status) status.textContent='Could not detect pages from this PDF link. Make sure the PDF is public and readable.';
+    if(pdfStatus) pdfStatus.textContent='PDF link was saved, but page count could not be detected automatically.';
+    console.warn('Bookora PDF page count detection failed:', error);
+  }
 }
 
 function validateStep1(d){
@@ -160,6 +244,7 @@ async function saveDraft(status='draft') {
     publisherName:details.publisherName,isbn:details.isbn,edition:details.edition,publicationYear:details.publicationYear,contentType:details.contentType,
     description:details.description,tags:details.tags.split(',').map(x=>x.trim()).filter(Boolean),tagsText:details.tags,aboutAuthor:details.aboutAuthor,
     pdfUrl:pricing.pdfUrl,pdf_url:pricing.pdfUrl,usablePdfUrl:pricing.usablePdfUrl,coverUrl:pricing.coverUrl,cover_url:pricing.coverUrl,usableCoverUrl:pricing.usableCoverUrl,
+    pageCount:pricing.pageCount,pages:pricing.pageCount,
     listPrice:pricing.listPrice,list_price:pricing.listPrice,salePrice:pricing.salePrice,sale_price:pricing.salePrice,price:pricing.salePrice,
     source_type:'internal',source:'bookora',
     ownerId:user.uid,
@@ -167,9 +252,6 @@ async function saveDraft(status='draft') {
     status,updatedAt:window.firebase.firestore.FieldValue.serverTimestamp()
   };
   const ref=db().collection('books').doc(id);
-  // Do not read the draft before writing. A new document has no readable resource
-  // and that pre-read was causing Firestore "Missing or insufficient permissions".
-  // Merge keeps the same draft document across all three steps without duplicates.
   await ref.set(payload,{merge:true});
   return id;
 }
@@ -177,7 +259,7 @@ async function saveDraft(status='draft') {
 function previewHtml(){
   const d=collectDetails(), p=collectPricing();
   const row=(label,val)=>`<div><b>${esc(label)}</b><span>${esc(val||'—')}</span></div>`;
-  return `<div class="bp-card"><div class="bp-preview-grid"><div><img class="bp-cover" src="${esc(p.usableCoverUrl)}" alt="Cover preview" onerror="this.style.display='none'"></div><div><div class="bp-kicker">Bookora eBook</div><h3 style="margin:0 0 6px;font-size:28px;font-weight:900;color:#111827">${esc(d.title)}</h3><p style="margin:0;color:#64748b">${esc(d.subtitle||'')}</p><div style="margin-top:14px;display:flex;gap:22px;flex-wrap:wrap"><span><b>Author:</b> ${esc(d.authorName)}</span><span><b>Category:</b> ${esc(d.category)}</span><span><b>Language:</b> ${esc(d.language)}</span></div><div style="margin-top:16px"><span style="text-decoration:line-through;color:#94a3b8;margin-right:10px">₹${p.listPrice.toFixed(2)}</span><strong class="bp-price">₹${p.salePrice.toFixed(2)}</strong></div></div></div><div class="bp-detail">${row('Title',d.title)}${row('Subtitle',d.subtitle)}${row('Author',d.authorName)}${row('Category',d.category)}${row('Language',d.language)}${row('Publisher',d.publisherName)}${row('ISBN',d.isbn)}${row('Edition',d.edition)}${row('Publication Year',d.publicationYear)}${row('Content Type',d.contentType)}${row('Tags',d.tags)}${row('Description',d.description)}${row('About the Author',d.aboutAuthor)}${row('PDF Link',p.pdfUrl)}${row('Cover Link',p.coverUrl)}${row('List Price',`₹${p.listPrice.toFixed(2)}`)}${row('Sale Price',`₹${p.salePrice.toFixed(2)}`)}</div></div>`;
+  return `<div class="bp-card"><div class="bp-preview-grid"><div><img class="bp-cover" src="${esc(p.usableCoverUrl)}" alt="Cover preview" onerror="this.style.display='none'"></div><div><div class="bp-kicker">Bookora eBook</div><h3 style="margin:0 0 6px;font-size:28px;font-weight:900;color:#111827">${esc(d.title)}</h3><p style="margin:0;color:#64748b">${esc(d.subtitle||'')}</p><div style="margin-top:14px;display:flex;gap:22px;flex-wrap:wrap"><span><b>Author:</b> ${esc(d.authorName)}</span><span><b>Category:</b> ${esc(d.category)}</span><span><b>Language:</b> ${esc(d.language)}</span></div><div style="margin-top:16px"><span style="text-decoration:line-through;color:#94a3b8;margin-right:10px">₹${p.listPrice.toFixed(2)}</span><strong class="bp-price">₹${p.salePrice.toFixed(2)}</strong></div></div></div><div class="bp-detail">${row('Title',d.title)}${row('Subtitle',d.subtitle)}${row('Author',d.authorName)}${row('Category',d.category)}${row('Language',d.language)}${row('Page Count',p.pageCount)}${row('Publisher',d.publisherName)}${row('ISBN',d.isbn)}${row('Edition',d.edition)}${row('Publication Year',d.publicationYear)}${row('Content Type',d.contentType)}${row('Tags',d.tags)}${row('Description',d.description)}${row('About the Author',d.aboutAuthor)}${row('PDF Link',p.pdfUrl)}${row('Cover Link',p.coverUrl)}${row('List Price',`₹${p.listPrice.toFixed(2)}`)}${row('Sale Price',`₹${p.salePrice.toFixed(2)}`)}</div></div>`;
 }
 
 export function initPublishInternalEvents(){
@@ -191,6 +273,18 @@ export function initPublishInternalEvents(){
     try{await saveDraft('draft');showStep(2);}catch(err){console.error(err);message(err.message||'Could not save book details. Please try again.');}finally{btn.disabled=false;btn.textContent='Save & Continue →';}
   });
   document.getElementById('bp-back-2')?.addEventListener('click',()=>{clearMessage();showStep(1);});
+
+  const pdfInput=document.getElementById('bp-pdf-url');
+  let pdfDetectTimer=null;
+  pdfInput?.addEventListener('input',()=>{
+    clearTimeout(pdfDetectTimer);
+    pdfDetectTimer=setTimeout(()=>{detectAndSavePageCount();},700);
+  });
+  pdfInput?.addEventListener('change',()=>{detectAndSavePageCount();});
+  pdfInput?.addEventListener('blur',()=>{
+    if(pdfInput.value.trim()) detectAndSavePageCount();
+  });
+
   document.getElementById('bp-next-2')?.addEventListener('click',async e=>{
     clearMessage();const btn=e.currentTarget;const error=validateStep2(collectPricing());if(error){message(error);return;}btn.disabled=true;btn.textContent='Saving…';
     try{await saveDraft('draft');document.getElementById('bp-preview').innerHTML=previewHtml();showStep(3);}catch(err){console.error(err);message(err.message||'Could not save PDF, cover and pricing. Please try again.');}finally{btn.disabled=false;btn.textContent='Save & Preview →';}
