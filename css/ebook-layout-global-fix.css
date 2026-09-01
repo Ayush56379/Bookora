@@ -87,3 +87,61 @@
  #app .bd-page .bd-hero{padding:12px!important;gap:18px!important;}
  #app .bd-page .bd-cover{max-width:190px!important;}
 }
+
+/* BOOK DETAIL COVER INTRINSIC-SIZE FIX V2 */
+/* Only the detail page is affected. The real cover image determines the
+   wrapper height, so no fixed-ratio blue/background area remains underneath. */
+#app .bd-page .bd-cover:has(.bd-cover-img:not(.is-failed)){
+  aspect-ratio:auto!important;
+  height:auto!important;
+  min-height:0!important;
+  background:transparent!important;
+}
+#app .bd-page .bd-cover:has(.bd-cover-img:not(.is-failed)) .bd-cover-img{
+  position:relative!important;
+  inset:auto!important;
+  display:block!important;
+  width:100%!important;
+  height:auto!important;
+  max-width:100%!important;
+  max-height:none!important;
+  object-fit:contain!important;
+  object-position:center!important;
+}
+#app .bd-page .bd-cover:has(.bd-cover-img:not(.is-failed)) .bd-cover-gloss{
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+}
+/* Missing/failed cover keeps the existing fallback card behavior. */
+#app .bd-page .bd-cover:not(:has(.bd-cover-img:not(.is-failed))){
+  aspect-ratio:3/4.2!important;
+  height:auto!important;
+}
+
+/* Detail-page stat icons only. Prevent global SVG/icon rules from making the
+   Pages book icon oversized. */
+#app .bd-page .bd-stat-icon{
+  width:24px!important;
+  height:24px!important;
+  min-width:24px!important;
+  min-height:24px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  flex:0 0 24px!important;
+  font-size:16px!important;
+  line-height:1!important;
+  margin-bottom:8px!important;
+}
+#app .bd-page .bd-stat-icon svg,
+#app .bd-page .bd-stat-pages svg{
+  width:24px!important;
+  height:24px!important;
+  max-width:24px!important;
+  max-height:24px!important;
+  display:block!important;
+  flex:0 0 24px!important;
+  fill:none!important;
+  stroke:currentColor!important;
+}
