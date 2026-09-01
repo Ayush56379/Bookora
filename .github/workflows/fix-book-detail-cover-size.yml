@@ -23,40 +23,46 @@ jobs:
           from pathlib import Path
           p = Path('css/ebook-layout-global-fix.css')
           text = p.read_text(encoding='utf-8')
-          marker = '/* BOOK DETAIL COVER INTRINSIC-SIZE FIX */'
+          marker = '/* BOOK DETAIL COVER INTRINSIC-SIZE FIX V2 */'
           if marker in text:
               print('Patch already present; nothing to do.')
               raise SystemExit(0)
           patch = r'''
 
-/* BOOK DETAIL COVER INTRINSIC-SIZE FIX */
-/* Only .bd-page is affected. Real cover images determine the cover box height
-   instead of leaving a fixed-ratio blue/background area underneath. */
+/* BOOK DETAIL COVER INTRINSIC-SIZE FIX V2 */
+/* Detail page only: the real cover image defines the cover box height.
+   This removes the fixed-ratio/blue empty area while preserving the existing
+   cover width and responsive layout everywhere else. */
 #app .bd-page .bd-cover:has(.bd-cover-img:not(.is-failed)){
   aspect-ratio:auto!important;
   height:auto!important;
+  min-height:0!important;
   background:transparent!important;
 }
 #app .bd-page .bd-cover:has(.bd-cover-img:not(.is-failed)) .bd-cover-img{
   position:relative!important;
   inset:auto!important;
+  display:block!important;
   width:100%!important;
   height:auto!important;
+  max-width:100%!important;
   max-height:none!important;
   object-fit:contain!important;
   object-position:center!important;
 }
 #app .bd-page .bd-cover:has(.bd-cover-img:not(.is-failed)) .bd-cover-gloss{
   inset:0!important;
+  width:100%!important;
   height:100%!important;
 }
-/* If a real cover fails, keep the existing fallback card behavior. */
+/* Failed/missing covers keep the existing fallback card behavior. */
 #app .bd-page .bd-cover:not(:has(.bd-cover-img:not(.is-failed))){
   aspect-ratio:3/4.2!important;
+  height:auto!important;
 }
 
-/* Pages/stat icons stay compact; the large book glyph must never inherit the
-   cover/detail sizing. */
+/* Detail-page stat icons only: keep the Pages book icon compact and prevent
+   global SVG/icon rules from making it oversized. */
 #app .bd-page .bd-stat-icon{
   width:24px!important;
   height:24px!important;
@@ -65,21 +71,21 @@ jobs:
   display:inline-flex!important;
   align-items:center!important;
   justify-content:center!important;
+  flex:0 0 24px!important;
   font-size:16px!important;
   line-height:1!important;
   margin-bottom:8px!important;
 }
-#app .bd-page .bd-stat-icon svg{
+#app .bd-page .bd-stat-icon svg,
+#app .bd-page .bd-stat-pages svg{
   width:24px!important;
   height:24px!important;
   max-width:24px!important;
   max-height:24px!important;
   display:block!important;
   flex:0 0 24px!important;
-}
-#app .bd-page .bd-stat-pages svg{
-  width:24px!important;
-  height:24px!important;
+  fill:none!important;
+  stroke:currentColor!important;
 }
 '''
           p.write_text(text.rstrip() + patch + '\n', encoding='utf-8')
@@ -91,5 +97,5 @@ jobs:
           git config user.name "bookora-ai"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add css/ebook-layout-global-fix.css
-          git commit -m "fix: size book detail cover to image" || exit 0
+          git commit -m "fix: responsive book detail cover and icon size" || exit 0
           git push origin main
