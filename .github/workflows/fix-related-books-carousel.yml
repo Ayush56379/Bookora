@@ -1,0 +1,141 @@
+name: Fix related books carousel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-related-books-carousel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch only related-books logic and carousel
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('js/pages/BookDetailPage.js')
+          text = p.read_text(encoding='utf-8')
+          old = "  const related = state.getApprovedBooks().filter(item => String(item.id) !== String(book.id) && (item.category === book.category || item.source_type === book.source_type)).slice(0, 4);"
+          new = r'''  // Related books: exact category first, then closely matching categories/tags,
+  // while keeping unrelated books out of this section.
+  const normalizeRelatedText = value => String(value || '').toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+  const relatedCategory = normalizeRelatedText(book.category);
+  const relatedTags = (Array.isArray(book.tags) ? book.tags : String(book.tags || '').split(',')).map(normalizeRelatedText).filter(Boolean);
+  const relatedWords = new Set(`${relatedCategory} ${normalizeRelatedText(book.title)} ${relatedTags.join(' ')}`.split(/\s+/).filter(word => word.length >= 4));
+  const relatedCandidates = state.getApprovedBooks()
+    .filter(item => String(item.id) !== String(book.id))
+    .map((item, index) => {
+      const itemCategory = normalizeRelatedText(item.category);
+      const itemTags = (Array.isArray(item.tags) ? item.tags : String(item.tags || '').split(',')).map(normalizeRelatedText).filter(Boolean);
+      const itemWords = `${itemCategory} ${normalizeRelatedText(item.title)} ${itemTags.join(' ')}`.split(/\s+/).filter(word => word.length >= 4);
+      const exactCategory = relatedCategory && itemCategory === relatedCategory;
+      const categoryOverlap = relatedCategory && itemCategory && (itemCategory.includes(relatedCategory) || relatedCategory.includes(itemCategory));
+      const tagOverlap = itemTags.some(tag => relatedTags.some(tag2 => tag === tag2 || tag.includes(tag2) || tag2.includes(tag)));
+      const wordOverlap = itemWords.filter(word => relatedWords.has(word)).length;
+      const sameSource = String(item.source_type || '') === String(book.source_type || '');
+      const score = (exactCategory ? 1000 : 0) + (categoryOverlap ? 450 : 0) + (tagOverlap ? 250 : 0) + Math.min(wordOverlap, 5) * 35 + (sameSource ? 8 : 0);
+      return { item, score, index };
+    })
+    .filter(entry => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, 12)
+    .map(entry => entry.item);
+  const related = relatedCandidates;'''
+          if old not in text:
+              raise SystemExit('Expected related-books line not found; no JS change made.')
+          text = text.replace(old, new, 1)
+          old_markup = '<div class="bd-related">${related.map(item => renderBookCard(item)).join(\'\')}</div>'
+          new_markup = '<div class="bd-related-carousel"><button type="button" class="bd-related-next" id="bd-related-next" aria-label="Show more related books">${ICON.arrow}</button><div class="bd-related">${related.map(item => renderBookCard(item)).join(\'\')}</div></div>'
+          if old_markup not in text:
+              raise SystemExit('Expected related-books markup not found; no JS change made.')
+          text = text.replace(old_markup, new_markup, 1)
+          anchor = "  const preview = document.getElementById('detail-preview-btn');"
+          event_code = r'''  const relatedNext = document.getElementById('bd-related-next');
+  const relatedTrack = document.querySelector('.bd-related');
+  relatedNext?.addEventListener('click', () => {
+    relatedTrack?.scrollBy({ left: Math.max(260, relatedTrack.clientWidth * 0.8), behavior: 'smooth' });
+  });
+
+'''
+          if event_code.strip() not in text:
+              if anchor not in text:
+                  raise SystemExit('Expected detail event anchor not found; no JS change made.')
+              text = text.replace(anchor, event_code + anchor, 1)
+          p.write_text(text, encoding='utf-8')
+
+          c = Path('css/ebook-layout-global-fix.css')
+          css = c.read_text(encoding='utf-8')
+          marker = '/* RELATED BOOKS CAROUSEL V1 */'
+          if marker not in css:
+              css += r'''
+
+/* RELATED BOOKS CAROUSEL V1 — detail page only. */
+#app .bd-page .bd-related-carousel{position:relative;min-width:0;}
+#app .bd-page .bd-related{
+  display:flex!important;
+  grid-template-columns:none!important;
+  gap:16px!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  scroll-behavior:smooth!important;
+  scroll-snap-type:x proximity!important;
+  overscroll-behavior-x:contain!important;
+  scrollbar-width:thin!important;
+  padding:2px 2px 10px!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+#app .bd-page .bd-related > *{
+  flex:0 0 clamp(220px,23vw,260px)!important;
+  width:clamp(220px,23vw,260px)!important;
+  min-width:clamp(220px,23vw,260px)!important;
+  max-width:clamp(220px,23vw,260px)!important;
+  scroll-snap-align:start!important;
+}
+#app .bd-page .bd-related-next{
+  position:absolute!important;
+  z-index:10!important;
+  top:50%!important;
+  right:8px!important;
+  transform:translateY(-50%)!important;
+  width:44px!important;
+  height:44px!important;
+  border:1px solid #dbe3ee!important;
+  border-radius:50%!important;
+  background:rgba(255,255,255,.96)!important;
+  color:#0f172a!important;
+  display:grid!important;
+  place-items:center!important;
+  cursor:pointer!important;
+  box-shadow:0 8px 22px rgba(15,23,42,.14)!important;
+  backdrop-filter:blur(8px)!important;
+}
+#app .bd-page .bd-related-next svg{width:22px!important;height:22px!important;fill:none!important;stroke:currentColor!important;stroke-width:2!important;}
+#app .bd-page .bd-related-next:hover{transform:translateY(-50%) scale(1.04)!important;}
+@media(max-width:600px){
+  #app .bd-page .bd-related{gap:12px!important;padding-bottom:8px!important;}
+  #app .bd-page .bd-related > *{flex-basis:clamp(190px,72vw,230px)!important;width:clamp(190px,72vw,230px)!important;min-width:clamp(190px,72vw,230px)!important;max-width:clamp(190px,72vw,230px)!important;}
+  #app .bd-page .bd-related-next{width:40px!important;height:40px!important;right:5px!important;}
+}
+@media(max-width:380px){
+  #app .bd-page .bd-related > *{flex-basis:190px!important;width:190px!important;min-width:190px!important;max-width:190px!important;}
+}
+'''
+              c.write_text(css.rstrip() + '\n', encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- js/pages/BookDetailPage.js css/ebook-layout-global-fix.css
+      - name: Commit patch
+        run: |
+          git config user.name "bookora-ai"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/pages/BookDetailPage.js css/ebook-layout-global-fix.css
+          git commit -m "fix: relevant related books horizontal carousel" || exit 0
+          git push origin main
