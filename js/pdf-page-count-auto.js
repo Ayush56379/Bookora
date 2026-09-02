@@ -4,6 +4,7 @@ import { apiUrl } from './config.js';
 const attempted = new Set();
 const RETRY_COUNT = 30;
 const RETRY_DELAY = 1000;
+const BATCH_DELAY = 250;
 
 function currentSlug() {
   const match = String(location.hash || '').match(/^#\/book\/([^/?#]+)/i);
@@ -20,19 +21,18 @@ function pageValueElement() {
   return stat?.querySelector('.bd-stat-value') || null;
 }
 
-async function saveMissingPageCount() {
-  const slug = currentSlug();
-  if (!slug) return false;
+function updateLocalBook(id, pages) {
+  if (!Array.isArray(state.books)) return;
+  const target = state.books.find(item => String(item.id) === String(id));
+  if (target) target.pages = pages;
+  try { state.persistCatalogCache(state.books); } catch (_) {}
+}
 
-  const book = state.getBookBySlug(slug);
-  if (!book) return false;
-
-  const currentPages = Number(book.pages || book.page_count || 0);
+async function saveBookPageCount(book, updateDetail = false) {
+  const currentPages = Number(book?.pages || book?.page_count || 0);
   const url = pdfUrl(book);
-  const id = String(book.id || '').trim();
-  if (currentPages > 0) return true;
-  if (!id || !url) return false;
-  if (attempted.has(id)) return true;
+  const id = String(book?.id || '').trim();
+  if (currentPages > 0 || !id || !url || attempted.has(id)) return false;
   attempted.add(id);
 
   try {
@@ -54,13 +54,10 @@ async function saveMissingPageCount() {
       return false;
     }
 
-    const value = pageValueElement();
-    if (value) value.textContent = String(pages);
-
-    if (Array.isArray(state.books)) {
-      const target = state.books.find(item => String(item.id) === id);
-      if (target) target.pages = pages;
-      try { state.persistCatalogCache(state.books); } catch (_) {}
+    updateLocalBook(id, pages);
+    if (updateDetail) {
+      const value = pageValueElement();
+      if (value) value.textContent = String(pages);
     }
     return true;
   } catch (_) {
@@ -69,15 +66,39 @@ async function saveMissingPageCount() {
   }
 }
 
+async function processAllMissingBooks() {
+  if (!Array.isArray(state.books) || !state.books.length) return false;
+  let changed = false;
+  for (const book of state.books.slice()) {
+    const currentPages = Number(book?.pages || book?.page_count || 0);
+    if (currentPages > 0 || !pdfUrl(book) || !String(book?.id || '').trim()) continue;
+    const done = await saveBookPageCount(book, false);
+    changed = changed || done;
+    await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+  }
+  return changed;
+}
+
+async function saveCurrentBook() {
+  const slug = currentSlug();
+  if (!slug) return false;
+  const book = state.getBookBySlug(slug);
+  if (!book) return false;
+  return saveBookPageCount(book, true);
+}
+
 function schedule() {
   let tries = 0;
   const run = async () => {
     tries += 1;
-    if (await saveMissingPageCount()) return;
-    if (tries < RETRY_COUNT && currentSlug()) setTimeout(run, RETRY_DELAY);
+    await processAllMissingBooks();
+    const done = await saveCurrentBook();
+    if (done || tries >= RETRY_COUNT || !currentSlug()) return;
+    setTimeout(run, RETRY_DELAY);
   };
   setTimeout(run, 500);
 }
 
 window.addEventListener('hashchange', schedule);
+try { state.subscribe(event => { if (event === 'DATA_SYNCED') schedule(); }); } catch (_) {}
 schedule();
