@@ -1,4 +1,3 @@
-import { state } from './state.js';
 import { apiUrl } from './config.js';
 
 // Targeted PDF page-count backfill only. No other book fields are written.
@@ -6,11 +5,6 @@ const attempted = new Set();
 const RETRY_COUNT = 60;
 const RETRY_DELAY = 1500;
 const BATCH_DELAY = 250;
-
-function currentSlug() {
-  const match = String(location.hash || '').match(/^#\/book\/([^/?#]+)/i);
-  return match ? decodeURIComponent(match[1]) : '';
-}
 
 function pdfUrl(book) {
   return String(book?.pdf_url || book?.pdfUrl || '').trim();
@@ -22,11 +16,17 @@ function pageValueElement() {
   return stat?.querySelector('.bd-stat-value') || null;
 }
 
-function updateLocalBook(id, pages) {
-  if (!Array.isArray(state.books)) return;
-  const target = state.books.find(item => String(item.id) === String(id));
-  if (target) target.pages = pages;
-  try { state.persistCatalogCache(state.books); } catch (_) {}
+async function fetchBackendBooks() {
+  const response = await fetch(apiUrl('/api/books'), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    credentials: 'omit',
+    cache: 'no-store'
+  });
+  if (!response.ok) throw new Error(`Catalog HTTP ${response.status}`);
+  const payload = await response.json();
+  const books = Array.isArray(payload) ? payload : (Array.isArray(payload?.books) ? payload.books : []);
+  return books.map(book => ({ ...book, id: String(book?.id || '').trim() }));
 }
 
 async function saveBookPageCount(book, updateDetail = false) {
@@ -37,6 +37,7 @@ async function saveBookPageCount(book, updateDetail = false) {
   attempted.add(id);
 
   try {
+    console.log(`[Bookora PDF Pages] Processing ${id}`);
     const endpoint = `${apiUrl(`/api/books/page-count/${encodeURIComponent(id)}`)}?pdf_url=${encodeURIComponent(url)}`;
     const response = await fetch(endpoint, {
       method: 'GET',
@@ -44,18 +45,18 @@ async function saveBookPageCount(book, updateDetail = false) {
       credentials: 'omit',
       cache: 'no-store'
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result?.error || `HTTP ${response.status}`);
 
-    const result = await response.json();
     const pages = Number(result?.pages || 0);
     if (pages <= 0) throw new Error(result?.error || 'No readable PDF pages');
 
-    updateLocalBook(id, pages);
+    book.pages = pages;
     if (updateDetail) {
       const value = pageValueElement();
       if (value) value.textContent = String(pages);
     }
-    console.log(`[Bookora PDF Pages] Saved ${pages} pages for book ${id}`);
+    console.log(`[Bookora PDF Pages] SAVED ${pages} pages for book ${id}`);
     return true;
   } catch (error) {
     attempted.delete(id);
@@ -64,75 +65,60 @@ async function saveBookPageCount(book, updateDetail = false) {
   }
 }
 
-async function fetchBackendBooks() {
+async function processAllMissingBooks() {
+  let books = [];
   try {
-    const response = await fetch(apiUrl('/api/books'), {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      credentials: 'omit',
-      cache: 'no-store'
-    });
-    if (!response.ok) throw new Error(`Catalog HTTP ${response.status}`);
-    const payload = await response.json();
-    const books = Array.isArray(payload) ? payload : (Array.isArray(payload?.books) ? payload.books : []);
-    return books.map(book => ({ ...book, id: String(book?.id || '').trim() }));
+    books = await fetchBackendBooks();
   } catch (error) {
     console.warn('[Bookora PDF Pages] Backend catalog unavailable:', error?.message || error);
-    return [];
+    return false;
   }
-}
 
-async function processBooks(books) {
-  if (!Array.isArray(books) || !books.length) return false;
   let changed = false;
   for (const book of books) {
-    const currentPages = Number(book?.pages || book?.page_count || 0);
-    if (currentPages > 0 || !pdfUrl(book) || !String(book?.id || '').trim()) continue;
-    const done = await saveBookPageCount(book, false);
-    changed = changed || done;
+    if (Number(book?.pages || book?.page_count || 0) > 0 || !pdfUrl(book) || !book.id) continue;
+    changed = (await saveBookPageCount(book, false)) || changed;
     await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
   }
   return changed;
 }
 
-async function processAllMissingBooks() {
-  const backendBooks = await fetchBackendBooks();
-  if (backendBooks.length) await processBooks(backendBooks);
-  if (Array.isArray(state.books) && state.books.length) await processBooks(state.books.slice());
+function updateCurrentDetailFromCatalog(books) {
+  const hash = String(location.hash || '');
+  const match = hash.match(/^#\/book\/([^/?#]+)/i);
+  if (!match) return;
+  const slug = decodeURIComponent(match[1]).trim().toLowerCase();
+  const book = books.find(item => String(item?.slug || item?.id || '').trim().toLowerCase() === slug);
+  if (!book || Number(book?.pages || book?.page_count || 0) <= 0) return;
+  const value = pageValueElement();
+  if (value) value.textContent = String(book.pages || book.page_count);
 }
 
-async function saveCurrentBook() {
-  const slug = currentSlug();
-  if (!slug) return false;
-
-  let book = null;
-  try { book = state.getBookBySlug(slug); } catch (_) {}
-  if (book) {
-    const done = await saveBookPageCount(book, true);
-    if (done) return true;
+async function run() {
+  try {
+    const books = await fetchBackendBooks();
+    updateCurrentDetailFromCatalog(books);
+    for (const book of books) {
+      if (Number(book?.pages || book?.page_count || 0) > 0 || !pdfUrl(book) || !book.id) continue;
+      await saveBookPageCount(book, false);
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+    }
+    updateCurrentDetailFromCatalog(books);
+  } catch (error) {
+    console.warn('[Bookora PDF Pages] run skipped:', error?.message || error);
   }
-
-  const backendBooks = await fetchBackendBooks();
-  const match = backendBooks.find(item => {
-    const itemSlug = String(item?.slug || item?.id || '').trim().toLowerCase();
-    return itemSlug === String(slug).trim().toLowerCase();
-  });
-  if (!match) return false;
-  return saveBookPageCount(match, true);
 }
 
+let tries = 0;
 function schedule() {
-  let tries = 0;
-  const run = async () => {
+  tries = 0;
+  const tick = async () => {
     tries += 1;
-    await processAllMissingBooks();
-    const done = await saveCurrentBook();
-    if (done || tries >= RETRY_COUNT) return;
-    setTimeout(run, RETRY_DELAY);
+    await run();
+    if (tries < RETRY_COUNT) setTimeout(tick, RETRY_DELAY);
   };
-  setTimeout(run, 500);
+  setTimeout(tick, 500);
 }
 
 window.addEventListener('hashchange', schedule);
-try { state.subscribe(event => { if (event === 'DATA_SYNCED') schedule(); }); } catch (_) {}
 schedule();
