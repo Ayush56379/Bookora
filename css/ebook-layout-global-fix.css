@@ -145,3 +145,50 @@
   fill:none!important;
   stroke:currentColor!important;
 }
+
+/* FINAL EBOOK GRID RESPONSIVE LOCK — homepage/catalog cards only.
+   This overrides the older homepage 1240/1480px rail so six cards can fit
+   correctly on laptop/desktop screens while remaining compact on wide LEDs. */
+#app .bookora-home-clean .home-catalog-block{
+  width:min(1600px,calc(100% - 40px))!important;
+  max-width:1600px!important;
+  margin-left:auto!important;
+  margin-right:auto!important;
+  box-sizing:border-box!important;
+}
+#app .bookora-home-clean .home-catalog-grid{
+  width:100%!important;
+  max-width:none!important;
+  min-width:0!important;
+  grid-template-columns:repeat(6,minmax(0,1fr))!important;
+  gap:clamp(12px,1.25vw,20px)!important;
+  box-sizing:border-box!important;
+}
+#app .bookora-home-clean .home-catalog-item{
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  box-sizing:border-box!important;
+}
+#app .bookora-home-clean .home-catalog-item>.book-card{
+  width:100%!important;
+  max-width:none!important;
+  min-width:0!important;
+  box-sizing:border-box!important;
+}
+@media (min-width:768px) and (max-width:1099px){
+  #app .bookora-home-clean .home-catalog-block{width:calc(100% - 32px)!important;max-width:1200px!important;}
+  #app .bookora-home-clean .home-catalog-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important;}
+}
+@media (min-width:480px) and (max-width:767px){
+  #app .bookora-home-clean .home-catalog-block{width:calc(100% - 28px)!important;max-width:none!important;}
+  #app .bookora-home-clean .home-catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important;}
+}
+@media (max-width:479px){
+  #app .bookora-home-clean .home-catalog-block{width:calc(100% - 20px)!important;max-width:none!important;}
+  #app .bookora-home-clean .home-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;}
+}
+@media (max-width:380px){
+  #app .bookora-home-clean .home-catalog-block{width:calc(100% - 14px)!important;}
+  #app .bookora-home-clean .home-catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
+}
