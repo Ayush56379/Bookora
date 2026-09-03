@@ -95,6 +95,50 @@
         if (!['failed-precondition', 'unimplemented'].includes(error?.code)) console.info('[Bookora Firestore] persistence:', error?.message || error);
       });
 
+      // Keep Firebase Authentication and the Firestore `users` profile collection
+      // in sync. Only create the document when it is genuinely missing; existing
+      // user profiles are never overwritten or modified by this repair layer.
+      const ensureUserProfile = async firebaseUser => {
+        if (!firebaseUser?.uid) return;
+        try {
+          const userRef = db.collection('users').doc(String(firebaseUser.uid));
+          const existing = await userRef.get();
+          if (existing.exists) return;
+
+          const profile = {
+            id: String(firebaseUser.uid),
+            uid: String(firebaseUser.uid),
+            firebaseUid: String(firebaseUser.uid),
+            name: firebaseUser.displayName || 'Bookora User',
+            email: firebaseUser.email || '',
+            role: 'buyer',
+            avatar: firebaseUser.photoURL || '',
+            photoURL: firebaseUser.photoURL || '',
+            status: 'active',
+            seller_status: 'none',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          const serverTimestamp = window.firebase?.firestore?.FieldValue?.serverTimestamp;
+          if (serverTimestamp) {
+            profile.createdAt = serverTimestamp();
+            profile.updatedAt = serverTimestamp();
+          }
+          await userRef.set(profile, { merge: false });
+          console.log('✓ Firebase user profile created in Cloud Firestore:', firebaseUser.uid);
+        } catch (error) {
+          // A Firestore permission/network issue must never block authentication.
+          console.warn('[Bookora Firestore] user profile sync:', error?.message || error);
+        }
+      };
+
+      if (!window.__BOOKORA_FIREBASE_USER_PROFILE_SYNC__) {
+        window.__BOOKORA_FIREBASE_USER_PROFILE_SYNC__ = true;
+        window.firebase.auth().onAuthStateChanged(firebaseUser => {
+          if (firebaseUser) void ensureUserProfile(firebaseUser);
+        });
+      }
+
       if (!window.__BOOKORA_APPROVED_BOOKS_LISTENER__) {
         window.__BOOKORA_APPROVED_BOOKS_LISTENER__ = true;
         // No artificial limit: Explore must receive every approved eBook in Firebase.
