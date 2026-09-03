@@ -21,8 +21,6 @@
   });
   window.addEventListener('unhandledrejection', event => console.warn('[Bookora stability guard] unhandled promise:', event.reason));
 
-  // If a route remains on the bootstrap Bookora screen too long, recover instead of
-  // trapping the user behind an infinite-looking loader.
   let loadingSince = 0;
   setInterval(() => {
     const main = document.getElementById('main-content');
@@ -39,6 +37,31 @@
     try {
       const { state } = await import('./state.js');
       if (!state || state.__stabilityGuardPatched) return;
+
+      const syncFirebaseProfilePhoto = () => {
+        try {
+          const firebaseUser = window.firebase?.auth?.()?.currentUser;
+          if (!firebaseUser || !state.currentUser) return;
+          const firebasePhotoURL = String(firebaseUser.photoURL || '').trim();
+          const currentPhotoURL = String(state.currentUser.photoURL || '').trim();
+          const currentAvatar = String(state.currentUser.avatar || '').trim();
+          if (currentPhotoURL === firebasePhotoURL && currentAvatar === firebasePhotoURL) return;
+          state.currentUser = { ...state.currentUser, photoURL: firebasePhotoURL, avatar: firebasePhotoURL };
+          localStorage.setItem('bookora_user_profile', JSON.stringify(state.currentUser));
+          state.notify('USER_LOGGED_IN', state.currentUser);
+        } catch (error) {
+          console.warn('[Bookora profile avatar sync]', error?.message || error);
+        }
+      };
+
+      syncFirebaseProfilePhoto();
+      if (window.firebase?.auth) {
+        window.firebase.auth().onAuthStateChanged(() => syncFirebaseProfilePhoto());
+      }
+      state.subscribe(event => {
+        if (event === 'USER_LOGGED_IN' || event === 'DATA_SYNCED') syncFirebaseProfilePhoto();
+      });
+
       const originalSync = state.syncData.bind(state);
       let syncInFlight = null;
       state.syncData = function guardedSyncData() {
