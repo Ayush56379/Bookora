@@ -8,6 +8,7 @@
 
   const esc = v => String(v ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const validUrl = v => /^https?:\/\//i.test(String(v || '').trim()) ? String(v).trim() : '';
+  const photoKey = v => String(v || '').trim().split('#')[0].split('?')[0].toLowerCase();
 
   function styles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -64,10 +65,17 @@
       starsEl.innerHTML = Array.from({length:5}, (_,i) => `<span class="footer-star">${i < rounded ? '★' : '☆'}</span>`).join('');
       starsEl.setAttribute('aria-label', reviews.length ? `${average.toFixed(1)} out of 5 stars` : 'No ratings yet');
       const selected = [];
+      const seenPhotos = new Set();
+      const seenReviewers = new Set();
       for (const review of reviews) {
         if (selected.length >= MAX_AVATARS) break;
         const photo = await resolvePhoto(review, db);
         if (!photo) continue;
+        const reviewerId = String(review.uid || review.firebaseUid || review.firebase_uid || '').trim();
+        const key = photoKey(photo);
+        if (!key || seenPhotos.has(key) || (reviewerId && seenReviewers.has(reviewerId))) continue;
+        seenPhotos.add(key);
+        if (reviewerId) seenReviewers.add(reviewerId);
         const name = String(review.displayName || review.publicName || review.name || 'Bookora Reader').trim() || 'Bookora Reader';
         selected.push(`<span class="bookora-footer__avatar-image" title="${esc(name)}"><img src="${esc(photo)}" alt="${esc(name)}" loading="lazy" referrerpolicy="no-referrer"></span>`);
       }
