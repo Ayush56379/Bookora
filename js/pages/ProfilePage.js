@@ -15,7 +15,8 @@ export function renderProfilePage() {
   const firebasePhotoURL = (() => {
     try { return String(window.firebase?.auth?.()?.currentUser?.photoURL || '').trim(); } catch (_) { return ''; }
   })();
-  const profilePhotoURL = String(user.photoURL || user.avatar || firebasePhotoURL || '').trim();
+  // Firebase Auth photo is authoritative for Google accounts. Never use a random image.
+  const profilePhotoURL = String(firebasePhotoURL || user.photoURL || '').trim();
 
   return `
     <div class="profile-page animate-fade-in" style="background: var(--bg-secondary); min-height: 85vh; padding: 3.5rem 0 5rem 0;">
@@ -32,8 +33,8 @@ export function renderProfilePage() {
         <div style="background: #FFFFFF; border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 2.5rem; box-shadow: var(--shadow-sm); margin-bottom: 2rem;">
           
           <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 2rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 2rem;">
-            <img src="${profilePhotoURL}" alt="${user.name}" onerror="this.style.display='none';this.nextElementSibling?.classList.add('fallback-visible');" style="width: 80px; height: 80px; border-radius: 99px; object-fit: cover; border: 3px solid #EFF6FF; ${profilePhotoURL ? '' : 'display:none;'}" />
-            <div class="profile-avatar-fallback" style="${profilePhotoURL ? 'display:none;' : ''}width:80px;height:80px;border-radius:99px;border:3px solid #EFF6FF;display:flex;align-items:center;justify-content:center;background:var(--bg-secondary);color:var(--text-secondary);font-weight:800;font-size:1.2rem;">${String(user.name || 'U').trim().charAt(0).toUpperCase()}</div>
+            <img src="${profilePhotoURL}" alt="${user.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width: 80px; height: 80px; border-radius: 99px; object-fit: cover; border: 3px solid #EFF6FF; ${profilePhotoURL ? '' : 'display:none;'}" />
+            <div class="profile-avatar-fallback" style="width:80px;height:80px;border-radius:99px;border:3px solid #EFF6FF;display:${profilePhotoURL ? 'none' : 'flex'};align-items:center;justify-content:center;background:var(--bg-secondary);color:var(--text-secondary);font-weight:800;font-size:1.2rem;">${String(user.name || 'U').trim().charAt(0).toUpperCase()}</div>
             <div>
               <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
                 <h2 style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary);">${user.name}</h2>
