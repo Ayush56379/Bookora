@@ -31,3 +31,5 @@ jobs:
           git diff --cached --quiet && exit 0 || true
           git commit -m 'Fix public regional FX request auth error'
           git push
+
+# One-time trigger: apply only the public FX request hotfix.
